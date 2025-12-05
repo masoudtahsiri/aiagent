@@ -99,11 +99,13 @@ wss.on('connection', (twilioWs) => {
             isConnected = true;
             
             // Send initial greeting to start the conversation
-            if (geminiSession) {
-              geminiSession.sendRealtimeInput({
-                text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
-              });
-            }
+            setTimeout(() => {
+              if (geminiSession && isConnected) {
+                geminiSession.sendRealtimeInput({
+                  text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
+                });
+              }
+            }, 1000);
           },
           onmessage: (message) => {
             // Handle audio response from Gemini
@@ -192,11 +194,13 @@ wss.on('connection', (twilioWs) => {
               
               // Convert to PCM 16kHz for Gemini
               const pcmBuffer = mulawToPcm16k(mulawBuffer);
-              const pcmBase64 = pcmToBase64(pcmBuffer);
+              
+              // Create blob for Gemini
+              const audioBlob = new Blob([pcmBuffer], { type: 'audio/pcm' });
               
               // Send to Gemini
               geminiSession.sendRealtimeInput({
-                media: pcmBase64
+                media: audioBlob
               });
             } catch (err) {
               console.error('Error forwarding audio to Gemini:', err);
