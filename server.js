@@ -225,14 +225,20 @@ wss.on('connection', async (twilioWs) => {
           streamSid = msg.start.streamSid;
           console.log(`📞 Call Started: ${streamSid}`);
           
-          // Trigger greeting with a content part
+          // Trigger greeting by sending silent audio to wake up the model
           setTimeout(() => {
             if (isGeminiConnected && geminiSession) {
-              console.log('📤 Triggering greeting via text...');
-              // Use the format that worked for other users
-              geminiSession.send({
-                 parts: [{ text: "The user has connected. Please say hello." }],
-                 endOfTurn: true
+              console.log('📤 Triggering greeting via silent audio...');
+              
+              // Create 1 second of silence (16000 samples * 2 bytes = 32000 bytes)
+              // This acts as a "wake up" for the model to follow system instructions
+              const emptyPcm = Buffer.alloc(32000); 
+              
+              geminiSession.sendRealtimeInput({
+                media: {
+                  mimeType: "audio/pcm;rate=16000",
+                  data: emptyPcm.toString('base64')
+                }
               });
             }
           }, 200);
