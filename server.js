@@ -11,7 +11,6 @@ import { GoogleGenAI, Modality } from '@google/genai';
 const MU_LAW_BIAS = 33;
 const CLIP = 32635;
 
-// Lookup table for mu-law to PCM could be used, but math is fast enough for Node.
 function decodeMuLawSample(muLaw) {
     muLaw = ~muLaw;
     const sign = (muLaw & 0x80);
@@ -35,26 +34,18 @@ function encodeMuLawSample(sample) {
     return ~byte;
 }
 
-/**
- * Converts Twilio's 8kHz Mu-Law to Gemini's 16kHz PCM.
- * Uses simple linear interpolation for upsampling.
- */
 function mulawToPcm16k(mulawBuffer) {
     const inputLen = mulawBuffer.length;
-    // 2 bytes per sample (Int16), 2x sample rate (8k -> 16k)
     const outputBuffer = Buffer.alloc(inputLen * 2 * 2); 
     
     for (let i = 0; i < inputLen - 1; i++) {
         const sample1 = decodeMuLawSample(mulawBuffer[i]);
         const sample2 = decodeMuLawSample(mulawBuffer[i+1]);
         
-        // Original sample
         outputBuffer.writeInt16LE(sample1, i * 4);
-        // Interpolated sample
         outputBuffer.writeInt16LE(Math.floor((sample1 + sample2) / 2), i * 4 + 2);
     }
     
-    // Handle the last sample
     if (inputLen > 0) {
         const lastSample = decodeMuLawSample(mulawBuffer[inputLen - 1]);
         outputBuffer.writeInt16LE(lastSample, (inputLen - 1) * 4);
@@ -64,15 +55,9 @@ function mulawToPcm16k(mulawBuffer) {
     return outputBuffer;
 }
 
-/**
- * Converts Gemini's 24kHz PCM to Twilio's 8kHz Mu-Law.
- * Uses decimation (taking every 3rd sample) for downsampling.
- */
 function pcm24kToMulaw(base64Pcm) {
     const buffer = Buffer.from(base64Pcm, 'base64');
     const inputInt16 = new Int16Array(buffer.buffer, buffer.byteOffset, buffer.length / 2);
-    
-    // Downsample from 24kHz to 8kHz (factor of 3)
     const outputLen = Math.floor(inputInt16.length / 3);
     const outputBuffer = Buffer.alloc(outputLen);
     
@@ -118,16 +103,13 @@ IMPORTANT: When the call first connects, immediately greet the caller by saying 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health Check
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'Twilio-Gemini Bridge' });
 });
 
-// Twilio Voice Webhook
 app.post('/incoming-call', (req, res) => {
   console.log('📞 Incoming call from:', req.body.From);
   const host = req.headers.host;
-  // If running locally with ngrok, x-forwarded-proto might be https
   const protocol = (req.headers['x-forwarded-proto'] === 'https') ? 'wss' : 'ws';
   
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -143,7 +125,6 @@ app.post('/incoming-call', (req, res) => {
   res.send(twiml);
 });
 
-// WebSocket Connection Handling
 wss.on('connection', async (twilioWs) => {
   console.log('🔌 Twilio Media Stream connected');
   
@@ -177,10 +158,8 @@ wss.on('connection', async (twilioWs) => {
           isGeminiConnected = true;
         },
         onmessage: (message) => {
-          // Log all messages from Gemini
           console.log('📨 Gemini message:', JSON.stringify(message).substring(0, 200));
           
-          // 1. Handle Audio from Gemini -> Twilio
           const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
           if (audioData) {
             console.log('🔊 Got audio from Gemini, length:', audioData.length);
@@ -189,7 +168,6 @@ wss.on('connection', async (twilioWs) => {
               return;
             }
             try {
-              // Convert 24k PCM (Base64) -> 8k Mu-Law (Buffer)
               const mulawBuffer = pcm24kToMulaw(audioData);
               console.log('📤 Sending audio to Twilio, bytes:', mulawBuffer.length);
               
@@ -205,12 +183,10 @@ wss.on('connection', async (twilioWs) => {
             }
           }
           
-          // Handle turn complete
           if (message.serverContent?.turnComplete) {
             console.log('🎤 AI finished speaking');
           }
           
-          // 2. Handle Interruptions
           if (message.serverContent?.interrupted) {
             console.log('⚡ Interrupted');
             if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
@@ -221,8 +197,8 @@ wss.on('connection', async (twilioWs) => {
             }
           }
         },
-        onclose: () => {
-          console.log('🔴 Gemini Disconnected');
+        onclose: (event) => {
+          console.log('🔴 Gemini Disconnected - code:', event?.code, 'reason:', event?.reason);
           closeGemini();
         },
         onerror: (err) => {
@@ -240,7 +216,6 @@ wss.on('connection', async (twilioWs) => {
     return;
   }
 
-  // Handle Incoming Messages from Twilio
   twilioWs.on('message', (data) => {
     try {
       const msg = JSON.parse(data);
@@ -250,36 +225,34 @@ wss.on('connection', async (twilioWs) => {
           streamSid = msg.start.streamSid;
           console.log(`📞 Call Started: ${streamSid}`);
           
-          // Trigger greeting (sending text as input to prompt the model)
+          // Trigger greeting with a content part
           setTimeout(() => {
             if (isGeminiConnected && geminiSession) {
-              console.log('📤 Triggering greeting...');
-              geminiSession.sendRealtimeInput([
-                {
-                  mimeType: "text/plain",
-                  data: "The user has connected. Please say hello."
-                }
-              ]);
+              console.log('📤 Triggering greeting via text...');
+              // Use the format that worked for other users
+              geminiSession.send({
+                 parts: [{ text: "The user has connected. Please say hello." }],
+                 endOfTurn: true
+              });
             }
           }, 200);
           break;
 
         case 'media':
           if (isGeminiConnected && geminiSession && msg.media?.payload) {
-             // 1. Get raw mu-law bytes
-             const mulawBuffer = Buffer.from(msg.media.payload, 'base64');
-             
-             // 2. Convert to 16kHz PCM
-             const pcm16kBuffer = mulawToPcm16k(mulawBuffer);
-             
-             // 3. Send to Gemini
-             // IMPORTANT: Data must be wrapped in a 'media' object
-             geminiSession.sendRealtimeInput({
-               media: {
-                 mimeType: "audio/pcm;rate=16000",
-                 data: pcm16kBuffer.toString('base64')
-               }
-             });
+             try {
+               const mulawBuffer = Buffer.from(msg.media.payload, 'base64');
+               const pcm16kBuffer = mulawToPcm16k(mulawBuffer);
+               
+               geminiSession.sendRealtimeInput({
+                 media: {
+                   mimeType: "audio/pcm;rate=16000",
+                   data: pcm16kBuffer.toString('base64')
+                 }
+               });
+             } catch (e) {
+               console.error('Error sending audio to Gemini:', e.message);
+             }
           }
           break;
 
