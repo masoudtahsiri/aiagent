@@ -82,8 +82,13 @@ wss.on('connection', (twilioWs) => {
   // Initialize Gemini connection
   const initGemini = async () => {
     try {
+      console.log('🔄 Initializing Gemini connection...');
+      console.log('API Key present:', !!process.env.GEMINI_API_KEY);
+      console.log('API Key length:', process.env.GEMINI_API_KEY?.length || 0);
+      
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
+      console.log('🚀 Attempting to connect to Gemini Live...');
       geminiSession = await ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
@@ -95,15 +100,21 @@ wss.on('connection', (twilioWs) => {
         },
         callbacks: {
           onopen: () => {
-            console.log('✅ Gemini Live session opened');
+            console.log('✅ Gemini Live session opened successfully');
             isConnected = true;
             
             // Send initial greeting to start the conversation
             setTimeout(() => {
               if (geminiSession && isConnected) {
-                geminiSession.sendRealtimeInput({
-                  text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
-                });
+                console.log('📤 Sending initial greeting...');
+                try {
+                  geminiSession.sendRealtimeInput({
+                    text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
+                  });
+                  console.log('✅ Initial greeting sent');
+                } catch (err) {
+                  console.error('❌ Error sending greeting:', err);
+                }
               }
             }, 1000);
           },
@@ -166,7 +177,9 @@ wss.on('connection', (twilioWs) => {
       });
       
     } catch (err) {
-      console.error('Failed to initialize Gemini:', err);
+      console.error('❌ Failed to initialize Gemini:', err);
+      console.error('Error details:', err.message);
+      console.error('Stack trace:', err.stack);
     }
   };
 
