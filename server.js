@@ -166,9 +166,18 @@ wss.on('connection', (twilioWs) => {
               }
             }
           },
-          onclose: () => {
-            console.log('🔴 Gemini session closed');
+          onclose: (event) => {
+            console.log('🔴 Gemini session closed:', event);
+            console.log('Close code:', event?.code, 'Reason:', event?.reason);
             isConnected = false;
+            
+            // Try to reconnect if call is still active
+            if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+              console.log('🔄 Attempting to reconnect Gemini...');
+              setTimeout(() => {
+                initGemini();
+              }, 1000);
+            }
           },
           onerror: (err) => {
             console.error('Gemini error:', err);
