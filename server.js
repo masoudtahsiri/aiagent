@@ -150,6 +150,7 @@ wss.on('connection', async (twilioWs) => {
   let streamSid = null;
   let geminiSession = null;
   let isGeminiConnected = false;
+  let audioChunkCount = 0;
 
   const closeGemini = () => {
     if (geminiSession) {
@@ -222,8 +223,8 @@ wss.on('connection', async (twilioWs) => {
             }
           }
         },
-        onclose: () => {
-          console.log('🔴 Gemini Disconnected');
+        onclose: (event) => {
+          console.log('🔴 Gemini Disconnected - code:', event?.code, 'reason:', event?.reason);
           closeGemini();
         },
         onerror: (err) => {
@@ -262,18 +263,29 @@ wss.on('connection', async (twilioWs) => {
 
         case 'media':
           if (isGeminiConnected && geminiSession && msg.media?.payload) {
-             // 1. Get raw mu-law bytes
-             const mulawBuffer = Buffer.from(msg.media.payload, 'base64');
-             
-             // 2. Convert to 16kHz PCM
-             const pcm16kBuffer = mulawToPcm16k(mulawBuffer);
-             
-             // 3. Send to Gemini
-             // Node.js SDK expects base64 string for data
-             geminiSession.sendRealtimeInput({
-               mimeType: "audio/pcm;rate=16000",
-               data: pcm16kBuffer.toString('base64')
-             });
+             try {
+               audioChunkCount++;
+               // Log every 50 chunks (~1 second of audio)
+               if (audioChunkCount % 50 === 1) {
+                 console.log(`🎙️ Receiving caller audio (chunk ${audioChunkCount})`);
+               }
+               
+               // 1. Get raw mu-law bytes
+               const mulawBuffer = Buffer.from(msg.media.payload, 'base64');
+               
+               // 2. Convert to 16kHz PCM
+               const pcm16kBuffer = mulawToPcm16k(mulawBuffer);
+               
+               // 3. Send to Gemini using the media object format
+               geminiSession.sendRealtimeInput({
+                 media: {
+                   mimeType: "audio/pcm;rate=16000",
+                   data: pcm16kBuffer.toString('base64')
+                 }
+               });
+             } catch (e) {
+               console.error('Error sending audio to Gemini:', e.message);
+             }
           }
           break;
 
