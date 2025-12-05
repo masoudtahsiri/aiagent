@@ -106,23 +106,25 @@ wss.on('connection', async (twilioWs) => {
             console.log('✅ Gemini Live session opened!');
             isConnected = true;
             
-            // Process any buffered audio
-            console.log(`📦 Processing ${audioBuffer.length} buffered audio chunks`);
-            audioBuffer.forEach(chunk => {
-              try {
-                session.sendRealtimeInput({ media: chunk });
-              } catch (e) {
-                console.error('Error sending buffered audio:', e);
-              }
-            });
-            audioBuffer = [];
-            
-            // Send initial greeting after a short delay
+            // Process buffered audio after a short delay to ensure session is assigned
             setTimeout(() => {
-              if (isConnected) {
+              if (geminiSession && audioBuffer.length > 0) {
+                console.log(`📦 Processing ${audioBuffer.length} buffered audio chunks`);
+                audioBuffer.forEach(chunk => {
+                  try {
+                    geminiSession.sendRealtimeInput({ media: chunk });
+                  } catch (e) {
+                    console.error('Error sending buffered audio:', e);
+                  }
+                });
+                audioBuffer = [];
+              }
+              
+              // Send initial greeting
+              if (geminiSession && isConnected) {
                 console.log('📤 Sending initial greeting...');
                 try {
-                  session.sendRealtimeInput({
+                  geminiSession.sendRealtimeInput({
                     text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
                   });
                   console.log('✅ Greeting sent');
@@ -130,7 +132,7 @@ wss.on('connection', async (twilioWs) => {
                   console.error('❌ Error sending greeting:', err);
                 }
               }
-            }, 500);
+            }, 100);
           },
           onmessage: (message) => {
             // Handle audio response from Gemini
