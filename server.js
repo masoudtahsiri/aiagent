@@ -254,11 +254,12 @@ wss.on('connection', async (twilioWs) => {
           setTimeout(() => {
             if (isGeminiConnected && geminiSession) {
               console.log('📤 Triggering greeting...');
-              geminiSession.sendRealtimeInput({ 
-                content: {
-                   parts: [{ text: "The user has connected. Please say hello." }]
+              geminiSession.sendRealtimeInput([
+                {
+                  mimeType: "text/plain",
+                  data: "The user has connected. Please say hello."
                 }
-              });
+              ]);
             }
           }, 200);
           break;
