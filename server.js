@@ -3,7 +3,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { mulawToPcm16k, pcm24kToMulaw, pcmToBase64, base64ToPcm } from './audioUtils.js';
+import { mulawToPcm16k, pcm24kToMulaw, base64ToPcm } from './audioUtils.js';
 
 const app = express();
 const server = createServer(app);
@@ -71,25 +71,28 @@ app.post('/incoming-call', (req, res) => {
 });
 
 // Handle Twilio Media Stream WebSocket connections
-wss.on('connection', (twilioWs) => {
+wss.on('connection', async (twilioWs) => {
   console.log('🔌 Twilio Media Stream connected');
   
   let streamSid = null;
   let callSid = null;
   let geminiSession = null;
   let isConnected = false;
+  let audioBuffer = []; // Buffer audio while connecting
+  let connectionPromise = null;
 
   // Initialize Gemini connection
   const initGemini = async () => {
     try {
       console.log('🔄 Initializing Gemini connection...');
       console.log('API Key present:', !!process.env.GEMINI_API_KEY);
-      console.log('API Key length:', process.env.GEMINI_API_KEY?.length || 0);
       
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      console.log('🚀 Attempting to connect to Gemini Live...');
-      geminiSession = await ai.live.connect({
+      console.log('🚀 Connecting to Gemini Live...');
+      
+      // Create the session
+      const session = await ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
           responseModalities: [Modality.AUDIO],
@@ -100,100 +103,105 @@ wss.on('connection', (twilioWs) => {
         },
         callbacks: {
           onopen: () => {
-            console.log('✅ Gemini Live session opened successfully');
+            console.log('✅ Gemini Live session opened!');
             isConnected = true;
             
-            // Send initial greeting to start the conversation
+            // Process any buffered audio
+            console.log(`📦 Processing ${audioBuffer.length} buffered audio chunks`);
+            audioBuffer.forEach(chunk => {
+              try {
+                session.sendRealtimeInput({ media: chunk });
+              } catch (e) {
+                console.error('Error sending buffered audio:', e);
+              }
+            });
+            audioBuffer = [];
+            
+            // Send initial greeting after a short delay
             setTimeout(() => {
-              if (geminiSession && isConnected) {
+              if (isConnected) {
                 console.log('📤 Sending initial greeting...');
                 try {
-                  geminiSession.sendRealtimeInput({
+                  session.sendRealtimeInput({
                     text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
                   });
-                  console.log('✅ Initial greeting sent');
+                  console.log('✅ Greeting sent');
                 } catch (err) {
                   console.error('❌ Error sending greeting:', err);
                 }
               }
-            }, 1000);
+            }, 500);
           },
           onmessage: (message) => {
-            console.log('📨 Gemini message:', JSON.stringify(message, null, 2));
-            
             // Handle audio response from Gemini
             const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             
             if (audioData && streamSid && twilioWs.readyState === WebSocket.OPEN) {
               try {
-                console.log('🔊 Processing Gemini audio response');
+                console.log('🔊 Sending audio to caller...');
                 // Convert Gemini's PCM 24kHz to Twilio's μ-law 8kHz
                 const pcmBuffer = base64ToPcm(audioData);
                 const mulawBuffer = pcm24kToMulaw(pcmBuffer);
                 const mulawBase64 = mulawBuffer.toString('base64');
                 
                 // Send audio to Twilio
-                const mediaMessage = {
+                twilioWs.send(JSON.stringify({
                   event: 'media',
                   streamSid: streamSid,
-                  media: {
-                    payload: mulawBase64
-                  }
-                };
-                
-                twilioWs.send(JSON.stringify(mediaMessage));
-                console.log('✅ Audio sent to Twilio');
+                  media: { payload: mulawBase64 }
+                }));
               } catch (err) {
                 console.error('❌ Error processing Gemini audio:', err);
               }
             }
 
-            // Handle turn completion - keep session alive
+            // Handle turn completion
             if (message.serverContent?.turnComplete) {
-              console.log('🎤 Gemini turn complete - keeping session alive');
-              // Don't close the session, keep listening for more audio
+              console.log('🎤 AI finished speaking');
             }
 
             // Handle interruption
             if (message.serverContent?.interrupted) {
-              console.log('⚡ Gemini interrupted');
-              // Send clear message to Twilio to stop current audio
+              console.log('⚡ Caller interrupted AI');
               if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-                twilioWs.send(JSON.stringify({
-                  event: 'clear',
-                  streamSid: streamSid
-                }));
+                twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
               }
             }
           },
           onclose: (event) => {
-            console.log('🔴 Gemini session closed:', event);
-            console.log('Close code:', event?.code, 'Reason:', event?.reason);
+            console.log('🔴 Gemini session closed');
             isConnected = false;
+            geminiSession = null;
             
-            // Try to reconnect if call is still active
+            // Reconnect if call is still active
             if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-              console.log('🔄 Attempting to reconnect Gemini...');
-              setTimeout(() => {
-                initGemini();
-              }, 1000);
+              console.log('🔄 Reconnecting to Gemini...');
+              setTimeout(initGemini, 500);
             }
           },
           onerror: (err) => {
-            console.error('Gemini error:', err);
+            console.error('❌ Gemini error:', err);
             isConnected = false;
           }
         }
       });
       
+      geminiSession = session;
+      console.log('📡 Gemini session object created, waiting for onopen...');
+      
     } catch (err) {
-      console.error('❌ Failed to initialize Gemini:', err);
-      console.error('Error details:', err.message);
-      console.error('Stack trace:', err.stack);
+      console.error('❌ Failed to connect to Gemini:', err.message);
+      console.error('Stack:', err.stack);
+      
+      // Retry connection
+      if (twilioWs.readyState === WebSocket.OPEN) {
+        console.log('🔄 Retrying Gemini connection in 2 seconds...');
+        setTimeout(initGemini, 2000);
+      }
     }
   };
 
-  // Start Gemini connection
+  // Start Gemini connection immediately
   initGemini();
 
   // Handle messages from Twilio
@@ -209,41 +217,36 @@ wss.on('connection', (twilioWs) => {
         case 'start':
           streamSid = message.start.streamSid;
           callSid = message.start.callSid;
-          console.log(`📞 Call started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
+          console.log(`📞 Call started - StreamSid: ${streamSid}`);
           break;
           
         case 'media':
-          // Forward audio to Gemini
-          if (geminiSession && isConnected) {
+          // Decode Twilio's base64 μ-law audio
+          const mulawBuffer = Buffer.from(message.media.payload, 'base64');
+          
+          // Convert to PCM 16kHz for Gemini
+          const pcmBuffer = mulawToPcm16k(mulawBuffer);
+          
+          // Create blob for Gemini
+          const audioBlob = new Blob([pcmBuffer], { type: 'audio/pcm' });
+          
+          if (isConnected && geminiSession) {
+            // Send directly if connected
             try {
-              // Decode Twilio's base64 μ-law audio
-              const mulawBuffer = Buffer.from(message.media.payload, 'base64');
-              
-              // Convert to PCM 16kHz for Gemini
-              const pcmBuffer = mulawToPcm16k(mulawBuffer);
-              
-              // Create blob for Gemini
-              const audioBlob = new Blob([pcmBuffer], { type: 'audio/pcm' });
-              
-              // Send to Gemini
-              geminiSession.sendRealtimeInput({
-                media: audioBlob
-              });
+              geminiSession.sendRealtimeInput({ media: audioBlob });
             } catch (err) {
-              console.error('❌ Error forwarding audio to Gemini:', err);
-              console.error('Full error:', err.stack);
+              console.error('❌ Error sending audio:', err.message);
             }
           } else {
-            console.log('⚠️ Gemini not connected, skipping audio');
+            // Buffer if not yet connected (limit buffer size)
+            if (audioBuffer.length < 50) {
+              audioBuffer.push(audioBlob);
+            }
           }
           break;
           
         case 'stop':
           console.log('📴 Call ended');
-          break;
-          
-        default:
-          // Ignore other events (mark, dtmf, etc.)
           break;
       }
     } catch (err) {
@@ -254,14 +257,11 @@ wss.on('connection', (twilioWs) => {
   // Handle Twilio disconnect
   twilioWs.on('close', () => {
     console.log('🔌 Twilio disconnected');
-    
-    // Close Gemini session if open
+    isConnected = false;
     if (geminiSession) {
       try {
         geminiSession.close?.();
-      } catch (e) {
-        // Ignore close errors
-      }
+      } catch (e) {}
     }
   });
 
@@ -281,4 +281,3 @@ server.listen(PORT, () => {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   `);
 });
-
