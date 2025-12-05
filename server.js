@@ -148,9 +148,10 @@ wss.on('connection', (twilioWs) => {
               }
             }
 
-            // Handle turn completion
+            // Handle turn completion - keep session alive
             if (message.serverContent?.turnComplete) {
-              console.log('🎤 Gemini turn complete');
+              console.log('🎤 Gemini turn complete - keeping session alive');
+              // Don't close the session, keep listening for more audio
             }
 
             // Handle interruption
