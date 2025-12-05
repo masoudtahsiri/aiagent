@@ -82,7 +82,6 @@ wss.on('connection', (twilioWs) => {
   // Initialize Gemini connection
   const initGemini = async () => {
     try {
-      console.log('🤖 Initializing Gemini with API key:', process.env.GEMINI_API_KEY ? 'Present' : 'MISSING');
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
       geminiSession = await ai.live.connect({
@@ -98,6 +97,13 @@ wss.on('connection', (twilioWs) => {
           onopen: () => {
             console.log('✅ Gemini Live session opened');
             isConnected = true;
+            
+            // Send initial greeting to start the conversation
+            if (geminiSession) {
+              geminiSession.sendRealtimeInput({
+                text: "Please greet the caller and introduce yourself as Sarah from Bright Smile Dental Clinic."
+              });
+            }
           },
           onmessage: (message) => {
             // Handle audio response from Gemini
@@ -190,10 +196,7 @@ wss.on('connection', (twilioWs) => {
               
               // Send to Gemini
               geminiSession.sendRealtimeInput({
-                media: {
-                  mimeType: 'audio/pcm;rate=16000',
-                  data: pcmBase64
-                }
+                media: pcmBase64
               });
             } catch (err) {
               console.error('Error forwarding audio to Gemini:', err);
