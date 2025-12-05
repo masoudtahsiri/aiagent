@@ -1,0 +1,7 @@
+{
+  "name": "Bright Smile AI Receptionist",
+  "description": "A real-time conversational voice assistant for a dental clinic using Gemini Live API.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
