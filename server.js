@@ -108,11 +108,14 @@ wss.on('connection', (twilioWs) => {
             }, 1000);
           },
           onmessage: (message) => {
+            console.log('📨 Gemini message:', JSON.stringify(message, null, 2));
+            
             // Handle audio response from Gemini
             const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             
             if (audioData && streamSid && twilioWs.readyState === WebSocket.OPEN) {
               try {
+                console.log('🔊 Processing Gemini audio response');
                 // Convert Gemini's PCM 24kHz to Twilio's μ-law 8kHz
                 const pcmBuffer = base64ToPcm(audioData);
                 const mulawBuffer = pcm24kToMulaw(pcmBuffer);
@@ -128,8 +131,9 @@ wss.on('connection', (twilioWs) => {
                 };
                 
                 twilioWs.send(JSON.stringify(mediaMessage));
+                console.log('✅ Audio sent to Twilio');
               } catch (err) {
-                console.error('Error processing Gemini audio:', err);
+                console.error('❌ Error processing Gemini audio:', err);
               }
             }
 
@@ -203,8 +207,11 @@ wss.on('connection', (twilioWs) => {
                 media: audioBlob
               });
             } catch (err) {
-              console.error('Error forwarding audio to Gemini:', err);
+              console.error('❌ Error forwarding audio to Gemini:', err);
+              console.error('Full error:', err.stack);
             }
+          } else {
+            console.log('⚠️ Gemini not connected, skipping audio');
           }
           break;
           
