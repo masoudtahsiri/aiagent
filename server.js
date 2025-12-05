@@ -177,16 +177,21 @@ wss.on('connection', async (twilioWs) => {
           isGeminiConnected = true;
         },
         onmessage: (message) => {
+          // Log all messages from Gemini
+          console.log('📨 Gemini message:', JSON.stringify(message).substring(0, 200));
+          
           // 1. Handle Audio from Gemini -> Twilio
           const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
           if (audioData) {
+            console.log('🔊 Got audio from Gemini, length:', audioData.length);
             if (!streamSid) {
-              // Wait for streamSid from Twilio
+              console.log('⚠️ No streamSid yet, cannot send audio');
               return;
             }
             try {
               // Convert 24k PCM (Base64) -> 8k Mu-Law (Buffer)
               const mulawBuffer = pcm24kToMulaw(audioData);
+              console.log('📤 Sending audio to Twilio, bytes:', mulawBuffer.length);
               
               if (twilioWs.readyState === WebSocket.OPEN) {
                 twilioWs.send(JSON.stringify({
@@ -198,6 +203,11 @@ wss.on('connection', async (twilioWs) => {
             } catch (e) {
               console.error('Error converting audio:', e);
             }
+          }
+          
+          // Handle turn complete
+          if (message.serverContent?.turnComplete) {
+            console.log('🎤 AI finished speaking');
           }
           
           // 2. Handle Interruptions
