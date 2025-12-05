@@ -82,10 +82,11 @@ wss.on('connection', (twilioWs) => {
   // Initialize Gemini connection
   const initGemini = async () => {
     try {
+      console.log('🤖 Initializing Gemini with API key:', process.env.GEMINI_API_KEY ? 'Present' : 'MISSING');
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
       geminiSession = await ai.live.connect({
-        model: 'gemini-2.5-flash-preview-native-audio-dialog',
+        model: 'gemini-2.0-flash-exp',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
