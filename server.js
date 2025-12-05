@@ -179,20 +179,20 @@ wss.on('connection', async (twilioWs) => {
         onopen: () => {
           console.log('✅ Gemini Live API Connected');
           isGeminiConnected = true;
-          // Send initial greeting trigger
-          setTimeout(() => {
-              if(isGeminiConnected) {
-                   session.sendRealtimeInput({ text: "Call connected. Say hello." });
-              }
-          }, 100);
+          // Greeting will be triggered after we get streamSid from Twilio
         },
         onmessage: (message) => {
           // 1. Handle Audio from Gemini -> Twilio
           const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-          if (audioData && streamSid) {
+          if (audioData) {
+            if (!streamSid) {
+              console.log('⚠️ Got audio but no streamSid yet!');
+              return;
+            }
             try {
               // Convert 24k PCM (Base64) -> 8k Mu-Law (Buffer)
               const mulawBuffer = pcm24kToMulaw(audioData);
+              console.log(`🔊 Sending ${mulawBuffer.length} bytes to caller`);
               
               if (twilioWs.readyState === WebSocket.OPEN) {
                 twilioWs.send(JSON.stringify({
@@ -205,12 +205,16 @@ wss.on('connection', async (twilioWs) => {
               console.error('Error converting audio:', e);
             }
           }
+          
+          // Log turn complete
+          if (message.serverContent?.turnComplete) {
+            console.log('🎤 AI finished speaking');
+          }
 
           // 2. Handle Interruptions
           if (message.serverContent?.interrupted) {
             console.log('⚡ Interrupted');
             if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-              // Tell Twilio to clear its audio buffer
               twilioWs.send(JSON.stringify({ 
                 event: 'clear', 
                 streamSid: streamSid 
@@ -246,6 +250,14 @@ wss.on('connection', async (twilioWs) => {
         case 'start':
           streamSid = msg.start.streamSid;
           console.log(`📞 Call Started: ${streamSid}`);
+          
+          // Now that we have streamSid, trigger the greeting
+          setTimeout(() => {
+            if (isGeminiConnected && geminiSession) {
+              console.log('📤 Triggering greeting...');
+              geminiSession.sendRealtimeInput({ text: "Call connected. Say hello." });
+            }
+          }, 200);
           break;
 
         case 'media':
