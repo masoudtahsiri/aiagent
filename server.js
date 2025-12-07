@@ -1,4 +1,5 @@
 import "dotenv/config";
+
 import { createServer } from "net";
 import { GoogleGenAI, Modality } from "@google/genai";
 
@@ -11,10 +12,18 @@ const MSG_TYPE_UUID = 0x01;
 const MSG_TYPE_AUDIO = 0x10;
 const MSG_TYPE_ERROR = 0xff;
 
+// Audio Configuration
+const INPUT_SAMPLE_RATE = 8000;   // From Asterisk (ulaw/alaw)
+const OUTPUT_SAMPLE_RATE = 8000;  // To Asterisk
+const GEMINI_INPUT_RATE = 16000;  // Gemini expects 16kHz input
+const GEMINI_OUTPUT_RATE = 24000; // Gemini outputs 24kHz
+const CHUNK_DURATION_MS = 20;     // 20ms chunks for VoIP
+const CHUNK_SIZE = (OUTPUT_SAMPLE_RATE * CHUNK_DURATION_MS / 1000) * 2; // 320 bytes
+
 const SYSTEM_INSTRUCTION = `
 You are Sarah, a friendly receptionist for Bright Smile Dental Clinic.
 Keep responses short and natural for phone conversation.
-Start by greeting the caller warmly.
+Start by greeting the caller warmly with "Hello, thank you for calling Bright Smile Dental Clinic, this is Sarah speaking. How may I help you today?"
 `;
 
 const server = createServer(async (socket) => {
@@ -24,6 +33,44 @@ const server = createServer(async (socket) => {
   let isConnected = false;
   let greetingSent = false;
   let audioBuffer = Buffer.alloc(0);
+  
+  // Output audio queue and streaming
+  let outputQueue = Buffer.alloc(0);
+  let streamingInterval = null;
+  let isStreaming = false;
+
+  // Start streaming audio to phone in 20ms chunks
+  const startStreaming = () => {
+    if (streamingInterval) return;
+    
+    isStreaming = true;
+    streamingInterval = setInterval(() => {
+      if (outputQueue.length >= CHUNK_SIZE && socket.writable) {
+        const chunk = outputQueue.slice(0, CHUNK_SIZE);
+        outputQueue = outputQueue.slice(CHUNK_SIZE);
+        sendAudioSocket(socket, chunk);
+      } else if (outputQueue.length > 0 && outputQueue.length < CHUNK_SIZE) {
+        // Send remaining audio (pad with silence if needed)
+        // Or just wait for more data
+      }
+    }, CHUNK_DURATION_MS);
+  };
+
+  const stopStreaming = () => {
+    if (streamingInterval) {
+      clearInterval(streamingInterval);
+      streamingInterval = null;
+    }
+    isStreaming = false;
+  };
+
+  // Queue audio for streaming
+  const queueAudio = (audioData) => {
+    outputQueue = Buffer.concat([outputQueue, audioData]);
+    if (!isStreaming) {
+      startStreaming();
+    }
+  };
 
   // Connect to Gemini
   try {
@@ -40,42 +87,49 @@ const server = createServer(async (socket) => {
       },
       callbacks: {
         onopen: () => {
-          console.log("Gemini CONNECTED");
+          console.log("✓ Gemini CONNECTED");
           isConnected = true;
 
           // Trigger greeting
           setTimeout(() => {
             if (session && !greetingSent) {
               greetingSent = true;
-              console.log("Triggering greeting...");
+              console.log("→ Triggering greeting...");
               session.sendClientContent({
                 turns: [{ role: "user", parts: [{ text: "Hello" }] }],
                 turnComplete: true
               });
             }
-          }, 500);
+          }, 300);
         },
 
         onmessage: (msg) => {
+          // Check for audio data
           const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+          
           if (audioData && socket.writable) {
-            // Gemini outputs 24kHz PCM (little-endian)
+            // Decode base64 - Gemini outputs 24kHz PCM little-endian
             const pcm24k = Buffer.from(audioData, "base64");
             
-            // Downsample 24kHz to 16kHz for Asterisk SLIN16
-            const pcm16k = downsample24kTo16k(pcm24k);
+            // Downsample 24kHz → 8kHz
+            const pcm8k = downsample(pcm24k, GEMINI_OUTPUT_RATE, OUTPUT_SAMPLE_RATE);
             
             // Convert to big-endian for AudioSocket
-            const pcm16kBE = swapEndian(pcm16k);
+            const pcm8kBE = swapEndian(pcm8k);
             
-            console.log(">> Sending", pcm16kBE.length, "bytes to phone");
+            console.log(`← Audio: ${pcm24k.length}B @24kHz → ${pcm8kBE.length}B @8kHz`);
             
-            // Send with AudioSocket header
-            sendAudioSocket(socket, pcm16kBE);
+            // Queue for streaming in small chunks
+            queueAudio(pcm8kBE);
+          }
+
+          if (msg.serverContent?.turnComplete) {
+            console.log("← Turn complete");
           }
 
           if (msg.serverContent?.interrupted) {
-            console.log(">> Caller interrupted");
+            console.log("⚠ Interrupted - clearing queue");
+            outputQueue = Buffer.alloc(0);
           }
         },
 
@@ -84,12 +138,15 @@ const server = createServer(async (socket) => {
           isConnected = false;
         },
 
-        onerror: (e) => console.error("Gemini error:", e)
+        onerror: (e) => {
+          console.error("✗ Gemini error:", e);
+          isConnected = false;
+        }
       }
     });
 
   } catch (err) {
-    console.error("Gemini init failed:", err);
+    console.error("✗ Gemini init failed:", err);
     socket.end();
     return;
   }
@@ -115,22 +172,26 @@ const server = createServer(async (socket) => {
 
         case MSG_TYPE_AUDIO:
           if (isConnected && session && payload.length > 0) {
-            // Asterisk sends 16kHz PCM big-endian (SLIN16)
-            // Convert to little-endian for Gemini
-            const pcm16kLE = swapEndian(payload);
+            // Asterisk sends 8kHz PCM big-endian
+            // Convert to little-endian
+            const pcm8kLE = swapEndian(payload);
             
-            // Send directly to Gemini - no resampling needed!
+            // Upsample 8kHz → 16kHz for Gemini
+            const pcm16k = upsample(pcm8kLE, INPUT_SAMPLE_RATE, GEMINI_INPUT_RATE);
+            
+            // Send to Gemini
             session.sendRealtimeInput({
               media: {
                 mimeType: "audio/pcm;rate=16000",
-                data: pcm16kLE.toString("base64")
+                data: pcm16k.toString("base64")
               }
             });
           }
           break;
 
         case MSG_TYPE_HANGUP:
-          console.log("Call hangup received");
+          console.log("Hangup received");
+          stopStreaming();
           socket.end();
           break;
 
@@ -143,12 +204,16 @@ const server = createServer(async (socket) => {
 
   socket.on("close", () => {
     console.log("=== Call ended ===");
+    stopStreaming();
     if (session) {
       try { session.close(); } catch (e) {}
     }
   });
 
-  socket.on("error", (err) => console.error("Socket error:", err));
+  socket.on("error", (err) => {
+    console.error("Socket error:", err);
+    stopStreaming();
+  });
 });
 
 // Send audio with AudioSocket header
@@ -162,27 +227,59 @@ function sendAudioSocket(socket, audioData) {
 // Swap byte order (little-endian <-> big-endian)
 function swapEndian(buffer) {
   const output = Buffer.alloc(buffer.length);
-  for (let i = 0; i < buffer.length; i += 2) {
-    if (i + 1 < buffer.length) {
-      output[i] = buffer[i + 1];
-      output[i + 1] = buffer[i];
-    }
+  for (let i = 0; i < buffer.length - 1; i += 2) {
+    output[i] = buffer[i + 1];
+    output[i + 1] = buffer[i];
   }
   return output;
 }
 
-// Downsample 24kHz to 16kHz
-function downsample24kTo16k(buffer) {
+// Downsample audio (e.g., 24kHz → 8kHz)
+function downsample(buffer, fromRate, toRate) {
+  const ratio = fromRate / toRate;
   const inputSamples = buffer.length / 2;
-  const ratio = 24000 / 16000; // 1.5
   const outputSamples = Math.floor(inputSamples / ratio);
   const output = Buffer.alloc(outputSamples * 2);
 
   for (let i = 0; i < outputSamples; i++) {
-    const srcIndex = Math.floor(i * ratio);
-    if (srcIndex < inputSamples) {
-      const sample = buffer.readInt16LE(srcIndex * 2);
+    // Simple averaging for better quality
+    const srcStart = Math.floor(i * ratio);
+    const srcEnd = Math.min(Math.floor((i + 1) * ratio), inputSamples);
+    
+    let sum = 0;
+    let count = 0;
+    for (let j = srcStart; j < srcEnd; j++) {
+      sum += buffer.readInt16LE(j * 2);
+      count++;
+    }
+    
+    const sample = count > 0 ? Math.round(sum / count) : 0;
+    output.writeInt16LE(sample, i * 2);
+  }
+
+  return output;
+}
+
+// Upsample audio (e.g., 8kHz → 16kHz)
+function upsample(buffer, fromRate, toRate) {
+  const ratio = toRate / fromRate;
+  const inputSamples = buffer.length / 2;
+  const outputSamples = Math.floor(inputSamples * ratio);
+  const output = Buffer.alloc(outputSamples * 2);
+
+  for (let i = 0; i < outputSamples; i++) {
+    const srcPos = i / ratio;
+    const srcIndex = Math.floor(srcPos);
+    const frac = srcPos - srcIndex;
+
+    if (srcIndex + 1 < inputSamples) {
+      // Linear interpolation
+      const s1 = buffer.readInt16LE(srcIndex * 2);
+      const s2 = buffer.readInt16LE((srcIndex + 1) * 2);
+      const sample = Math.round(s1 + (s2 - s1) * frac);
       output.writeInt16LE(sample, i * 2);
+    } else if (srcIndex < inputSamples) {
+      output.writeInt16LE(buffer.readInt16LE(srcIndex * 2), i * 2);
     }
   }
 
@@ -190,6 +287,8 @@ function downsample24kTo16k(buffer) {
 }
 
 server.listen(TCP_PORT, "127.0.0.1", () => {
-  console.log(`Gemini-Asterisk Bridge ready on port ${TCP_PORT}`);
+  console.log(`\n🎙️  Gemini-Asterisk Bridge ready on port ${TCP_PORT}`);
+  console.log(`   Input:  ${INPUT_SAMPLE_RATE}Hz → ${GEMINI_INPUT_RATE}Hz (to Gemini)`);
+  console.log(`   Output: ${GEMINI_OUTPUT_RATE}Hz → ${OUTPUT_SAMPLE_RATE}Hz (to phone)`);
+  console.log(`   Chunk:  ${CHUNK_SIZE} bytes (${CHUNK_DURATION_MS}ms)\n`);
 });
-
