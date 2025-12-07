@@ -18,14 +18,6 @@ Production-quality solution using LiveKit SIP for automatic audio handling.
 
 See [livekit-gemini/README.md](livekit-gemini/README.md) for setup.
 
-### 2. Asterisk + Node.js Bridge (Legacy)
-
-Direct Asterisk integration with custom audio handling.
-
-**Files:**
-- `server.js` - Node.js bridge
-- `vps-config/` - Asterisk configuration
-
 ## Quick Start (LiveKit)
 
 ```bash

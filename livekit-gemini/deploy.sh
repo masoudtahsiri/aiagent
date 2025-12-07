@@ -31,13 +31,10 @@ if grep -q "YOUR_GEMINI_API_KEY_HERE" .env; then
     exit 1
 fi
 
-# Stop old services
+# Stop old services (if any)
 echo "Stopping old services..."
 systemctl stop gemini-bridge 2>/dev/null || true
-systemctl stop freeswitch 2>/dev/null || true
-systemctl stop asterisk 2>/dev/null || true
 systemctl disable gemini-bridge 2>/dev/null || true
-systemctl disable freeswitch 2>/dev/null || true
 
 # Open firewall ports
 echo "Configuring firewall..."
@@ -59,7 +56,6 @@ sleep 20
 # Install LiveKit CLI if not present
 if ! command -v lk &> /dev/null; then
     echo "Installing LiveKit CLI..."
-    apt-get install -y jq
     curl -sSL https://get.livekit.io/cli | bash
 fi
 
@@ -69,9 +65,58 @@ source .env
 # Configure SIP trunk
 echo "Configuring SIP trunk..."
 
-lk sip inbound create --name "bulutfon" --numbers "+903322379153" --allowed-addresses "trgw01.bulutfon.net" || echo "Trunk may already exist"
+cat > /tmp/inbound-trunk.json << EOFTRUNK
+{
+  "trunk": {
+    "name": "bulutfon",
+    "numbers": ["+903322379153"],
+    "allowed_addresses": ["trgw01.bulutfon.net"]
+  }
+}
+EOFTRUNK
 
-lk sip dispatch create --name "dental-receptionist" --direct "dental-clinic" || echo "Dispatch rule may already exist"
+LIVEKIT_URL=http://127.0.0.1:7880 \
+LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
+LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
+lk sip inbound create /tmp/inbound-trunk.json || echo "Trunk may already exist"
+
+cat > /tmp/dispatch-rule.json << EOFDISPATCH
+{
+  "rule": {
+    "name": "dental-receptionist",
+    "dispatch_rule_direct": {
+      "room_name": "dental-clinic"
+    }
+  }
+}
+EOFDISPATCH
+
+LIVEKIT_URL=http://127.0.0.1:7880 \
+LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
+LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
+lk sip dispatch create /tmp/dispatch-rule.json || echo "Dispatch rule may already exist"
+
+# Create systemd service
+echo "Creating systemd service..."
+cat > /etc/systemd/system/livekit-gemini.service << EOFSVC
+[Unit]
+Description=LiveKit Gemini Voice Agent
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/livekit-gemini
+ExecStart=/usr/local/bin/docker-compose up -d
+ExecStop=/usr/local/bin/docker-compose down
+
+[Install]
+WantedBy=multi-user.target
+EOFSVC
+
+systemctl daemon-reload
+systemctl enable livekit-gemini
 
 echo ""
 echo "=========================================="
@@ -87,4 +132,3 @@ echo ""
 echo "To test:"
 echo "  Call your Bulutfon number: 903322379153"
 echo ""
-
