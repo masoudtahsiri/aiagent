@@ -1,0 +1,20 @@
+# Must match keys in livekit.yaml
+api_key: YOUR_API_KEY_HERE
+api_secret: YOUR_API_SECRET_HERE
+
+ws_url: ws://127.0.0.1:7880
+
+redis:
+  address: 127.0.0.1:6379
+
+# SIP Configuration
+sip_port: 5060
+rtp_port: 10000-20000
+use_external_ip: true
+
+# Your VPS public IP
+nat_external_ip: YOUR_VPS_IP_HERE
+
+logging:
+  level: info
+

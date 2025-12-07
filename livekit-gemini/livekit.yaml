@@ -1,0 +1,23 @@
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 10000
+  port_range_end: 20000
+  use_external_ip: true
+
+redis:
+  address: 127.0.0.1:6379
+
+# IMPORTANT: Generate your own keys with:
+# API_KEY: openssl rand -hex 16
+# API_SECRET: openssl rand -base64 32 | tr -d '/+=' | head -c 32
+keys:
+  YOUR_API_KEY_HERE: YOUR_API_SECRET_HERE
+
+logging:
+  level: info
+  json: false
+
