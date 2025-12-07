@@ -2,9 +2,7 @@
 
 Production-ready voice AI using Google Gemini Live API.
 
-## Solutions
-
-### 1. LiveKit + Gemini (Recommended)
+## LiveKit + Gemini
 
 Production-quality solution using LiveKit SIP for automatic audio handling.
 
