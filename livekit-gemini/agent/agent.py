@@ -10,9 +10,10 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
+    Agent,
+    AgentSession,
 )
-from livekit.agents.voice import Agent, AgentSession
-from livekit.plugins.google import realtime
+from livekit.plugins.google import beta as google_beta
 from livekit.plugins import silero
 
 load_dotenv()
@@ -38,30 +39,38 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"Caller connected: {participant.identity}")
     
-    # Create the Gemini realtime model with specific model name
-    model = realtime.RealtimeModel(
+    # Create the Agent with instructions
+    agent = Agent(
+        instructions=SYSTEM_INSTRUCTIONS,
+    )
+    
+    # Create the Gemini realtime model
+    model = google_beta.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
         voice="Kore",
         temperature=0.8,
     )
     
-    # Create the Agent with LLM and instructions
-    agent = Agent(
-        instructions=SYSTEM_INSTRUCTIONS,
-        llm=model,
+    # Create session with the realtime model and VAD
+    session = AgentSession(
+        llm=model,  # Pass realtime model here
         vad=ctx.proc.userdata.get("vad"),
     )
     
-    # Create session and start
-    session = AgentSession()
-    result = await session.start(agent, room=ctx.room)
+    # Start the session
+    await session.start(agent=agent, room=ctx.room)
     
     logger.info("Agent session started")
     
-    # Explicitly trigger greeting
+    # Use generate_reply for realtime models (not say!)
     await asyncio.sleep(0.5)
     logger.info("Triggering greeting...")
-    await agent.say("Hello, thank you for calling Bright Smile Dental Clinic, this is Sarah speaking. How may I help you today?", allow_interruptions=True)
+    
+    # This is the correct way to trigger speech with realtime models
+    await session.generate_reply(
+        instructions="Greet the caller warmly. Say: Hello, thank you for calling Bright Smile Dental Clinic, this is Sarah speaking. How may I help you today?"
+    )
+    
     logger.info("Greeting sent")
 
 
