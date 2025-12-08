@@ -80,12 +80,25 @@ LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
 LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
 lk sip inbound create /tmp/inbound-trunk.json || echo "Trunk may already exist"
 
-cat > /tmp/dispatch-rule.json << EOFDISPATCH
+# Create dispatch rule - room name will be set by SIP based on called number
+# The agent will extract the phone number from room metadata or participant info
+# IMPORTANT: Must specify agent_name in room_config.agents for LiveKit to dispatch
+cat > /tmp/dispatch-rule.json << 'EOFDISPATCH'
 {
-  "rule": {
-    "name": "dental-receptionist",
-    "dispatch_rule_direct": {
-      "room_name": "dental-clinic"
+  "dispatch_rule": {
+    "rule": {
+      "dispatch_rule_direct": {
+        "room_name": "dental-clinic"
+      }
+    },
+    "name": "phone-number-routing",
+    "room_config": {
+      "metadata": "{\"to_user\": \"${to_user}\"}",
+      "agents": [
+        {
+          "agent_name": "ai-receptionist"
+        }
+      ]
     }
   }
 }

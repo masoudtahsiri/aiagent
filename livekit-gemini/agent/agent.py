@@ -87,10 +87,11 @@ def extract_called_number(ctx: JobContext) -> str:
     This tells us which business to route to
     
     LiveKit SIP can pass the called number via:
-    1. Room name (if configured in dispatch rules)
+    1. Room name (if configured in dispatch rules to use phone number)
     2. Room metadata (if SIP headers are stored there)
     3. Participant metadata (if available)
-    4. Default to known phone number if room name doesn't match
+    
+    Raises ValueError if phone number cannot be extracted.
     """
     # Method 1: Try room name (most common with dispatch rules)
     room_name = ctx.room.name
@@ -102,27 +103,48 @@ def extract_called_number(ctx: JobContext) -> str:
         logger.info(f"Using room name as called number: {room_name}")
         return room_name
     
-    # Method 2: Try room metadata for SIP "To" header
+    # Method 2: Try room metadata for SIP "To" header (PRIORITY - this is set by dispatch rule)
     try:
         metadata = ctx.room.metadata
+        logger.info(f"Room metadata (raw): {metadata}")
         if metadata:
-            # Look for "to" or "called_number" in metadata
+            # Look for "to_user", "to", or "called_number" in metadata
             import json
             if isinstance(metadata, str):
-                metadata_dict = json.loads(metadata)
+                try:
+                    metadata_dict = json.loads(metadata)
+                except:
+                    logger.warning(f"Failed to parse metadata as JSON: {metadata}")
+                    metadata_dict = {}
             else:
                 metadata_dict = metadata
             
+            logger.info(f"Room metadata (parsed): {metadata_dict}")
+            
+            # Check for "to_user" first (set by dispatch rule)
+            if "to_user" in metadata_dict:
+                called = metadata_dict["to_user"]
+                logger.info(f"Found called number in room metadata (to_user): {called}")
+                # Ensure it has + prefix if it's a phone number
+                if called and not called.startswith("+") and called.isdigit():
+                    called = "+" + called
+                return called
             if "to" in metadata_dict:
                 called = metadata_dict["to"]
-                logger.info(f"Found called number in room metadata: {called}")
+                logger.info(f"Found called number in room metadata (to): {called}")
+                if called and not called.startswith("+") and called.isdigit():
+                    called = "+" + called
                 return called
             if "called_number" in metadata_dict:
                 called = metadata_dict["called_number"]
-                logger.info(f"Found called number in room metadata: {called}")
+                logger.info(f"Found called number in room metadata (called_number): {called}")
+                if called and not called.startswith("+") and called.isdigit():
+                    called = "+" + called
                 return called
+        else:
+            logger.warning("Room metadata is empty or None")
     except Exception as e:
-        logger.debug(f"Could not extract from room metadata: {e}")
+        logger.error(f"Could not extract from room metadata: {e}")
     
     # Method 3: Try to extract from room name if it contains phone-like pattern
     # Some SIP configurations use formats like "sip-room-+1234567890"
@@ -134,37 +156,43 @@ def extract_called_number(ctx: JobContext) -> str:
         logger.info(f"Extracted called number from room name: {called}")
         return called
     
-    # Method 4: Try to get from participant metadata
+    # Method 4: Try to get from participant metadata (check for to_user, to, or called_number)
     try:
-        # Wait for participant to get metadata
         participants = ctx.room.remote_participants.values()
         for participant in participants:
+            logger.info(f"Checking participant: identity={participant.identity}, metadata={participant.metadata if hasattr(participant, 'metadata') else 'N/A'}")
+            # Check participant metadata first
             if hasattr(participant, 'metadata') and participant.metadata:
                 import json
                 try:
                     part_metadata = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
-                    if "to" in part_metadata or "called_number" in part_metadata:
-                        called = part_metadata.get("to") or part_metadata.get("called_number")
-                        logger.info(f"Found called number in participant metadata: {called}")
+                    logger.info(f"Participant metadata (parsed): {part_metadata}")
+                    if "to_user" in part_metadata:
+                        called = part_metadata["to_user"]
+                        if called and not called.startswith("+") and called.isdigit():
+                            called = "+" + called
+                        logger.info(f"Found called number in participant metadata (to_user): {called}")
                         return called
-                except:
-                    pass
+                    if "to" in part_metadata:
+                        called = part_metadata["to"]
+                        if called and not called.startswith("+") and called.isdigit():
+                            called = "+" + called
+                        logger.info(f"Found called number in participant metadata (to): {called}")
+                        return called
+                    if "called_number" in part_metadata:
+                        called = part_metadata["called_number"]
+                        if called and not called.startswith("+") and called.isdigit():
+                            called = "+" + called
+                        logger.info(f"Found called number in participant metadata (called_number): {called}")
+                        return called
+                except Exception as e:
+                    logger.warning(f"Failed to parse participant metadata: {e}")
     except Exception as e:
-        logger.debug(f"Could not extract from participant metadata: {e}")
+        logger.error(f"Could not extract from participant metadata: {e}")
     
-    # Method 5: Fallback - if room name is generic, use default phone number
-    # This handles cases where dispatch rules use generic room names
-    # For now, we'll use the known phone number from the business
-    # In production, you should configure dispatch rules to use phone numbers as room names
-    logger.warning(f"Could not extract called number from room name '{room_name}'. Using fallback.")
-    logger.info("Note: Configure LiveKit SIP dispatch rules to use phone number as room name for proper routing.")
-    
-    # For now, return the known phone number (this is a temporary fix)
-    # TODO: Configure dispatch rules properly
-    # Use the phone number that's configured in the database
-    fallback_phone = "+903322379153"
-    logger.info(f"Using fallback phone number: {fallback_phone}")
-    return fallback_phone
+    # If we couldn't extract the phone number, raise an error
+    logger.error(f"Could not extract called number from room name '{room_name}' or metadata")
+    raise ValueError(f"Unable to determine called phone number from room '{room_name}'. Configure SIP dispatch rules to use phone number as room name.")
 
 
 async def get_business_config(called_number: str) -> dict:
