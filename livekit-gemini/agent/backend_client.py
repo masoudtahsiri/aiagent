@@ -34,7 +34,7 @@ class BackendClient:
         last_name: str,
         email: Optional[str] = None
     ) -> Optional[Dict]:
-        """Create a new customer"""
+        """Create a new customer (for AI agent - uses unauthenticated endpoint)"""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 customer_data = {
@@ -46,12 +46,22 @@ class BackendClient:
                 }
                 customer_data = {k: v for k, v in customer_data.items() if v is not None}
                 
+                # Use the AI agent endpoint that doesn't require authentication
                 response = await client.post(
-                    f"{self.base_url}/api/customers",
+                    f"{self.base_url}/api/customers/create",
                     json=customer_data
                 )
                 response.raise_for_status()
                 return response.json()
+            except httpx.HTTPStatusError as e:
+                error_detail = "Unknown error"
+                try:
+                    error_response = e.response.json()
+                    error_detail = error_response.get("detail", str(e))
+                except:
+                    error_detail = str(e)
+                logger.error(f"Error creating customer: {e.response.status_code} - {error_detail}")
+                return None
         except Exception as e:
             logger.error(f"Error creating customer: {e}")
             return None

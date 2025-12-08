@@ -19,7 +19,7 @@ from livekit.plugins.google import beta as google_beta
 from livekit.plugins import silero
 
 from backend_client import BackendClient
-from tools import get_tools_declaration, format_slots_for_speech
+from tools import get_tools_for_agent, format_slots_for_speech
 
 load_dotenv()
 
@@ -122,21 +122,17 @@ def extract_called_number(ctx: JobContext) -> str:
                 attrs = participant.attributes
                 logger.info(f"Participant attributes: {attrs}")
                 
-                # LiveKit SIP attribute keys for called number
-                for key in ['sip.toUser', 'sip.to_user', 'toUser', 'to_user', 'sip.calledNumber', 'sip.to']:
+                # LiveKit SIP attribute keys for called number (the number that was called, not the caller)
+                # Priority order: trunkPhoneNumber is the called number, toUser is also the called number
+                for key in ['sip.trunkPhoneNumber', 'sip.toUser', 'sip.to_user', 'toUser', 'to_user', 'sip.calledNumber', 'sip.to']:
                     if key in attrs:
                         called = attrs[key]
                         logger.info(f"Found '{key}' in attributes: {called}")
                         if is_valid_phone(called):
                             return normalize_phone(called)
                 
-                # Also check for phoneNumber or similar
-                for key in ['sip.phoneNumber', 'phoneNumber', 'phone_number']:
-                    if key in attrs:
-                        called = attrs[key]
-                        logger.info(f"Found '{key}' in attributes: {called}")
-                        if is_valid_phone(called):
-                            return normalize_phone(called)
+                # Note: sip.phoneNumber is the CALLER's number, not the called number, so we skip it
+                # Only use it as a last resort fallback if nothing else is found
             
             # Check participant metadata as JSON
             if hasattr(participant, 'metadata') and participant.metadata:
@@ -201,117 +197,6 @@ async def get_business_config(called_number: str) -> dict:
         raise Exception(f"No business found for number: {called_number}")
 
 
-async def handle_tool_call(session_data: SessionData, function_name: str, arguments: dict):
-    """Handle Gemini function calls"""
-    logger.info(f"Tool called: {function_name} with args: {arguments}")
-    
-    if function_name == "create_new_customer":
-        customer = await backend.create_customer(
-            business_id=session_data.business_id,
-            phone=session_data.caller_phone,
-            first_name=arguments.get("first_name"),
-            last_name=arguments.get("last_name"),
-            email=arguments.get("email")
-        )
-        
-        if customer:
-            session_data.customer = customer
-            logger.info(f"Created customer: {customer['id']}")
-            return {
-                "success": True,
-                "message": f"Thank you {customer['first_name']}! I've saved your information."
-            }
-        else:
-            return {
-                "success": False,
-                "message": "I'm sorry, there was an error saving your information."
-            }
-    
-    elif function_name == "check_availability":
-        staff_id = session_data.default_staff_id
-        
-        # If multiple staff, try to find by name
-        if arguments.get("staff_name") and len(session_data.business_config.get("staff", [])) > 1:
-            for staff in session_data.business_config["staff"]:
-                if arguments["staff_name"].lower() in staff["name"].lower():
-                    staff_id = staff["id"]
-                    break
-        
-        if not staff_id:
-            return {
-                "success": False,
-                "message": "I need to know which staff member you'd like to see."
-            }
-        
-        start_date = arguments.get("start_date") or datetime.now().strftime("%Y-%m-%d")
-        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
-        
-        slots = await backend.get_available_slots(
-            staff_id=staff_id,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        session_data.available_slots = slots
-        session_data.default_staff_id = staff_id  # Remember selected staff
-        
-        if slots:
-            formatted = format_slots_for_speech(slots)
-            return {
-                "success": True,
-                "message": f"Here are the available times: {formatted}"
-            }
-        else:
-            return {
-                "success": True,
-                "message": "I don't have any available appointments in the next week. Would you like me to check further out?"
-            }
-    
-    elif function_name == "book_appointment":
-        if not session_data.customer:
-            return {
-                "success": False,
-                "message": "I need to get your information first before booking."
-            }
-        
-        staff_id = session_data.default_staff_id
-        
-        if not staff_id:
-            return {
-                "success": False,
-                "message": "I need to know which staff member you'd like to see."
-            }
-        
-        appointment = await backend.book_appointment(
-            business_id=session_data.business_id,
-            customer_id=session_data.customer["id"],
-            staff_id=staff_id,
-            appointment_date=arguments["appointment_date"],
-            appointment_time=arguments["appointment_time"]
-        )
-        
-        if appointment:
-            date_obj = datetime.strptime(arguments["appointment_date"], "%Y-%m-%d")
-            formatted_date = date_obj.strftime("%A, %B %d")
-            
-            # Get staff name
-            staff_name = "your provider"
-            for staff in session_data.business_config.get("staff", []):
-                if staff["id"] == staff_id:
-                    staff_name = staff["name"]
-                    break
-            
-            return {
-                "success": True,
-                "message": f"Perfect! I've booked your appointment for {formatted_date} at {arguments['appointment_time']} with {staff_name}. You'll receive a confirmation email and a reminder call the day before."
-            }
-        else:
-            return {
-                "success": False,
-                "message": "I'm sorry, that time slot is no longer available. Would you like to choose another time?"
-            }
-    
-    return {"success": False, "message": "Unknown function"}
 
 
 async def entrypoint(ctx: JobContext):
@@ -381,6 +266,7 @@ async def entrypoint(ctx: JobContext):
                 system_instructions = base_instructions
             
             greeting = ai_config["greeting_message"].format(
+                business_name=business_name,
                 customer_name=customer_name
             )
             voice = ai_config["voice_style"]
@@ -415,6 +301,7 @@ Be warm and help them book appointments.
                 system_instructions = base_instructions
             
             greeting = ai_config["greeting_message"].format(
+                business_name=business_name,
                 customer_name="there"
             )
             voice = ai_config["voice_style"]
@@ -431,15 +318,20 @@ This is a new customer. Collect their information and help them book an appointm
     
     logger.info(f"AI Configuration: {ai_name}, Voice: {voice}")
     
-    # Create Agent
-    agent = Agent(instructions=system_instructions)
+    # Create tools with session context
+    tools = get_tools_for_agent(session_data, backend)
     
-    # Create Gemini model with function calling
+    # Create Agent with tools
+    agent = Agent(
+        instructions=system_instructions,
+        tools=tools,  # ✅ Tools go on Agent
+    )
+    
+    # Create Gemini model - NO tools here
     model = google_beta.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
         voice=voice,
         temperature=0.8,
-        tools=get_tools_declaration(),
     )
     
     # Create session
@@ -447,17 +339,6 @@ This is a new customer. Collect their information and help them book an appointm
         llm=model,
         vad=ctx.proc.userdata.get("vad"),
     )
-    
-    # Handle function calls
-    @session.on("function_call")
-    async def on_function_call(function_call):
-        logger.info(f"Function call: {function_call.name}")
-        result = await handle_tool_call(
-            session_data,
-            function_call.name,
-            function_call.arguments
-        )
-        await function_call.create_response(result)
     
     # Start session
     await session.start(agent=agent, room=ctx.room)

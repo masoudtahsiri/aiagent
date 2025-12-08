@@ -26,6 +26,18 @@ async def lookup_customer(lookup_data: CustomerLookup):
     return await CustomerService.lookup_customer(lookup_data.phone, lookup_data.business_id)
 
 
+@router.post("/create", response_model=CustomerResponse)
+async def create_customer_for_agent(customer_data: CustomerCreate):
+    """
+    Create a new customer (for AI agent)
+    
+    This endpoint does NOT require authentication - used by AI agent
+    The AI agent already knows the business_id from phone lookup
+    """
+    customer_dict = customer_data.model_dump()
+    return await CustomerService.create_customer_for_agent(customer_dict)
+
+
 @router.post("", response_model=CustomerResponse)
 async def create_customer(
     customer_data: CustomerCreate,

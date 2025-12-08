@@ -32,6 +32,44 @@ class CustomerService:
         }
     
     @staticmethod
+    async def create_customer_for_agent(customer_data: dict) -> dict:
+        """
+        Create a new customer (for AI agent - no authentication required)
+        The AI agent already knows the business_id from phone lookup
+        """
+        db = get_db()
+        business_id = customer_data["business_id"]
+        
+        # Verify business exists and is active
+        business_result = db.table("businesses").select("id").eq("id", business_id).eq("is_active", True).execute()
+        
+        if not business_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Business not found or inactive"
+            )
+        
+        # Check if customer already exists
+        existing = await CustomerService.lookup_customer(customer_data["phone"], business_id)
+        
+        if existing["exists"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Customer with this phone number already exists"
+            )
+        
+        # Create customer
+        result = db.table("customers").insert(customer_data).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create customer"
+            )
+        
+        return result.data[0]
+    
+    @staticmethod
     async def create_customer(customer_data: dict, user_id: str) -> dict:
         """Create a new customer"""
         db = get_db()
