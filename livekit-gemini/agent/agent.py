@@ -86,29 +86,35 @@ def extract_called_number(ctx: JobContext) -> str:
     Extract the number that was called (To number)
     This tells us which business to route to
     
-    LiveKit SIP can pass the called number via:
-    1. Room name (if configured in dispatch rules to use phone number)
-    2. Room metadata (if SIP headers are stored there)
-    3. Participant metadata (if available)
-    
     Raises ValueError if phone number cannot be extracted.
     """
-    # Method 1: Try room name (most common with dispatch rules)
     room_name = ctx.room.name
     logger.info(f"Room name: {room_name}")
     
-    # If room name looks like a phone number, use it
-    # Phone numbers typically start with + or contain digits
-    if room_name.startswith("+") or (room_name.replace("-", "").replace(" ", "").isdigit() and len(room_name) >= 10):
+    def is_valid_phone(value: str) -> bool:
+        """Check if value looks like a valid phone number (not a template variable)"""
+        if not value:
+            return False
+        # Reject template variables like ${to_user} or {{.sip.toUser}}
+        if value.startswith("${") or value.startswith("{{"):
+            logger.warning(f"Received unexpanded template variable: {value}")
+            return False
+        # Check if it looks like a phone number
+        cleaned = value.replace("-", "").replace(" ", "").replace("+", "")
+        return cleaned.isdigit() and len(cleaned) >= 10
+    
+    # Method 1: Try room name (most common with dispatch rules)
+    if room_name.startswith("+") or is_valid_phone(room_name):
         logger.info(f"Using room name as called number: {room_name}")
+        if not room_name.startswith("+") and room_name.replace("-", "").replace(" ", "").isdigit():
+            room_name = "+" + room_name.replace("-", "").replace(" ", "")
         return room_name
     
-    # Method 2: Try room metadata for SIP "To" header (PRIORITY - this is set by dispatch rule)
+    # Method 2: Try room metadata for SIP "To" header
     try:
         metadata = ctx.room.metadata
         logger.info(f"Room metadata (raw): {metadata}")
         if metadata:
-            # Look for "to_user", "to", or "called_number" in metadata
             import json
             if isinstance(metadata, str):
                 try:
@@ -121,70 +127,50 @@ def extract_called_number(ctx: JobContext) -> str:
             
             logger.info(f"Room metadata (parsed): {metadata_dict}")
             
-            # Check for "to_user" first (set by dispatch rule)
-            if "to_user" in metadata_dict:
-                called = metadata_dict["to_user"]
-                logger.info(f"Found called number in room metadata (to_user): {called}")
-                # Ensure it has + prefix if it's a phone number
-                if called and not called.startswith("+") and called.isdigit():
-                    called = "+" + called
-                return called
-            if "to" in metadata_dict:
-                called = metadata_dict["to"]
-                logger.info(f"Found called number in room metadata (to): {called}")
-                if called and not called.startswith("+") and called.isdigit():
-                    called = "+" + called
-                return called
-            if "called_number" in metadata_dict:
-                called = metadata_dict["called_number"]
-                logger.info(f"Found called number in room metadata (called_number): {called}")
-                if called and not called.startswith("+") and called.isdigit():
-                    called = "+" + called
-                return called
+            # Check for various keys
+            for key in ["to_user", "to", "called_number"]:
+                if key in metadata_dict:
+                    called = metadata_dict[key]
+                    if is_valid_phone(called):
+                        logger.info(f"Found called number in room metadata ({key}): {called}")
+                        if called and not called.startswith("+") and called.replace("-", "").replace(" ", "").isdigit():
+                            called = "+" + called.replace("-", "").replace(" ", "")
+                        return called
+                    else:
+                        logger.warning(f"Invalid phone number in metadata ({key}): {called}")
         else:
             logger.warning("Room metadata is empty or None")
     except Exception as e:
         logger.error(f"Could not extract from room metadata: {e}")
     
     # Method 3: Try to extract from room name if it contains phone-like pattern
-    # Some SIP configurations use formats like "sip-room-+1234567890"
     import re
-    phone_pattern = r'\+?\d{10,15}'  # Match phone numbers
+    phone_pattern = r'\+?\d{10,15}'
     match = re.search(phone_pattern, room_name)
     if match:
         called = match.group(0)
-        logger.info(f"Extracted called number from room name: {called}")
+        if not called.startswith("+"):
+            called = "+" + called
+        logger.info(f"Extracted called number from room name pattern: {called}")
         return called
     
-    # Method 4: Try to get from participant metadata (check for to_user, to, or called_number)
+    # Method 4: Try participant metadata
     try:
         participants = ctx.room.remote_participants.values()
         for participant in participants:
-            logger.info(f"Checking participant: identity={participant.identity}, metadata={participant.metadata if hasattr(participant, 'metadata') else 'N/A'}")
-            # Check participant metadata first
+            logger.info(f"Checking participant: identity={participant.identity}")
             if hasattr(participant, 'metadata') and participant.metadata:
                 import json
                 try:
                     part_metadata = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
-                    logger.info(f"Participant metadata (parsed): {part_metadata}")
-                    if "to_user" in part_metadata:
-                        called = part_metadata["to_user"]
-                        if called and not called.startswith("+") and called.isdigit():
-                            called = "+" + called
-                        logger.info(f"Found called number in participant metadata (to_user): {called}")
-                        return called
-                    if "to" in part_metadata:
-                        called = part_metadata["to"]
-                        if called and not called.startswith("+") and called.isdigit():
-                            called = "+" + called
-                        logger.info(f"Found called number in participant metadata (to): {called}")
-                        return called
-                    if "called_number" in part_metadata:
-                        called = part_metadata["called_number"]
-                        if called and not called.startswith("+") and called.isdigit():
-                            called = "+" + called
-                        logger.info(f"Found called number in participant metadata (called_number): {called}")
-                        return called
+                    for key in ["to_user", "to", "called_number"]:
+                        if key in part_metadata:
+                            called = part_metadata[key]
+                            if is_valid_phone(called):
+                                if not called.startswith("+"):
+                                    called = "+" + called
+                                logger.info(f"Found called number in participant metadata ({key}): {called}")
+                                return called
                 except Exception as e:
                     logger.warning(f"Failed to parse participant metadata: {e}")
     except Exception as e:
