@@ -109,4 +109,18 @@ class BackendClient:
         except Exception as e:
             logger.error(f"Error booking appointment: {e}")
             return None
+    
+    async def lookup_business_by_phone(self, phone_number: str) -> Dict:
+        """Lookup business configuration by AI phone number"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/ai/lookup-by-phone",
+                    json={"phone_number": phone_number}
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Error looking up business by phone: {e}")
+            raise
 

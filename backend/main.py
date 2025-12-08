@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from api import auth, businesses, staff, customers, appointments
+from api import auth, businesses, staff, customers, appointments, ai_config
 
 
 # Create FastAPI app
@@ -28,6 +28,7 @@ app.include_router(businesses.router)
 app.include_router(staff.router)
 app.include_router(customers.router)
 app.include_router(appointments.router)
+app.include_router(ai_config.router)
 
 
 @app.get("/")

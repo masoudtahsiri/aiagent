@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -26,12 +27,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger("dental-receptionist")
+logger = logging.getLogger("multi-tenant-agent")
 
 # Configuration
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-BUSINESS_ID = os.getenv("BUSINESS_ID")
-STAFF_ID = os.getenv("STAFF_ID")
 
 # Initialize backend client
 backend = BackendClient(BACKEND_URL)
@@ -41,28 +40,145 @@ sessions = {}
 
 
 class SessionData:
-    def __init__(self):
+    def __init__(self, business_id: str, business_config: dict):
+        self.business_id = business_id
+        self.business_config = business_config
         self.customer = None
         self.caller_phone = None
         self.available_slots = []
+        self.default_staff_id = None
+        
+        # Set default staff if only one
+        staff = business_config.get("staff", [])
+        if len(staff) == 1:
+            self.default_staff_id = staff[0]["id"]
 
 
-async def get_caller_phone(participant) -> str:
-    """Extract phone number from participant identity or metadata"""
-    # Try to get from participant identity
-    identity = participant.identity
-    
-    # Common formats: "sip:+1234567890@..." or just "+1234567890"
+def extract_phone_from_identity(identity: str) -> str:
+    """
+    Extract phone number from SIP identity
+    Examples:
+    - "sip:+903322379153@trgw01.bulutfon.net" -> "+903322379153"
+    - "+1234567890" -> "+1234567890"
+    - "sip_905397293667" -> "+905397293667"
+    """
+    # Remove sip: prefix if present
     if identity.startswith("sip:"):
-        phone = identity.split("@")[0].replace("sip:", "")
-    else:
-        phone = identity
+        identity = identity.replace("sip:", "")
     
-    # Clean up the phone number
-    phone = phone.strip().replace(" ", "")
+    # Handle "sip_XXXXXXXX" format (from LiveKit participant identity)
+    if identity.startswith("sip_"):
+        phone = "+" + identity.replace("sip_", "")
+    else:
+        # Extract everything before @ if present
+        if "@" in identity:
+            identity = identity.split("@")[0]
+        
+        # Clean up
+        phone = identity.strip()
     
     logger.info(f"Extracted caller phone: {phone}")
     return phone
+
+
+def extract_called_number(ctx: JobContext) -> str:
+    """
+    Extract the number that was called (To number)
+    This tells us which business to route to
+    
+    LiveKit SIP can pass the called number via:
+    1. Room name (if configured in dispatch rules)
+    2. Room metadata (if SIP headers are stored there)
+    3. Participant metadata (if available)
+    4. Default to known phone number if room name doesn't match
+    """
+    # Method 1: Try room name (most common with dispatch rules)
+    room_name = ctx.room.name
+    logger.info(f"Room name: {room_name}")
+    
+    # If room name looks like a phone number, use it
+    # Phone numbers typically start with + or contain digits
+    if room_name.startswith("+") or (room_name.replace("-", "").replace(" ", "").isdigit() and len(room_name) >= 10):
+        logger.info(f"Using room name as called number: {room_name}")
+        return room_name
+    
+    # Method 2: Try room metadata for SIP "To" header
+    try:
+        metadata = ctx.room.metadata
+        if metadata:
+            # Look for "to" or "called_number" in metadata
+            import json
+            if isinstance(metadata, str):
+                metadata_dict = json.loads(metadata)
+            else:
+                metadata_dict = metadata
+            
+            if "to" in metadata_dict:
+                called = metadata_dict["to"]
+                logger.info(f"Found called number in room metadata: {called}")
+                return called
+            if "called_number" in metadata_dict:
+                called = metadata_dict["called_number"]
+                logger.info(f"Found called number in room metadata: {called}")
+                return called
+    except Exception as e:
+        logger.debug(f"Could not extract from room metadata: {e}")
+    
+    # Method 3: Try to extract from room name if it contains phone-like pattern
+    # Some SIP configurations use formats like "sip-room-+1234567890"
+    import re
+    phone_pattern = r'\+?\d{10,15}'  # Match phone numbers
+    match = re.search(phone_pattern, room_name)
+    if match:
+        called = match.group(0)
+        logger.info(f"Extracted called number from room name: {called}")
+        return called
+    
+    # Method 4: Try to get from participant metadata
+    try:
+        # Wait for participant to get metadata
+        participants = ctx.room.remote_participants.values()
+        for participant in participants:
+            if hasattr(participant, 'metadata') and participant.metadata:
+                import json
+                try:
+                    part_metadata = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
+                    if "to" in part_metadata or "called_number" in part_metadata:
+                        called = part_metadata.get("to") or part_metadata.get("called_number")
+                        logger.info(f"Found called number in participant metadata: {called}")
+                        return called
+                except:
+                    pass
+    except Exception as e:
+        logger.debug(f"Could not extract from participant metadata: {e}")
+    
+    # Method 5: Fallback - if room name is generic, use default phone number
+    # This handles cases where dispatch rules use generic room names
+    # For now, we'll use the known phone number from the business
+    # In production, you should configure dispatch rules to use phone numbers as room names
+    logger.warning(f"Could not extract called number from room name '{room_name}'. Using fallback.")
+    logger.info("Note: Configure LiveKit SIP dispatch rules to use phone number as room name for proper routing.")
+    
+    # For now, return the known phone number (this is a temporary fix)
+    # TODO: Configure dispatch rules properly
+    # Use the phone number that's configured in the database
+    fallback_phone = "+903322379153"
+    logger.info(f"Using fallback phone number: {fallback_phone}")
+    return fallback_phone
+
+
+async def get_business_config(called_number: str) -> dict:
+    """
+    Lookup business configuration by the number that was called
+    """
+    try:
+        # Call backend to lookup business by AI phone number
+        config = await backend.lookup_business_by_phone(called_number)
+        logger.info(f"Found business: {config['business']['business_name']}")
+        return config
+    except Exception as e:
+        logger.error(f"Error looking up business: {e}")
+        raise Exception(f"No business found for number: {called_number}")
 
 
 async def handle_tool_call(session_data: SessionData, function_name: str, arguments: dict):
@@ -70,9 +186,8 @@ async def handle_tool_call(session_data: SessionData, function_name: str, argume
     logger.info(f"Tool called: {function_name} with args: {arguments}")
     
     if function_name == "create_new_customer":
-        # Create customer in backend
         customer = await backend.create_customer(
-            business_id=BUSINESS_ID,
+            business_id=session_data.business_id,
             phone=session_data.caller_phone,
             first_name=arguments.get("first_name"),
             last_name=arguments.get("last_name"),
@@ -93,20 +208,32 @@ async def handle_tool_call(session_data: SessionData, function_name: str, argume
             }
     
     elif function_name == "check_availability":
-        # Get available slots
-        start_date = arguments.get("start_date")
-        if not start_date:
-            start_date = datetime.now().strftime("%Y-%m-%d")
+        staff_id = session_data.default_staff_id
         
+        # If multiple staff, try to find by name
+        if arguments.get("staff_name") and len(session_data.business_config.get("staff", [])) > 1:
+            for staff in session_data.business_config["staff"]:
+                if arguments["staff_name"].lower() in staff["name"].lower():
+                    staff_id = staff["id"]
+                    break
+        
+        if not staff_id:
+            return {
+                "success": False,
+                "message": "I need to know which staff member you'd like to see."
+            }
+        
+        start_date = arguments.get("start_date") or datetime.now().strftime("%Y-%m-%d")
         end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
         
         slots = await backend.get_available_slots(
-            staff_id=STAFF_ID,
+            staff_id=staff_id,
             start_date=start_date,
             end_date=end_date
         )
         
         session_data.available_slots = slots
+        session_data.default_staff_id = staff_id  # Remember selected staff
         
         if slots:
             formatted = format_slots_for_speech(slots)
@@ -121,29 +248,42 @@ async def handle_tool_call(session_data: SessionData, function_name: str, argume
             }
     
     elif function_name == "book_appointment":
-        # Book appointment
         if not session_data.customer:
             return {
                 "success": False,
                 "message": "I need to get your information first before booking."
             }
         
+        staff_id = session_data.default_staff_id
+        
+        if not staff_id:
+            return {
+                "success": False,
+                "message": "I need to know which staff member you'd like to see."
+            }
+        
         appointment = await backend.book_appointment(
-            business_id=BUSINESS_ID,
+            business_id=session_data.business_id,
             customer_id=session_data.customer["id"],
-            staff_id=STAFF_ID,
+            staff_id=staff_id,
             appointment_date=arguments["appointment_date"],
             appointment_time=arguments["appointment_time"]
         )
         
         if appointment:
-            # Format confirmation
             date_obj = datetime.strptime(arguments["appointment_date"], "%Y-%m-%d")
             formatted_date = date_obj.strftime("%A, %B %d")
             
+            # Get staff name
+            staff_name = "your provider"
+            for staff in session_data.business_config.get("staff", []):
+                if staff["id"] == staff_id:
+                    staff_name = staff["name"]
+                    break
+            
             return {
                 "success": True,
-                "message": f"Perfect! I've booked your appointment for {formatted_date} at {arguments['appointment_time']}. You'll receive a confirmation email and a reminder call the day before."
+                "message": f"Perfect! I've booked your appointment for {formatted_date} at {arguments['appointment_time']} with {staff_name}. You'll receive a confirmation email and a reminder call the day before."
             }
         else:
             return {
@@ -155,75 +295,131 @@ async def handle_tool_call(session_data: SessionData, function_name: str, argume
 
 
 async def entrypoint(ctx: JobContext):
-    logger.info(f"New call in room: {ctx.room.name}")
+    logger.info(f"========== NEW CALL ==========")
+    logger.info(f"Room: {ctx.room.name}")
     
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     participant = await ctx.wait_for_participant()
     
-    # Get caller phone number
-    caller_phone = await get_caller_phone(participant)
+    # Extract caller and called numbers
+    caller_phone = extract_phone_from_identity(participant.identity)
+    called_number = extract_called_number(ctx)
+    
     logger.info(f"Caller: {caller_phone}")
+    logger.info(f"Called number: {called_number}")
+    
+    # Lookup business configuration
+    try:
+        business_config = await get_business_config(called_number)
+    except Exception as e:
+        logger.error(f"Failed to get business config: {e}")
+        # Could play error message here
+        return
+    
+    business = business_config["business"]
+    business_id = business["id"]
+    business_name = business["business_name"]
+    
+    logger.info(f"Routing to business: {business_name} (ID: {business_id})")
     
     # Create session data
-    session_data = SessionData()
+    session_data = SessionData(business_id, business_config)
     session_data.caller_phone = caller_phone
     sessions[ctx.room.name] = session_data
     
-    # Lookup customer in backend
-    lookup_result = await backend.lookup_customer(caller_phone, BUSINESS_ID)
+    # Lookup customer
+    lookup_result = await backend.lookup_customer(caller_phone, business_id)
+    
+    # Get AI configuration
+    ai_roles = business_config.get("ai_roles", [])
+    
+    # Use first enabled receptionist role or create default
+    ai_config = None
+    for role in ai_roles:
+        if role["role_type"] == "receptionist" and role["is_enabled"]:
+            ai_config = role
+            break
     
     if lookup_result["exists"]:
         session_data.customer = lookup_result["customer"]
         customer_name = session_data.customer["first_name"]
         logger.info(f"Existing customer: {customer_name}")
         
-        system_instructions = f"""
-You are Sarah, a friendly receptionist for Bright Smile Dental Clinic.
-
-You are speaking with {customer_name} {session_data.customer['last_name']}, a returning customer.
-
-Your tasks:
-1. Greet them warmly by name
-2. Ask how you can help them
-3. If they want an appointment, use check_availability to show available times
-4. Once they choose a time, use book_appointment to book it
-5. Confirm the appointment clearly
-
-Keep responses SHORT - this is a phone call.
-Be warm and professional.
+        if ai_config:
+            base_instructions = ai_config["system_prompt"].format(
+                business_name=business_name,
+                customer_name=customer_name
+            )
+            # Add staff information dynamically
+            staff_list = business_config.get("staff", [])
+            if staff_list:
+                staff_info = "\n\nAvailable Staff Members:\n"
+                for staff in staff_list:
+                    staff_info += f"- {staff.get('name', 'Unknown')} ({staff.get('title', 'Staff')})\n"
+                system_instructions = base_instructions + staff_info
+            else:
+                system_instructions = base_instructions
+            
+            greeting = ai_config["greeting_message"].format(
+                customer_name=customer_name
+            )
+            voice = ai_config["voice_style"]
+            ai_name = ai_config["ai_name"]
+        else:
+            # Default for existing customer
+            system_instructions = f"""
+You are a friendly receptionist for {business_name}.
+You are speaking with {customer_name}, a returning customer.
+Be warm and help them book appointments.
 """
-        greeting = f"Hello {customer_name}! Thank you for calling Bright Smile Dental. How may I help you today?"
+            greeting = f"Hello {customer_name}! Thank you for calling {business_name}. How may I help you today?"
+            voice = "Kore"
+            ai_name = "receptionist"
         
     else:
         logger.info("New customer")
-        system_instructions = """
-You are Sarah, a friendly receptionist for Bright Smile Dental Clinic.
-
-This is a NEW customer calling for the first time.
-
-Your tasks:
-1. Welcome them warmly
-2. Collect: first name, last name, and email (optional)
-3. Use create_new_customer to save their info
-4. Then ask how you can help
-5. If they want an appointment, use check_availability and book_appointment
-
-Keep responses SHORT - this is a phone call.
-Be warm and welcoming.
+        
+        if ai_config:
+            base_instructions = ai_config["system_prompt"].format(
+                business_name=business_name,
+                customer_name="new customer"
+            )
+            # Add staff information dynamically
+            staff_list = business_config.get("staff", [])
+            if staff_list:
+                staff_info = "\n\nAvailable Staff Members:\n"
+                for staff in staff_list:
+                    staff_info += f"- {staff.get('name', 'Unknown')} ({staff.get('title', 'Staff')})\n"
+                system_instructions = base_instructions + staff_info
+            else:
+                system_instructions = base_instructions
+            
+            greeting = ai_config["greeting_message"].format(
+                customer_name="there"
+            )
+            voice = ai_config["voice_style"]
+            ai_name = ai_config["ai_name"]
+        else:
+            # Default for new customer
+            system_instructions = f"""
+You are a friendly receptionist for {business_name}.
+This is a new customer. Collect their information and help them book an appointment.
 """
-        greeting = "Hello! Thank you for calling Bright Smile Dental, this is Sarah speaking. I see this is your first time calling. May I get your name please?"
+            greeting = f"Hello! Thank you for calling {business_name}. I see this is your first time calling. May I get your name please?"
+            voice = "Kore"
+            ai_name = "receptionist"
     
-    # Create Agent with tools
-    agent = Agent(
-        instructions=system_instructions,
-    )
+    logger.info(f"AI Configuration: {ai_name}, Voice: {voice}")
+    
+    # Create Agent
+    agent = Agent(instructions=system_instructions)
     
     # Create Gemini model with function calling
     model = google_beta.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
-        voice="Kore",
+        voice=voice,
         temperature=0.8,
-        tools=get_tools_declaration(),  # Enable function calling
+        tools=get_tools_declaration(),
     )
     
     # Create session
@@ -233,89 +429,15 @@ Be warm and welcoming.
     )
     
     # Handle function calls
-    # Note: Function call handling API may vary by LiveKit Agents version
-    # This implementation tries multiple approaches for compatibility
-    async def process_function_call(function_call):
-        """Process function calls from Gemini"""
-        try:
-            func_name = getattr(function_call, 'name', None) or getattr(function_call, 'function_name', None)
-            func_args = getattr(function_call, 'arguments', None) or getattr(function_call, 'args', None) or {}
-            
-            logger.info(f"Function call received: {func_name} with args: {func_args}")
-            
-            result = await handle_tool_call(
-                session_data,
-                func_name,
-                func_args
-            )
-            
-            # Return result to Gemini
-            if hasattr(function_call, 'create_response'):
-                await function_call.create_response(result)
-            elif hasattr(function_call, 'respond'):
-                await function_call.respond(result)
-            elif hasattr(function_call, 'return_result'):
-                await function_call.return_result(result)
-            else:
-                logger.warning(f"Function call object type: {type(function_call)}, available methods: {dir(function_call)}")
-        except Exception as e:
-            logger.error(f"Error handling function call: {e}", exc_info=True)
-            error_result = {
-                "success": False,
-                "message": "I encountered an error processing that request. Please try again."
-            }
-            try:
-                if hasattr(function_call, 'create_response'):
-                    await function_call.create_response(error_result)
-                elif hasattr(function_call, 'respond'):
-                    await function_call.respond(error_result)
-            except:
-                pass
-    
-    # Try to attach function call handler
-    # The exact API depends on LiveKit Agents version
-    handler_attached = False
-    
-    # Method 1: Try session.on() decorator-style
-    try:
-        if hasattr(session, "on") and callable(getattr(session, "on", None)):
-            # Check if it's a decorator or regular method
-            if hasattr(session.on, '__call__'):
-                # Try as decorator
-                try:
-                    @session.on("function_call")
-                    async def on_function_call(fc):
-                        await process_function_call(fc)
-                    handler_attached = True
-                    logger.info("Attached function call handler via @session.on() decorator")
-                except:
-                    # Try as method call
-                    session.on("function_call", process_function_call)
-                    handler_attached = True
-                    logger.info("Attached function call handler via session.on() method")
-    except Exception as e:
-        logger.debug(f"Method 1 (session.on) failed: {e}")
-    
-    # Method 2: Try model.on()
-    if not handler_attached:
-        try:
-            if hasattr(model, "on") and callable(getattr(model, "on", None)):
-                try:
-                    @model.on("function_call")
-                    async def on_function_call(fc):
-                        await process_function_call(fc)
-                    handler_attached = True
-                    logger.info("Attached function call handler via @model.on() decorator")
-                except:
-                    model.on("function_call", process_function_call)
-                    handler_attached = True
-                    logger.info("Attached function call handler via model.on() method")
-        except Exception as e:
-            logger.debug(f"Method 2 (model.on) failed: {e}")
-    
-    if not handler_attached:
-        logger.warning("Could not attach function call handler. Function calling may not work.")
-        logger.info("Note: You may need to check LiveKit Agents documentation for the correct function calling API.")
+    @session.on("function_call")
+    async def on_function_call(function_call):
+        logger.info(f"Function call: {function_call.name}")
+        result = await handle_tool_call(
+            session_data,
+            function_call.name,
+            function_call.arguments
+        )
+        await function_call.create_response(result)
     
     # Start session
     await session.start(agent=agent, room=ctx.room)
@@ -326,7 +448,7 @@ Be warm and welcoming.
     await asyncio.sleep(0.5)
     await session.generate_reply(instructions=f"Say: {greeting}")
     
-    logger.info("Greeting sent")
+    logger.info(f"Greeting sent for {business_name}")
 
 
 def prewarm(proc: JobProcess):
@@ -336,24 +458,17 @@ def prewarm(proc: JobProcess):
 
 
 if __name__ == "__main__":
-    logger.info("Starting Dental Receptionist Agent...")
-    
-    # Validate configuration
-    if not BUSINESS_ID:
-        logger.error("BUSINESS_ID not set in .env!")
-        exit(1)
-    if not STAFF_ID:
-        logger.error("STAFF_ID not set in .env!")
-        exit(1)
-    
+    logger.info("========================================")
+    logger.info("  MULTI-TENANT AI RECEPTIONIST AGENT   ")
+    logger.info("========================================")
     logger.info(f"Backend: {BACKEND_URL}")
-    logger.info(f"Business ID: {BUSINESS_ID}")
-    logger.info(f"Staff ID: {STAFF_ID}")
+    logger.info("Waiting for calls...")
     
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
             num_idle_processes=2,
+            agent_name="ai-receptionist",  # Explicit agent name for SIP dispatch
         ),
     )

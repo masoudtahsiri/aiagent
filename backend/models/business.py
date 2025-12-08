@@ -6,7 +6,8 @@ from datetime import datetime
 class BusinessBase(BaseModel):
     business_name: str
     industry: str
-    phone_number: Optional[str] = None
+    phone_number: Optional[str] = None  # Business contact (not AI phone)
+    ai_phone_number: Optional[str] = None  # NEW: Dedicated AI receptionist number
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
@@ -23,6 +24,7 @@ class BusinessUpdate(BaseModel):
     business_name: Optional[str] = None
     industry: Optional[str] = None
     phone_number: Optional[str] = None
+    ai_phone_number: Optional[str] = None  # NEW
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
@@ -42,4 +44,9 @@ class BusinessResponse(BusinessBase):
     
     class Config:
         from_attributes = True
+
+
+# NEW: For phone number lookup
+class PhoneNumberLookup(BaseModel):
+    phone_number: str
 
