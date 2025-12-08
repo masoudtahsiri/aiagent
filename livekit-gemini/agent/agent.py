@@ -83,102 +83,108 @@ def extract_phone_from_identity(identity: str) -> str:
 
 def extract_called_number(ctx: JobContext) -> str:
     """
-    Extract the number that was called (To number)
-    This tells us which business to route to
+    Extract the number that was called (To number) from SIP participant attributes.
+    LiveKit SIP stores call info in participant attributes.
     
     Raises ValueError if phone number cannot be extracted.
     """
+    import json
+    
     room_name = ctx.room.name
     logger.info(f"Room name: {room_name}")
     
     def is_valid_phone(value: str) -> bool:
-        """Check if value looks like a valid phone number (not a template variable)"""
+        """Check if value looks like a valid phone number"""
         if not value:
             return False
-        # Reject template variables like ${to_user} or {{.sip.toUser}}
-        if value.startswith("${") or value.startswith("{{"):
+        # Reject template variables
+        if "${" in value or "{{" in value:
             logger.warning(f"Received unexpanded template variable: {value}")
             return False
         # Check if it looks like a phone number
         cleaned = value.replace("-", "").replace(" ", "").replace("+", "")
         return cleaned.isdigit() and len(cleaned) >= 10
     
-    # Method 1: Try room name (most common with dispatch rules)
-    if room_name.startswith("+") or is_valid_phone(room_name):
-        logger.info(f"Using room name as called number: {room_name}")
-        if not room_name.startswith("+") and room_name.replace("-", "").replace(" ", "").isdigit():
-            room_name = "+" + room_name.replace("-", "").replace(" ", "")
-        return room_name
+    def normalize_phone(phone: str) -> str:
+        """Ensure phone has + prefix"""
+        cleaned = phone.replace("-", "").replace(" ", "")
+        if not cleaned.startswith("+"):
+            cleaned = "+" + cleaned
+        return cleaned
     
-    # Method 2: Try room metadata for SIP "To" header
+    # Method 1: Check SIP participant attributes (MOST RELIABLE)
     try:
-        metadata = ctx.room.metadata
-        logger.info(f"Room metadata (raw): {metadata}")
-        if metadata:
-            import json
-            if isinstance(metadata, str):
+        for participant in ctx.room.remote_participants.values():
+            logger.info(f"Participant: identity={participant.identity}, kind={participant.kind if hasattr(participant, 'kind') else 'N/A'}")
+            
+            # Check participant attributes (LiveKit SIP stores data here)
+            if hasattr(participant, 'attributes') and participant.attributes:
+                attrs = participant.attributes
+                logger.info(f"Participant attributes: {attrs}")
+                
+                # LiveKit SIP attribute keys for called number
+                for key in ['sip.toUser', 'sip.to_user', 'toUser', 'to_user', 'sip.calledNumber', 'sip.to']:
+                    if key in attrs:
+                        called = attrs[key]
+                        logger.info(f"Found '{key}' in attributes: {called}")
+                        if is_valid_phone(called):
+                            return normalize_phone(called)
+                
+                # Also check for phoneNumber or similar
+                for key in ['sip.phoneNumber', 'phoneNumber', 'phone_number']:
+                    if key in attrs:
+                        called = attrs[key]
+                        logger.info(f"Found '{key}' in attributes: {called}")
+                        if is_valid_phone(called):
+                            return normalize_phone(called)
+            
+            # Check participant metadata as JSON
+            if hasattr(participant, 'metadata') and participant.metadata:
                 try:
-                    metadata_dict = json.loads(metadata)
-                except:
-                    logger.warning(f"Failed to parse metadata as JSON: {metadata}")
-                    metadata_dict = {}
-            else:
-                metadata_dict = metadata
-            
-            logger.info(f"Room metadata (parsed): {metadata_dict}")
-            
-            # Check for various keys
-            for key in ["to_user", "to", "called_number"]:
-                if key in metadata_dict:
-                    called = metadata_dict[key]
-                    if is_valid_phone(called):
-                        logger.info(f"Found called number in room metadata ({key}): {called}")
-                        if called and not called.startswith("+") and called.replace("-", "").replace(" ", "").isdigit():
-                            called = "+" + called.replace("-", "").replace(" ", "")
-                        return called
-                    else:
-                        logger.warning(f"Invalid phone number in metadata ({key}): {called}")
-        else:
-            logger.warning("Room metadata is empty or None")
+                    meta = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
+                    logger.info(f"Participant metadata: {meta}")
+                    for key in ['to_user', 'to', 'called_number', 'toUser', 'sip.toUser']:
+                        if key in meta and is_valid_phone(str(meta[key])):
+                            return normalize_phone(str(meta[key]))
+                except Exception as e:
+                    logger.warning(f"Failed to parse participant metadata: {e}")
+                    
     except Exception as e:
-        logger.error(f"Could not extract from room metadata: {e}")
+        logger.error(f"Error checking participants: {e}")
     
-    # Method 3: Try to extract from room name if it contains phone-like pattern
+    # Method 2: Check room metadata
+    try:
+        if ctx.room.metadata:
+            logger.info(f"Room metadata: {ctx.room.metadata}")
+            meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
+            for key in ['to_user', 'to', 'called_number', 'toUser', 'sip.toUser']:
+                if key in meta and is_valid_phone(str(meta[key])):
+                    return normalize_phone(str(meta[key]))
+    except Exception as e:
+        logger.warning(f"Error parsing room metadata: {e}")
+    
+    # Method 3: Extract from room name if it contains a phone number
     import re
     phone_pattern = r'\+?\d{10,15}'
     match = re.search(phone_pattern, room_name)
     if match:
         called = match.group(0)
-        if not called.startswith("+"):
-            called = "+" + called
-        logger.info(f"Extracted called number from room name pattern: {called}")
-        return called
+        logger.info(f"Extracted phone from room name: {called}")
+        return normalize_phone(called)
     
-    # Method 4: Try participant metadata
-    try:
-        participants = ctx.room.remote_participants.values()
-        for participant in participants:
-            logger.info(f"Checking participant: identity={participant.identity}")
-            if hasattr(participant, 'metadata') and participant.metadata:
-                import json
-                try:
-                    part_metadata = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
-                    for key in ["to_user", "to", "called_number"]:
-                        if key in part_metadata:
-                            called = part_metadata[key]
-                            if is_valid_phone(called):
-                                if not called.startswith("+"):
-                                    called = "+" + called
-                                logger.info(f"Found called number in participant metadata ({key}): {called}")
-                                return called
-                except Exception as e:
-                    logger.warning(f"Failed to parse participant metadata: {e}")
-    except Exception as e:
-        logger.error(f"Could not extract from participant metadata: {e}")
+    # Method 4: Check if room name itself is a valid phone
+    if is_valid_phone(room_name):
+        return normalize_phone(room_name)
     
-    # If we couldn't extract the phone number, raise an error
-    logger.error(f"Could not extract called number from room name '{room_name}' or metadata")
-    raise ValueError(f"Unable to determine called phone number from room '{room_name}'. Configure SIP dispatch rules to use phone number as room name.")
+    # Log all available data for debugging
+    logger.error("=== DEBUG: Could not find called number ===")
+    logger.error(f"Room name: {room_name}")
+    logger.error(f"Room metadata: {ctx.room.metadata}")
+    for p in ctx.room.remote_participants.values():
+        logger.error(f"Participant {p.identity}: attrs={getattr(p, 'attributes', {})}, meta={getattr(p, 'metadata', '')}")
+    logger.error("=== END DEBUG ===")
+    
+    raise ValueError(f"Unable to determine called phone number. Check agent logs for available SIP data.")
 
 
 async def get_business_config(called_number: str) -> dict:

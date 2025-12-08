@@ -80,15 +80,15 @@ LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
 LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
 lk sip inbound create /tmp/inbound-trunk.json || echo "Trunk may already exist"
 
-# Create dispatch rule - room name will be set by SIP based on called number
-# Using {{.sip.toUser}} Go template syntax to pass the actual called number as room name
+# Create dispatch rule - Use individual dispatch to create unique rooms per call
+# Agent will extract called number from SIP participant attributes (sip.toUser)
 # IMPORTANT: Must specify agent_name in room_config.agents for LiveKit to dispatch
 cat > /tmp/dispatch-rule.json << 'EOFDISPATCH'
 {
   "dispatch_rule": {
     "rule": {
-      "dispatch_rule_direct": {
-        "room_name": "{{.sip.toUser}}"
+      "dispatch_rule_individual": {
+        "room_prefix": "sip-call-"
       }
     },
     "name": "phone-number-routing",
@@ -109,7 +109,7 @@ LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
 LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
 lk sip dispatch delete phone-number-routing 2>/dev/null || echo "No existing dispatch rule to delete"
 
-# Create new dispatch rule with template expansion
+# Create new dispatch rule with individual routing
 LIVEKIT_URL=http://127.0.0.1:7880 \
 LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
 LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
