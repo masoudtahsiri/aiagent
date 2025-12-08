@@ -6,8 +6,14 @@ import logging
 logger = logging.getLogger("multi-tenant-agent")
 
 
-def get_tools_for_agent(session_data, backend):
-    """Create function tools for the Agent"""
+def get_tools_for_agent(session_data, backend, is_existing_customer: bool = False):
+    """Create function tools for the Agent
+    
+    Args:
+        session_data: Session data containing business and customer info
+        backend: Backend client for API calls
+        is_existing_customer: If True, excludes create_new_customer tool (default: False)
+    """
     
     @function_tool()
     async def create_new_customer(
@@ -121,7 +127,17 @@ def get_tools_for_agent(session_data, backend):
         else:
             return {"success": False, "message": "I'm sorry, that time slot is no longer available. Would you like to choose another time?"}
 
-    return [create_new_customer, check_availability, book_appointment]
+    # Build tools list based on customer status
+    tools = [check_availability, book_appointment]
+    
+    # Only include create_new_customer for NEW customers
+    if not is_existing_customer:
+        tools.insert(0, create_new_customer)
+        logger.info("Tools: create_new_customer, check_availability, book_appointment")
+    else:
+        logger.info("Tools: check_availability, book_appointment (existing customer - create_new_customer excluded)")
+    
+    return tools
 
 
 def format_slots_for_speech(slots: List[Dict], limit: int = 10) -> str:

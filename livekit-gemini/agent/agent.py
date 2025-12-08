@@ -245,10 +245,33 @@ async def entrypoint(ctx: JobContext):
             ai_config = role
             break
     
+    # Track if this is an existing customer (used for tool selection)
+    is_existing_customer = False
+    
     if lookup_result["exists"]:
+        is_existing_customer = True
         session_data.customer = lookup_result["customer"]
-        customer_name = session_data.customer["first_name"]
+        customer = session_data.customer
+        customer_name = customer["first_name"]
         logger.info(f"Existing customer: {customer_name}")
+        
+        # Build customer context so AI knows what's already stored
+        customer_info = f"""
+
+=== EXISTING CUSTOMER INFORMATION ===
+This caller is a RETURNING customer. Their information is already saved in the system:
+
+- First Name: {customer.get('first_name', 'Unknown')}
+- Last Name: {customer.get('last_name', 'Not provided')}
+- Email: {customer.get('email', 'Not provided')}
+- Phone: {customer.get('phone', session_data.caller_phone)}
+
+IMPORTANT RULES:
+1. Do NOT ask for their name, email, or phone - you already have this information
+2. Simply help them with their request (booking appointments, questions, etc.)
+3. You can address them by their first name: {customer_name}
+==========================================
+"""
         
         if ai_config:
             base_instructions = ai_config["system_prompt"].format(
@@ -261,9 +284,9 @@ async def entrypoint(ctx: JobContext):
                 staff_info = "\n\nAvailable Staff Members:\n"
                 for staff in staff_list:
                     staff_info += f"- {staff.get('name', 'Unknown')} ({staff.get('title', 'Staff')})\n"
-                system_instructions = base_instructions + staff_info
+                system_instructions = base_instructions + staff_info + "\n" + customer_info
             else:
-                system_instructions = base_instructions
+                system_instructions = base_instructions + "\n" + customer_info
             
             greeting = ai_config["greeting_message"].format(
                 business_name=business_name,
@@ -273,16 +296,19 @@ async def entrypoint(ctx: JobContext):
             ai_name = ai_config["ai_name"]
         else:
             # Default for existing customer
+            greeting = f"Hello {customer_name}! Thank you for calling {business_name}. How may I help you today?"
             system_instructions = f"""
 You are a friendly receptionist for {business_name}.
 You are speaking with {customer_name}, a returning customer.
 Be warm and help them book appointments.
+
+{customer_info}
 """
-            greeting = f"Hello {customer_name}! Thank you for calling {business_name}. How may I help you today?"
             voice = "Kore"
             ai_name = "receptionist"
         
     else:
+        is_existing_customer = False
         logger.info("New customer")
         
         if ai_config:
@@ -300,6 +326,20 @@ Be warm and help them book appointments.
             else:
                 system_instructions = base_instructions
             
+            # Add guidance for new customers
+            new_customer_guidance = """
+
+=== NEW CUSTOMER ===
+This is a NEW caller. You should:
+1. Warmly greet them
+2. Collect their name (first and last)
+3. Optionally collect their email
+4. Use the create_new_customer tool to save their information
+5. Then help them with their request (booking appointments, etc.)
+====================
+"""
+            system_instructions = system_instructions + new_customer_guidance
+            
             greeting = ai_config["greeting_message"].format(
                 business_name=business_name,
                 customer_name="there"
@@ -308,23 +348,24 @@ Be warm and help them book appointments.
             ai_name = ai_config["ai_name"]
         else:
             # Default for new customer
+            greeting = f"Hello! Thank you for calling {business_name}. I see this is your first time calling. May I get your name please?"
             system_instructions = f"""
 You are a friendly receptionist for {business_name}.
-This is a new customer. Collect their information and help them book an appointment.
+This is a new customer. Collect their information (first name, last name, optionally email) and use the create_new_customer tool to save it. Then help them book an appointment.
 """
-            greeting = f"Hello! Thank you for calling {business_name}. I see this is your first time calling. May I get your name please?"
             voice = "Kore"
             ai_name = "receptionist"
     
-    logger.info(f"AI Configuration: {ai_name}, Voice: {voice}")
+    logger.info(f"AI Configuration: {ai_name}, Voice: {voice}, Existing Customer: {is_existing_customer}")
     
     # Create tools with session context
-    tools = get_tools_for_agent(session_data, backend)
+    # Pass is_existing_customer to exclude create_new_customer tool for returning customers
+    tools = get_tools_for_agent(session_data, backend, is_existing_customer=is_existing_customer)
     
     # Create Agent with tools
     agent = Agent(
         instructions=system_instructions,
-        tools=tools,  # ✅ Tools go on Agent
+        tools=tools,
     )
     
     # Create Gemini model - NO tools here
@@ -345,11 +386,11 @@ This is a new customer. Collect their information and help them book an appointm
     
     logger.info("Agent session started")
     
-    # Send greeting
-    await asyncio.sleep(0.5)
-    await session.generate_reply(instructions=f"Say: {greeting}")
+    # Trigger greeting explicitly (fixes both greeting not playing AND ticking noise)
+    await asyncio.sleep(0.3)  # Brief delay for audio pipeline to stabilize
+    await session.generate_reply(instructions=f"Greet the caller by saying: {greeting}")
     
-    logger.info(f"Greeting sent for {business_name}")
+    logger.info(f"Greeting triggered for {business_name}")
 
 
 def prewarm(proc: JobProcess):
