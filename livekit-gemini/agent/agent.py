@@ -317,19 +317,43 @@ def build_system_prompt(business_config: dict, customer: dict = None, ai_config:
 
 === CUSTOMER INFORMATION ===
 
-This is a RETURNING customer. Their information:
+This is a RETURNING customer. Their information is already in the system:
 
-- Name: {customer.get('first_name', '')} {customer.get('last_name', '')}
+- First Name: {customer.get('first_name', 'Not provided')}
 
-- Phone: {customer.get('phone', '')}
+- Last Name: {customer.get('last_name', 'Not provided')}
+
+- Phone: {customer.get('phone', 'Not provided')}
 
 - Email: {customer.get('email', 'Not provided')}
 
+- Date of Birth: {customer.get('date_of_birth', 'Not provided')}
+
+- Address: {customer.get('address', 'Not provided')}
+
+- City: {customer.get('city', 'Not provided')}
+
+- State: {customer.get('state', 'Not provided')}
+
+- Zip Code: {customer.get('zip_code', 'Not provided')}
+
+- Notes: {customer.get('notes', 'None')}
+
+- Customer Since: {customer.get('customer_since', 'Unknown')}
+
+- Total Appointments: {customer.get('total_appointments', 0)}
+
+- Last Visit: {customer.get('last_visit_date', 'Never')}
 
 
-IMPORTANT: Do NOT ask for their name or contact info - you already have it!
 
-Address them by their first name: {customer.get('first_name', 'there')}
+IMPORTANT RULES:
+
+1. Do NOT ask for their name, phone, email, address, city, or date of birth - you already have this!
+
+2. Address them by their first name: {customer.get('first_name', 'there')}
+
+3. You can reference their history if relevant (e.g., "I see your last visit was...")
 
 """
 
