@@ -157,7 +157,68 @@ jobs:
             
             echo ""
             echo "Waiting for services to start..."
-            sleep 10
+            sleep 20
+            
+            # Recreate SIP trunk and dispatch rules (they're lost when containers restart)
+            echo "Recreating SIP trunk and dispatch rules..."
+            source .env
+            
+            # Install LiveKit CLI if not present
+            if ! command -v lk &> /dev/null; then
+              echo "Installing LiveKit CLI..."
+              curl -sSL https://get.livekit.io/cli | bash
+            fi
+            
+            # Create SIP trunk
+            cat > /tmp/inbound-trunk.json << 'EOFTRUNK'
+            {
+              "trunk": {
+                "name": "bulutfon",
+                "numbers": ["+903322379153"],
+                "allowed_addresses": ["trgw01.bulutfon.net"]
+              }
+            }
+            EOFTRUNK
+            
+            LIVEKIT_URL=http://127.0.0.1:7880 \
+            LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
+            LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
+            lk sip inbound create /tmp/inbound-trunk.json || echo "Trunk may already exist"
+            
+            # Create dispatch rule
+            cat > /tmp/dispatch-rule.json << 'EOFDISPATCH'
+            {
+              "dispatch_rule": {
+                "rule": {
+                  "dispatch_rule_individual": {
+                    "room_prefix": "sip-call-"
+                  }
+                },
+                "name": "phone-number-routing",
+                "room_config": {
+                  "agents": [
+                    {
+                      "agent_name": "ai-receptionist"
+                    }
+                  ]
+                }
+              }
+            }
+            EOFDISPATCH
+            
+            # Delete old dispatch rule if it exists
+            LIVEKIT_URL=http://127.0.0.1:7880 \
+            LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
+            LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
+            lk sip dispatch delete phone-number-routing 2>/dev/null || echo "No existing dispatch rule to delete"
+            
+            # Create new dispatch rule
+            LIVEKIT_URL=http://127.0.0.1:7880 \
+            LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
+            LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \
+            lk sip dispatch create /tmp/dispatch-rule.json || echo "Dispatch rule may already exist"
+            
+            echo "SIP configuration recreated successfully"
             
             # Check status
             echo ""
