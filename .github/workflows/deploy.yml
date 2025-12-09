@@ -60,25 +60,24 @@ jobs:
             
             # Update systemd service file to use correct command and load .env
             echo "Updating systemd service configuration..."
-            cat > /etc/systemd/system/aiagent-backend.service << 'EOFSERVICE'
-[Unit]
-Description=AI Receptionist FastAPI Backend
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/aiagent
-Environment="PATH=/opt/aiagent/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="PYTHONPATH=/opt/aiagent"
-EnvironmentFile=/opt/aiagent/backend/.env
-ExecStart=/opt/aiagent/backend/venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOFSERVICE
+            printf '%s\n' \
+              '[Unit]' \
+              'Description=AI Receptionist FastAPI Backend' \
+              'After=network.target' \
+              '' \
+              '[Service]' \
+              'Type=simple' \
+              'User=root' \
+              'WorkingDirectory=/opt/aiagent' \
+              'Environment="PATH=/opt/aiagent/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
+              'Environment="PYTHONPATH=/opt/aiagent"' \
+              'EnvironmentFile=/opt/aiagent/backend/.env' \
+              'ExecStart=/opt/aiagent/backend/venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000' \
+              'Restart=always' \
+              'RestartSec=10' \
+              '' \
+              '[Install]' \
+              'WantedBy=multi-user.target' > /etc/systemd/system/aiagent-backend.service
             systemctl daemon-reload
             
             # Restart backend service
