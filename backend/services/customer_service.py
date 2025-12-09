@@ -1,7 +1,24 @@
 from fastapi import HTTPException, status
 from typing import List, Optional
+from datetime import date, datetime
 
 from backend.database.supabase_client import get_db
+
+
+def serialize_dates(data: dict) -> dict:
+    """Convert date objects to ISO format strings for JSON serialization"""
+    if not data:
+        return data
+    
+    result = {}
+    for key, value in data.items():
+        if isinstance(value, date):
+            result[key] = value.isoformat()
+        elif isinstance(value, datetime):
+            result[key] = value.isoformat()
+        else:
+            result[key] = value
+    return result
 
 
 class CustomerService:
@@ -19,7 +36,7 @@ class CustomerService:
         if result.data:
             return {
                 "exists": True,
-                "customer": result.data[0]
+                "customer": serialize_dates(result.data[0])
             }
         
         return {
@@ -54,8 +71,18 @@ class CustomerService:
                 detail="Customer with this phone number already exists"
             )
         
+        # Convert date objects to strings for Supabase insertion
+        insert_data = {}
+        for key, value in customer_data.items():
+            if isinstance(value, date):
+                insert_data[key] = value.isoformat()
+            elif isinstance(value, datetime):
+                insert_data[key] = value.isoformat()
+            else:
+                insert_data[key] = value
+        
         # Create customer
-        result = db.table("customers").insert(customer_data).execute()
+        result = db.table("customers").insert(insert_data).execute()
         
         if not result.data:
             raise HTTPException(
@@ -63,7 +90,7 @@ class CustomerService:
                 detail="Failed to create customer"
             )
         
-        return result.data[0]
+        return serialize_dates(result.data[0])
     
     @staticmethod
     async def create_customer(customer_data: dict, user_id: str) -> dict:
@@ -89,8 +116,18 @@ class CustomerService:
                 detail="Customer with this phone number already exists"
             )
         
+        # Convert date objects to strings for Supabase insertion
+        insert_data = {}
+        for key, value in customer_data.items():
+            if isinstance(value, date):
+                insert_data[key] = value.isoformat()
+            elif isinstance(value, datetime):
+                insert_data[key] = value.isoformat()
+            else:
+                insert_data[key] = value
+        
         # Create customer
-        result = db.table("customers").insert(customer_data).execute()
+        result = db.table("customers").insert(insert_data).execute()
         
         if not result.data:
             raise HTTPException(
@@ -98,7 +135,7 @@ class CustomerService:
                 detail="Failed to create customer"
             )
         
-        return result.data[0]
+        return serialize_dates(result.data[0])
     
     @staticmethod
     async def get_business_customers(
@@ -131,8 +168,11 @@ class CustomerService:
         # Add pagination
         result = query.order("last_name").range(offset, offset + limit - 1).execute()
         
+        # Serialize dates for all customers
+        customers = [serialize_dates(c) for c in (result.data if result.data else [])]
+        
         return {
-            "customers": result.data if result.data else [],
+            "customers": customers,
             "total": result.count if result.count else 0,
             "limit": limit,
             "offset": offset
@@ -163,7 +203,7 @@ class CustomerService:
                 detail="Not authorized to view this customer"
             )
         
-        return customer
+        return serialize_dates(customer)
     
     @staticmethod
     async def update_customer(customer_id: str, update_data: dict, user_id: str) -> dict:
@@ -173,17 +213,25 @@ class CustomerService:
         # Get customer to verify ownership
         customer = await CustomerService.get_customer(customer_id, user_id)
         
-        # Remove None values
-        update_data = {k: v for k, v in update_data.items() if v is not None}
+        # Remove None values and convert dates
+        cleaned_data = {}
+        for key, value in update_data.items():
+            if value is not None:
+                if isinstance(value, date):
+                    cleaned_data[key] = value.isoformat()
+                elif isinstance(value, datetime):
+                    cleaned_data[key] = value.isoformat()
+                else:
+                    cleaned_data[key] = value
         
-        if not update_data:
+        if not cleaned_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No data to update"
             )
         
         # Update customer
-        result = db.table("customers").update(update_data).eq("id", customer_id).execute()
+        result = db.table("customers").update(cleaned_data).eq("id", customer_id).execute()
         
         if not result.data:
             raise HTTPException(
@@ -191,7 +239,7 @@ class CustomerService:
                 detail="Customer not found"
             )
         
-        return result.data[0]
+        return serialize_dates(result.data[0])
     
     @staticmethod
     async def delete_customer(customer_id: str, user_id: str) -> dict:
@@ -213,4 +261,3 @@ class CustomerService:
             )
         
         return {"message": "Customer deactivated successfully"}
-
