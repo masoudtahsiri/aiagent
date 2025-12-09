@@ -64,10 +64,17 @@ logger = logging.getLogger("multi-tenant-agent")
 # Google SDK checks GOOGLE_API_KEY first, so we need to explicitly set it from GEMINI_API_KEY
 gemini_key = os.getenv("GEMINI_API_KEY")
 if gemini_key:
+    # Remove GOOGLE_API_KEY first if it exists to avoid the warning
+    if "GOOGLE_API_KEY" in os.environ:
+        old_key = os.environ.pop("GOOGLE_API_KEY")
+        if old_key != gemini_key:
+            logger.info("Removed existing GOOGLE_API_KEY to use GEMINI_API_KEY instead")
+    # Set GOOGLE_API_KEY from GEMINI_API_KEY so Google SDK uses it
     os.environ["GOOGLE_API_KEY"] = gemini_key
-    # Remove GOOGLE_API_KEY from env if it was set separately to avoid conflicts
-    if "GOOGLE_API_KEY" in os.environ and os.environ.get("GOOGLE_API_KEY") != gemini_key:
-        logger.warning("GOOGLE_API_KEY was set but will be overridden by GEMINI_API_KEY")
+    # Remove GEMINI_API_KEY from environment to avoid SDK warning about both being set
+    if "GEMINI_API_KEY" in os.environ:
+        os.environ.pop("GEMINI_API_KEY")
+    logger.info("Using GEMINI_API_KEY (set as GOOGLE_API_KEY for SDK compatibility)")
 
 
 
