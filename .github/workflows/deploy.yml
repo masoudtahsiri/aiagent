@@ -37,10 +37,13 @@ jobs:
               echo "Pulling latest code..."
               git pull origin main
             else
-              echo "Cloning repository..."
-              git clone https://github.com/${{ github.repository }}.git /tmp/aiagent-temp
-              cp -r /tmp/aiagent-temp/backend/* backend/
-              cp -r /tmp/aiagent-temp/backend/.* backend/ 2>/dev/null || true
+              echo "Initializing git repository and pulling code..."
+              if [ ! -d backend ]; then
+                mkdir -p backend
+              fi
+              # Clone to temp location and copy files
+              git clone --depth 1 https://github.com/${{ github.repository }}.git /tmp/aiagent-temp
+              rsync -av --exclude='.git' --exclude='venv' --exclude='__pycache__' /tmp/aiagent-temp/backend/ backend/
               rm -rf /tmp/aiagent-temp
             fi
             
@@ -74,12 +77,10 @@ jobs:
               git pull origin main
             else
               echo "Copying latest agent files..."
-              cd /opt/aiagent
-              if [ -d livekit-gemini ]; then
-                cp -r livekit-gemini/* /opt/livekit-gemini/
-                cp -r livekit-gemini/.* /opt/livekit-gemini/ 2>/dev/null || true
-              fi
-              cd /opt/livekit-gemini
+              # Clone to temp location and copy files
+              git clone --depth 1 https://github.com/${{ github.repository }}.git /tmp/aiagent-temp
+              rsync -av --exclude='.git' --exclude='.env' /tmp/aiagent-temp/livekit-gemini/ /opt/livekit-gemini/
+              rm -rf /tmp/aiagent-temp
             fi
             
             # Ensure .env exists and has required values
