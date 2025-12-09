@@ -42,6 +42,8 @@ from backend_client import BackendClient
 
 from tools import get_tools_for_agent
 
+from prompt_builder import PromptBuilder, build_greeting
+
 
 
 load_dotenv()
@@ -527,17 +529,19 @@ async def entrypoint(ctx: JobContext):
 
     
 
-    # Build system prompt with all business data
+    # Build system prompt with all business data using PromptBuilder
 
-    system_instructions = build_system_prompt(
+    prompt_builder = PromptBuilder(
 
-        business_config, 
+        business_config=business_config,
 
-        session_data.customer, 
+        customer=session_data.customer,
 
-        ai_config
+        ai_config=ai_config
 
     )
+
+    system_instructions = prompt_builder.build()
 
     
 
@@ -547,27 +551,15 @@ async def entrypoint(ctx: JobContext):
 
     
 
-    if ai_config and ai_config.get("greeting_message"):
+    greeting = build_greeting(
 
-        customer_name = session_data.customer.get("first_name", "there") if session_data.customer else "there"
+        business_config=business_config,
 
-        greeting = ai_config["greeting_message"].format(
+        customer=session_data.customer,
 
-            business_name=business_name,
+        ai_config=ai_config
 
-            customer_name=customer_name
-
-        )
-
-    else:
-
-        if is_existing_customer:
-
-            greeting = f"Hello {session_data.customer.get('first_name', 'there')}! Thank you for calling {business_name}. How can I help you today?"
-
-        else:
-
-            greeting = f"Hello! Thank you for calling {business_name}. How can I help you today?"
+    )
 
     
 
