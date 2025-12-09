@@ -58,3 +58,4 @@ docker-compose up -d
 - Check server logs: `journalctl -u aiagent-backend -f`
 - Check agent logs: `cd /opt/livekit-gemini && docker-compose logs -f agent`
 
+# Auto-deployment is now active
