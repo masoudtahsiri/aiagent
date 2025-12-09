@@ -145,7 +145,8 @@ jobs:
               fi
             fi
             
-            # Update sip.yaml with API keys from .env (this file contains secrets, never commit it)
+            # Update sip.yaml with API keys from .env
+            # Note: sip.yaml template in git has placeholders, we update it on server only
             echo "Updating sip.yaml with API keys from .env..."
             if [ -f .env ] && [ -f sip.yaml ]; then
               API_KEY=$(grep "^LIVEKIT_API_KEY=" .env | cut -d'=' -f2)
@@ -154,7 +155,7 @@ jobs:
                 sed -i "s|api_key: YOUR_API_KEY_HERE|api_key: $API_KEY|g" sip.yaml
                 sed -i "s|api_secret: YOUR_API_SECRET_HERE|api_secret: $API_SECRET|g" sip.yaml
                 sed -i "s|nat_external_ip: YOUR_VPS_IP_HERE|nat_external_ip: 185.8.130.155|g" sip.yaml
-                echo "Updated sip.yaml with API keys (not exposed in logs)"
+                echo "Updated sip.yaml with API keys"
               fi
             fi
             
