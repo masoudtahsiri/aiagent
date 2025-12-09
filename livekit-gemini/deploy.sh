@@ -25,9 +25,9 @@ if grep -q "YOUR_API_KEY_HERE" livekit.yaml; then
 fi
 
 # Check for Gemini API key
-if grep -q "YOUR_GEMINI_API_KEY_HERE" .env; then
-    echo "ERROR: Please set your Gemini API key in .env"
-    echo "Edit .env and replace YOUR_GEMINI_API_KEY_HERE"
+if grep -q "YOUR_GOOGLE_API_KEY_HERE" .env; then
+    echo "ERROR: Please set your Google API key in .env"
+    echo "Edit .env and replace YOUR_GOOGLE_API_KEY_HERE"
     exit 1
 fi
 

@@ -26,7 +26,7 @@ nano .env
 Fill in:
 - `LIVEKIT_API_KEY` - Generate or use existing
 - `LIVEKIT_API_SECRET` - Generate or use existing  
-- `GEMINI_API_KEY` - From Google AI Studio
+- `GOOGLE_API_KEY` - From Google AI Studio (Gemini API key)
 - `BACKEND_URL` - Your backend API URL
 
 ### 3. Update SIP Configuration

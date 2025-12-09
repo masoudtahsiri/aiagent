@@ -8,13 +8,7 @@ from livekit.agents import function_tool, RunContext
 
 import logging
 
-
-
 logger = logging.getLogger("multi-tenant-agent")
-
-
-
-
 
 def format_slots_for_speech(slots: List[Dict], limit: int = 10) -> str:
 
@@ -72,10 +66,6 @@ def format_slots_for_speech(slots: List[Dict], limit: int = 10) -> str:
 
     return ". ".join(lines)
 
-
-
-
-
 def format_appointments_for_speech(appointments: List[Dict]) -> str:
 
     """Format appointments list for speech"""
@@ -118,9 +108,71 @@ def format_appointments_for_speech(appointments: List[Dict]) -> str:
 
     return ". ".join(lines)
 
+def resolve_staff_by_name(staff_name: str, staff_list: List[Dict]) -> tuple:
 
+    """
 
+    Resolve staff name to ID. Returns (staff_id, staff_name) or (None, None) if not found.
 
+    Handles various formats: "Dr. Smith", "Sarah", "sarah_johnson", "Johnson", etc.
+
+    """
+
+    if not staff_name or not staff_list:
+
+        return None, None
+
+    
+
+    # Normalize the input name
+
+    staff_name_lower = staff_name.lower().replace("_", " ").replace(".", "").strip()
+
+    
+
+    # Try exact match first, then partial match
+
+    for staff in staff_list:
+
+        name_lower = staff.get("name", "").lower()
+
+        title_lower = staff.get("title", "").lower()
+
+        
+
+        # Check if input matches name or is contained in name
+
+        if (staff_name_lower == name_lower or
+
+            staff_name_lower in name_lower or
+
+            name_lower in staff_name_lower):
+
+            return staff["id"], staff["name"]
+
+        
+
+        # Check title match (e.g., "doctor", "hygienist")
+
+        if staff_name_lower in title_lower:
+
+            return staff["id"], staff["name"]
+
+        
+
+        # Check individual name parts (first name, last name)
+
+        name_parts = name_lower.split()
+
+        for part in name_parts:
+
+            if staff_name_lower == part or part in staff_name_lower:
+
+                return staff["id"], staff["name"]
+
+    
+
+    return None, None
 
 def get_tools_for_agent(session_data, backend, is_existing_customer: bool = False):
 
@@ -220,11 +272,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             return {"success": False, "message": "I'm sorry, there was an error. Could you repeat your information?"}
 
-
-
     # ==================== APPOINTMENT MANAGEMENT ====================
-
-
 
     @function_tool()
 
@@ -233,8 +281,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         context: RunContext,
 
         start_date: str = None,
-
-        staff_id: str = None,
 
         staff_name: str = None,
 
@@ -252,9 +298,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             start_date: Date to start checking (YYYY-MM-DD format). Uses today if not specified.
 
-            staff_id: Specific staff member ID.
-
-            staff_name: Staff member name (if customer says "Dr. Smith" or "with Sarah").
+            staff_name: Staff member name (e.g., "Dr. Smith", "Sarah", "Johnson"). Use the name from the staff list.
 
             service_name: Service name to filter by duration (e.g., "cleaning", "whitening").
 
@@ -262,33 +306,17 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         """
 
-        # Resolve staff by name if provided
+        staff_list = session_data.business_config.get("staff", [])
 
-        target_staff_id = staff_id
+        target_staff_id = None
 
         resolved_staff_name = None
 
-        
+        # Resolve staff by name if provided
 
-        if staff_name and not staff_id:
+        if staff_name:
 
-            staff_list = session_data.business_config.get("staff", [])
-
-            staff_name_lower = staff_name.lower()
-
-            
-
-            for staff in staff_list:
-
-                if (staff_name_lower in staff.get("name", "").lower() or 
-
-                    staff_name_lower in staff.get("title", "").lower()):
-
-                    target_staff_id = staff["id"]
-
-                    resolved_staff_name = staff["name"]
-
-                    break
+            target_staff_id, resolved_staff_name = resolve_staff_by_name(staff_name, staff_list)
 
             
 
@@ -304,21 +332,15 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
                 }
 
-        
-
-        # Use default staff if still not set
+        # Use default staff if not specified
 
         if not target_staff_id:
 
             target_staff_id = session_data.default_staff_id
 
-        
-
         # If still no staff and multiple options, ask
 
         if not target_staff_id:
-
-            staff_list = session_data.business_config.get("staff", [])
 
             if len(staff_list) > 1:
 
@@ -342,13 +364,9 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
                 return {"success": False, "message": "I'm having trouble finding available providers. Let me connect you with someone who can help."}
 
-        
-
         # Get staff name for response if not already resolved
 
         if not resolved_staff_name:
-
-            staff_list = session_data.business_config.get("staff", [])
 
             for staff in staff_list:
 
@@ -357,8 +375,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                     resolved_staff_name = staff["name"]
 
                     break
-
-        
 
         # Determine service duration if service specified
 
@@ -384,13 +400,9 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         if not start_date:
 
-            from datetime import datetime
-
             start_date = datetime.now().strftime("%Y-%m-%d")
 
         
-
-        from datetime import datetime, timedelta
 
         end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=14)).strftime("%Y-%m-%d")
 
@@ -498,8 +510,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         }
 
-
-
     @function_tool()
 
     async def book_appointment(
@@ -510,9 +520,9 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         appointment_time: str,
 
-        staff_id: str = None,
+        staff_name: str = None,
 
-        service_id: str = None,
+        service_name: str = None,
 
         notes: str = None,
 
@@ -528,9 +538,9 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             appointment_time: Time in HH:MM format (24-hour), like 09:00 or 14:30
 
-            staff_id: Staff member ID (uses default if not specified)
+            staff_name: Staff member name (e.g., "Dr. Smith", "Sarah"). Uses default if not specified.
 
-            service_id: Service ID if booking for specific service
+            service_name: Service name if booking for specific service (e.g., "cleaning", "checkup")
 
             notes: Any notes about the appointment
 
@@ -542,13 +552,61 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         
 
-        target_staff_id = staff_id or session_data.default_staff_id
+        staff_list = session_data.business_config.get("staff", [])
+
+        target_staff_id = None
+
+        resolved_staff_name = None
+
+        # Resolve staff by name if provided
+
+        if staff_name:
+
+            target_staff_id, resolved_staff_name = resolve_staff_by_name(staff_name, staff_list)
+
+            
+
+            if not target_staff_id:
+
+                names = [f"{s['name']} ({s.get('title', 'Staff')})" for s in staff_list]
+
+                return {
+
+                    "success": False, 
+
+                    "message": f"I couldn't find {staff_name}. Our staff members are: {', '.join(names)}. Who would you like to see?"
+
+                }
+
+        # Use default staff if not specified
+
+        if not target_staff_id:
+
+            target_staff_id = session_data.default_staff_id
 
         if not target_staff_id:
 
             return {"success": False, "message": "I need to know which provider you'd like to see."}
 
         
+
+        # Resolve service_name to service_id if provided
+
+        service_id = None
+
+        if service_name:
+
+            services = session_data.business_config.get("services", [])
+
+            service_name_lower = service_name.lower()
+
+            for svc in services:
+
+                if service_name_lower in svc.get("name", "").lower():
+
+                    service_id = svc["id"]
+
+                    break
 
         logger.info(f"🔧 Tool: book_appointment - date={appointment_date}, time={appointment_time}, staff={target_staff_id}")
 
@@ -580,7 +638,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             formatted_date = date_obj.strftime("%A, %B %d")
 
-            staff_name = result.get("staff_name", "your provider")
+            staff_name_response = result.get("staff_name", resolved_staff_name or "your provider")
 
             
 
@@ -594,15 +652,13 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
                 "success": True, 
 
-                "message": f"Perfect! I've booked your appointment for {formatted_date} at {appointment_time} with {staff_name}. You'll receive a confirmation and reminder before your appointment. Is there anything else I can help you with?"
+                "message": f"Perfect! I've booked your appointment for {formatted_date} at {appointment_time} with {staff_name_response}. You'll receive a confirmation and reminder before your appointment. Is there anything else I can help you with?"
 
             }
 
         else:
 
             return {"success": False, "message": "I'm sorry, that time slot is no longer available. Would you like to choose another time?"}
-
-
 
     @function_tool()
 
@@ -654,8 +710,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             return {"success": True, "message": "You don't have any upcoming appointments. Would you like to schedule one?"}
 
-
-
     @function_tool()
 
     async def get_appointment_history(
@@ -705,8 +759,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         
 
         # Filter to past appointments only and completed/no-show status
-
-        from datetime import datetime
 
         today = datetime.now().strftime("%Y-%m-%d")
 
@@ -789,8 +841,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             "message": f"Here's your recent appointment history: {history_text}. You've had {total} total appointments with us."
 
         }
-
-
 
     @function_tool()
 
@@ -885,8 +935,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             logger.error(f"Error updating customer info: {e}")
 
             return {"success": False, "message": "I'm having trouble updating your information right now. Please try again later or speak with our staff directly."}
-
-
 
     @function_tool()
 
@@ -994,8 +1042,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             return {"success": False, "message": "I'm sorry, I wasn't able to cancel that appointment. Let me connect you with someone who can help."}
 
-
-
     @function_tool()
 
     async def reschedule_appointment(
@@ -1007,6 +1053,8 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         new_time: str,
 
         current_appointment_date: str = None,
+
+        staff_name: str = None,
 
     ) -> dict:
 
@@ -1021,6 +1069,8 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             new_time: New time in HH:MM format
 
             current_appointment_date: Date of current appointment (YYYY-MM-DD). If not provided, reschedules the next upcoming appointment.
+
+            staff_name: Staff member name if changing provider (optional)
 
         """
 
@@ -1078,13 +1128,27 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         
 
+        # Resolve staff if name provided
+
+        staff_id = None
+
+        if staff_name:
+
+            staff_list = session_data.business_config.get("staff", [])
+
+            staff_id, _ = resolve_staff_by_name(staff_name, staff_list)
+
         result = await backend.reschedule_appointment(
 
             appointment_id=appointment_to_reschedule["id"],
 
             new_date=new_date,
 
-            new_time=new_time
+            new_time=new_time,
+
+            
+
+            staff_id=staff_id
 
         )
 
@@ -1108,11 +1172,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             return {"success": False, "message": "I'm sorry, that time slot isn't available. Would you like me to check other available times?"}
 
-
-
     # ==================== INFORMATION QUERIES ====================
-
-
 
     @function_tool()
 
@@ -1173,8 +1233,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         
 
         return {"success": True, "message": f"Here are our services: {'. '.join(lines)}. Would you like more details on any of these?"}
-
-
 
     @function_tool()
 
@@ -1300,8 +1358,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             return {"success": True, "message": "I can help you with our hours, location, phone number, or website. What would you like to know?"}
 
-
-
     @function_tool()
 
     async def answer_question(
@@ -1362,8 +1418,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         return {"success": False, "message": "I don't have that information, but I can have someone get back to you. Would you like to leave a message or speak with someone directly?"}
 
-
-
     # ==================== BUILD TOOL LIST ====================
 
     
@@ -1376,13 +1430,13 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         get_my_appointments,
 
-        get_appointment_history,      # NEW
+        get_appointment_history,
 
         cancel_appointment,
 
         reschedule_appointment,
 
-        update_my_info,               # NEW
+        update_my_info,
 
         get_services,
 

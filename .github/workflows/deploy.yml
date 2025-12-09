@@ -111,18 +111,18 @@ jobs:
               cp .env.example .env 2>/dev/null || touch .env
             fi
             
-            # Update .env with Gemini API key if provided
-            if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-              echo "Updating GEMINI_API_KEY in .env..."
-              if grep -q "GEMINI_API_KEY=" .env; then
-                sed -i "s|GEMINI_API_KEY=.*|GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}|" .env
+            # Update .env with Google API key if provided
+            if [ -n "${{ secrets.GOOGLE_API_KEY }}" ]; then
+              echo "Updating GOOGLE_API_KEY in .env..."
+              if grep -q "GOOGLE_API_KEY=" .env; then
+                sed -i "s|GOOGLE_API_KEY=.*|GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}|" .env
               else
-                echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+                echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> .env
               fi
               
-              # Remove GOOGLE_API_KEY to force use of GEMINI_API_KEY
-              echo "Removing GOOGLE_API_KEY from .env to use GEMINI_API_KEY..."
-              sed -i '/^GOOGLE_API_KEY=/d' .env
+              # Remove GEMINI_API_KEY to avoid confusion
+              echo "Removing GEMINI_API_KEY from .env to use GOOGLE_API_KEY..."
+              sed -i '/^GEMINI_API_KEY=/d' .env
             fi
             
             # Update BACKEND_URL if needed

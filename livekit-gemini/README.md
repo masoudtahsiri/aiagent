@@ -33,7 +33,7 @@ cat > .env << EOF
 LIVEKIT_URL=ws://127.0.0.1:7880
 LIVEKIT_API_KEY=YOUR_API_KEY_HERE
 LIVEKIT_API_SECRET=YOUR_API_SECRET_HERE
-GEMINI_API_KEY=your_gemini_api_key
+GOOGLE_API_KEY=your_google_api_key
 EOF
 ```
 
@@ -63,7 +63,7 @@ The deployment script automatically creates:
 | LIVEKIT_URL | LiveKit server WebSocket URL |
 | LIVEKIT_API_KEY | LiveKit API key |
 | LIVEKIT_API_SECRET | LiveKit API secret |
-| GEMINI_API_KEY | Google Gemini API key |
+| GOOGLE_API_KEY | Google Gemini API key |
 
 ## Commands
 
