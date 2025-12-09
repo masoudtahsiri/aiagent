@@ -1,40 +1,49 @@
-# AI Voice Agent
+# AI Receptionist
 
-Production-ready voice AI using Google Gemini Live API.
+Multi-tenant AI receptionist SaaS platform using Google Gemini Live API.
 
-## LiveKit + Gemini
+## Documentation
 
-Production-quality solution using LiveKit SIP for automatic audio handling.
+📚 **[Full Documentation](docs/README.md)**
 
-**Location:** `livekit-gemini/`
+## Quick Start
 
-**Features:**
-- Automatic audio format conversion
-- Professional audio quality
-- Built-in VAD (Voice Activity Detection)
-- Scalable architecture
+1. Clone and configure:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your credentials
+   ```
 
-See [livekit-gemini/README.md](livekit-gemini/README.md) for setup.
+2. Start backend:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   python -m uvicorn backend.main:app --reload
+   ```
 
-## Quick Start (LiveKit)
-
-```bash
-# On VPS
-cd /opt/livekit-gemini
-./deploy.sh
-```
+3. Deploy voice agent (on server):
+   ```bash
+   cd livekit-gemini
+   ./deploy.sh
+   ```
 
 ## Architecture
 
 ```
 Phone → SIP Provider → LiveKit SIP → Python Agent → Gemini Live API
+                                          ↓
+                                     FastAPI Backend → Supabase
 ```
 
-## Requirements
+## Project Structure
 
-- VPS with Docker
-- SIP trunk (e.g., Bulutfon)
-- Google Gemini API key
+```
+├── backend/           # FastAPI REST API
+├── livekit-gemini/    # Voice agent (LiveKit + Gemini)
+├── supabase/          # Database schema
+├── n8n/               # Workflow automation
+└── docs/              # Documentation
+```
 
 ## License
 

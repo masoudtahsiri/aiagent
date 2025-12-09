@@ -1,11 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import sys
-from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from services.auth_service import AuthService
+from backend.services.auth_service import AuthService
 
 
 security = HTTPBearer()
@@ -26,4 +22,3 @@ async def get_current_active_user(current_user: dict = Depends(get_current_user)
             detail="Inactive user"
         )
     return current_user
-

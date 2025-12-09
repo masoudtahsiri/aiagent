@@ -32,6 +32,9 @@ class BackendClient:
         phone: str,
         first_name: str,
         last_name: str,
+        date_of_birth: str,
+        address: str,
+        city: str,
         email: Optional[str] = None
     ) -> Optional[Dict]:
         """Create a new customer (for AI agent - uses unauthenticated endpoint)"""
@@ -42,6 +45,9 @@ class BackendClient:
                     "phone": phone,
                     "first_name": first_name,
                     "last_name": last_name,
+                    "date_of_birth": date_of_birth,
+                    "address": address,
+                    "city": city,
                     "email": email
                 }
                 customer_data = {k: v for k, v in customer_data.items() if v is not None}
@@ -53,15 +59,15 @@ class BackendClient:
                 )
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPStatusError as e:
-                error_detail = "Unknown error"
-                try:
-                    error_response = e.response.json()
-                    error_detail = error_response.get("detail", str(e))
-                except:
-                    error_detail = str(e)
-                logger.error(f"Error creating customer: {e.response.status_code} - {error_detail}")
-                return None
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_response = e.response.json()
+                error_detail = error_response.get("detail", str(e))
+            except:
+                error_detail = str(e)
+            logger.error(f"Error creating customer: {e.response.status_code} - {error_detail}")
+            return None
         except Exception as e:
             logger.error(f"Error creating customer: {e}")
             return None

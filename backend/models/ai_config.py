@@ -32,3 +32,4 @@ class AIRoleResponse(AIRoleConfig):
     class Config:
         from_attributes = True
 
+

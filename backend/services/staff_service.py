@@ -1,12 +1,8 @@
 from fastapi import HTTPException, status
-import sys
-from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from database.supabase_client import get_db
+from backend.database.supabase_client import get_db
 
 
 class StaffService:
@@ -298,4 +294,5 @@ class StaffService:
         result = query.order("exception_date").execute()
         
         return result.data if result.data else []
+
 

@@ -98,3 +98,4 @@ class BulkAvailabilityCreate(BaseModel):
     staff_id: str
     templates: List[AvailabilityTemplateBase]
 
+

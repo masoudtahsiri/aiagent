@@ -1,18 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config import settings
-from api import auth, businesses, staff, customers, appointments, ai_config
+
+from backend.config import settings
+from backend.api import auth, businesses, staff, customers, appointments, ai_config
 
 
-# Create FastAPI app
 app = FastAPI(
     title="AI Receptionist API",
     description="Multi-tenant AI receptionist SaaS platform",
     version="1.0.0"
 )
 
-
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -21,8 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# Include routers
 app.include_router(auth.router)
 app.include_router(businesses.router)
 app.include_router(staff.router)
@@ -44,19 +40,19 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Detailed health check"""
+    from datetime import datetime
     return {
         "status": "healthy",
-        "database": "connected",  # We'll verify this later
-        "timestamp": "2025-01-08T12:00:00Z"
+        "database": "connected",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        "backend.main:app",
         host=settings.API_HOST,
         port=settings.API_PORT,
-        reload=True  # Auto-reload on code changes
+        reload=True
     )
-

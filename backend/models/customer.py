@@ -56,3 +56,4 @@ class CustomerLookupResponse(BaseModel):
     exists: bool
     customer: Optional[CustomerResponse] = None
 
+

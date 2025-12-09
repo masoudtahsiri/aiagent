@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import os
-import re
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -84,103 +83,24 @@ def extract_phone_from_identity(identity: str) -> str:
 def extract_called_number(ctx: JobContext) -> str:
     """
     Extract the number that was called (To number) from SIP participant attributes.
-    LiveKit SIP stores call info in participant attributes.
+    Uses sip.trunkPhoneNumber from Bulutfon SIP provider.
     
     Raises ValueError if phone number cannot be extracted.
     """
-    import json
-    
-    room_name = ctx.room.name
-    logger.info(f"Room name: {room_name}")
-    
-    def is_valid_phone(value: str) -> bool:
-        """Check if value looks like a valid phone number"""
-        if not value:
-            return False
-        # Reject template variables
-        if "${" in value or "{{" in value:
-            logger.warning(f"Received unexpanded template variable: {value}")
-            return False
-        # Check if it looks like a phone number
-        cleaned = value.replace("-", "").replace(" ", "").replace("+", "")
-        return cleaned.isdigit() and len(cleaned) >= 10
-    
-    def normalize_phone(phone: str) -> str:
-        """Ensure phone has + prefix"""
-        cleaned = phone.replace("-", "").replace(" ", "")
-        if not cleaned.startswith("+"):
-            cleaned = "+" + cleaned
-        return cleaned
-    
-    # Method 1: Check SIP participant attributes (MOST RELIABLE)
-    try:
-        for participant in ctx.room.remote_participants.values():
-            logger.info(f"Participant: identity={participant.identity}, kind={participant.kind if hasattr(participant, 'kind') else 'N/A'}")
+    for participant in ctx.room.remote_participants.values():
+        attrs = getattr(participant, 'attributes', {})
+        
+        if attrs and 'sip.trunkPhoneNumber' in attrs:
+            called = attrs['sip.trunkPhoneNumber']
             
-            # Check participant attributes (LiveKit SIP stores data here)
-            if hasattr(participant, 'attributes') and participant.attributes:
-                attrs = participant.attributes
-                logger.info(f"Participant attributes: {attrs}")
-                
-                # LiveKit SIP attribute keys for called number (the number that was called, not the caller)
-                # Priority order: trunkPhoneNumber is the called number, toUser is also the called number
-                for key in ['sip.trunkPhoneNumber', 'sip.toUser', 'sip.to_user', 'toUser', 'to_user', 'sip.calledNumber', 'sip.to']:
-                    if key in attrs:
-                        called = attrs[key]
-                        logger.info(f"Found '{key}' in attributes: {called}")
-                        if is_valid_phone(called):
-                            return normalize_phone(called)
-                
-                # Note: sip.phoneNumber is the CALLER's number, not the called number, so we skip it
-                # Only use it as a last resort fallback if nothing else is found
+            # Normalize: ensure + prefix
+            if not called.startswith('+'):
+                called = '+' + called
             
-            # Check participant metadata as JSON
-            if hasattr(participant, 'metadata') and participant.metadata:
-                try:
-                    meta = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
-                    logger.info(f"Participant metadata: {meta}")
-                    for key in ['to_user', 'to', 'called_number', 'toUser', 'sip.toUser']:
-                        if key in meta and is_valid_phone(str(meta[key])):
-                            return normalize_phone(str(meta[key]))
-                except Exception as e:
-                    logger.warning(f"Failed to parse participant metadata: {e}")
-                    
-    except Exception as e:
-        logger.error(f"Error checking participants: {e}")
+            logger.info(f"Called number: {called}")
+            return called
     
-    # Method 2: Check room metadata
-    try:
-        if ctx.room.metadata:
-            logger.info(f"Room metadata: {ctx.room.metadata}")
-            meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
-            for key in ['to_user', 'to', 'called_number', 'toUser', 'sip.toUser']:
-                if key in meta and is_valid_phone(str(meta[key])):
-                    return normalize_phone(str(meta[key]))
-    except Exception as e:
-        logger.warning(f"Error parsing room metadata: {e}")
-    
-    # Method 3: Extract from room name if it contains a phone number
-    import re
-    phone_pattern = r'\+?\d{10,15}'
-    match = re.search(phone_pattern, room_name)
-    if match:
-        called = match.group(0)
-        logger.info(f"Extracted phone from room name: {called}")
-        return normalize_phone(called)
-    
-    # Method 4: Check if room name itself is a valid phone
-    if is_valid_phone(room_name):
-        return normalize_phone(room_name)
-    
-    # Log all available data for debugging
-    logger.error("=== DEBUG: Could not find called number ===")
-    logger.error(f"Room name: {room_name}")
-    logger.error(f"Room metadata: {ctx.room.metadata}")
-    for p in ctx.room.remote_participants.values():
-        logger.error(f"Participant {p.identity}: attrs={getattr(p, 'attributes', {})}, meta={getattr(p, 'metadata', '')}")
-    logger.error("=== END DEBUG ===")
-    
-    raise ValueError(f"Unable to determine called phone number. Check agent logs for available SIP data.")
+    raise ValueError("Unable to extract called number from sip.trunkPhoneNumber")
 
 
 async def get_business_config(called_number: str) -> dict:
@@ -197,6 +117,49 @@ async def get_business_config(called_number: str) -> dict:
         raise Exception(f"No business found for number: {called_number}")
 
 
+async def play_hold_message(ctx: JobContext, duration: float = 5.0):
+    """
+    Play a hold message using TTS while backend API calls are happening.
+    This provides audio feedback to the caller during processing.
+    Uses a temporary AgentSession with a simple model to speak the message.
+    """
+    try:
+        logger.info("🎵 Playing hold message...")
+        
+        # Create a simple temporary model for the hold message
+        temp_model = google_beta.realtime.RealtimeModel(
+            model="gemini-2.5-flash-native-audio-preview-09-2025",
+            voice="Kore",
+        )
+        
+        # Create a minimal agent for the hold message
+        hold_agent = Agent(
+            instructions="You are a phone system. Say exactly what you are told to say, nothing more.",
+        )
+        
+        # Create a minimal session just for the hold message
+        temp_session = AgentSession(
+            llm=temp_model,
+            vad=None,  # No VAD needed for hold message
+        )
+        
+        # Start the session
+        await temp_session.start(agent=hold_agent, room=ctx.room)
+        
+        # Generate and speak the hold message
+        hold_text = "Please hold while we connect you."
+        await temp_session.generate_reply(instructions=f"Say this exactly: {hold_text}")
+        
+        # Wait for the specified duration (or until message finishes)
+        await asyncio.sleep(duration)
+        
+        # Clean up the temporary session
+        await temp_session.aclose()
+        
+        logger.info("✅ Hold message finished")
+    except Exception as e:
+        logger.warning(f"Could not play hold message: {e}")
+        # Don't fail the call if hold message fails
 
 
 async def entrypoint(ctx: JobContext):
@@ -213,11 +176,15 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Caller: {caller_phone}")
     logger.info(f"Called number: {called_number}")
     
-    # Lookup business configuration
+    # Start playing hold message in background while we do API calls
+    hold_task = asyncio.create_task(play_hold_message(ctx, duration=5.0))
+    
+    # Lookup business configuration (runs in parallel with hold message)
     try:
         business_config = await get_business_config(called_number)
     except Exception as e:
         logger.error(f"Failed to get business config: {e}")
+        hold_task.cancel()  # Cancel hold message if we're going to fail
         # Could play error message here
         return
     
@@ -232,8 +199,15 @@ async def entrypoint(ctx: JobContext):
     session_data.caller_phone = caller_phone
     sessions[ctx.room.name] = session_data
     
-    # Lookup customer
+    # Lookup customer (still running in parallel with hold message)
     lookup_result = await backend.lookup_customer(caller_phone, business_id)
+    
+    # Wait for hold message to finish (or cancel if it's still running)
+    try:
+        await asyncio.wait_for(hold_task, timeout=0.1)  # Quick check if done
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        # Hold message is still playing or was cancelled, that's fine
+        pass
     
     # Get AI configuration
     ai_roles = business_config.get("ai_roles", [])
@@ -265,9 +239,12 @@ This caller is a RETURNING customer. Their information is already saved in the s
 - Last Name: {customer.get('last_name', 'Not provided')}
 - Email: {customer.get('email', 'Not provided')}
 - Phone: {customer.get('phone', session_data.caller_phone)}
+- Date of Birth: {customer.get('date_of_birth', 'Not provided')}
+- Address: {customer.get('address', 'Not provided')}
+- City: {customer.get('city', 'Not provided')}
 
 IMPORTANT RULES:
-1. Do NOT ask for their name, email, or phone - you already have this information
+1. Do NOT ask for their name, email, phone, date of birth, address, or city - you already have this information
 2. Simply help them with their request (booking appointments, questions, etc.)
 3. You can address them by their first name: {customer_name}
 ==========================================
@@ -330,12 +307,24 @@ Be warm and help them book appointments.
             new_customer_guidance = """
 
 === NEW CUSTOMER ===
-This is a NEW caller. You should:
-1. Warmly greet them
-2. Collect their name (first and last)
-3. Optionally collect their email
-4. Use the create_new_customer tool to save their information
-5. Then help them with their request (booking appointments, etc.)
+This is a NEW caller. You MUST collect ALL of the following information before proceeding:
+
+REQUIRED INFORMATION (collect in this order):
+1. First Name
+2. Last Name  
+3. Date of Birth (ask for month, day, and year - format as YYYY-MM-DD)
+4. Street Address
+5. City
+6. Email (optional but ask for it)
+
+INSTRUCTIONS:
+- Ask for each piece of information one at a time in a conversational manner
+- Be patient and friendly while collecting information
+- For date of birth, you can ask "What is your date of birth?" or "Could I get your birthday?"
+- Once you have ALL required information, use the create_new_customer tool to save it
+- After saving, help them with their request (booking appointments, etc.)
+
+IMPORTANT: Do NOT attempt to book an appointment until you have collected and saved the customer's information!
 ====================
 """
             system_instructions = system_instructions + new_customer_guidance
@@ -351,7 +340,19 @@ This is a NEW caller. You should:
             greeting = f"Hello! Thank you for calling {business_name}. I see this is your first time calling. May I get your name please?"
             system_instructions = f"""
 You are a friendly receptionist for {business_name}.
-This is a new customer. Collect their information (first name, last name, optionally email) and use the create_new_customer tool to save it. Then help them book an appointment.
+This is a new customer. You need to collect their information before helping them.
+
+REQUIRED INFORMATION (collect in this order):
+1. First Name
+2. Last Name  
+3. Date of Birth (format as YYYY-MM-DD when saving)
+4. Street Address
+5. City
+6. Email (optional but ask for it)
+
+Ask for each piece of information one at a time. Be conversational and friendly.
+Once you have all the required information, use the create_new_customer tool to save it.
+Then help them book an appointment.
 """
             voice = "Kore"
             ai_name = "receptionist"
@@ -387,7 +388,7 @@ This is a new customer. Collect their information (first name, last name, option
     logger.info("Agent session started")
     
     # Trigger greeting explicitly (fixes both greeting not playing AND ticking noise)
-    await asyncio.sleep(0.3)  # Brief delay for audio pipeline to stabilize
+    await asyncio.sleep(0.5)  # Brief delay for audio pipeline to stabilize
     await session.generate_reply(instructions=f"Greet the caller by saying: {greeting}")
     
     logger.info(f"Greeting triggered for {business_name}")

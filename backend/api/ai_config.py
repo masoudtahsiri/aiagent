@@ -1,28 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-import sys
-from pathlib import Path
 from typing import List, Optional
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from models.ai_config import AIRoleCreate, AIRoleUpdate, AIRoleResponse
-from models.business import PhoneNumberLookup
-from database.supabase_client import get_db
-from middleware.auth import get_current_active_user
+from backend.models.ai_config import AIRoleCreate, AIRoleUpdate, AIRoleResponse
+from backend.models.business import PhoneNumberLookup
+from backend.database.supabase_client import get_db
+from backend.middleware.auth import get_current_active_user
 
 router = APIRouter(prefix="/api/ai", tags=["AI Configuration"])
 
 
 @router.post("/lookup-by-phone")
 async def lookup_business_by_phone(lookup: PhoneNumberLookup):
-    """
-    Lookup business by AI phone number (for agent routing)
-    NO AUTHENTICATION - used by AI agent
-    """
+    """Lookup business by AI phone number (for agent routing - no auth)"""
     db = get_db()
     
-    # Find business by AI phone number
     result = db.table("businesses").select("*").eq("ai_phone_number", lookup.phone_number).eq("is_active", True).execute()
     
     if not result.data:
@@ -33,13 +24,9 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
     
     business = result.data[0]
     
-    # Get AI roles for this business
     roles_result = db.table("ai_roles").select("*").eq("business_id", business["id"]).eq("is_enabled", True).order("priority").execute()
-    
-    # Get active staff
     staff_result = db.table("staff").select("*").eq("business_id", business["id"]).eq("is_active", True).execute()
     
-    # Map AI roles from database format to API format
     ai_roles = []
     for role in (roles_result.data if roles_result.data else []):
         ai_roles.append({
@@ -69,16 +56,11 @@ async def create_ai_role(
     """Create AI role configuration"""
     db = get_db()
     
-    # Verify user owns this business
     user_result = db.table("users").select("business_id").eq("id", current_user["id"]).execute()
     
     if not user_result.data or user_result.data[0].get("business_id") != role_data.business_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     
-    # Map model fields to database fields
     role_dict = {
         "business_id": role_data.business_id,
         "role_type": role_data.role_type,
@@ -87,18 +69,14 @@ async def create_ai_role(
         "system_prompt": role_data.system_prompt,
         "greeting_message": role_data.greeting_message,
         "is_enabled": role_data.is_enabled,
-        "priority": 0  # Default priority
+        "priority": 0
     }
     
     result = db.table("ai_roles").insert(role_dict).execute()
     
     if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create AI role"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create AI role")
     
-    # Map response back to model format
     role = result.data[0]
     return {
         "id": role["id"],
@@ -121,18 +99,13 @@ async def get_business_ai_roles(
     """Get all AI roles for a business"""
     db = get_db()
     
-    # Verify user owns this business
     user_result = db.table("users").select("business_id").eq("id", current_user["id"]).execute()
     
     if not user_result.data or user_result.data[0].get("business_id") != business_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     
     result = db.table("ai_roles").select("*").eq("business_id", business_id).order("priority").execute()
     
-    # Map database fields to model format
     roles = []
     for role in (result.data if result.data else []):
         roles.append({
@@ -159,27 +132,18 @@ async def update_ai_role(
     """Update AI role configuration"""
     db = get_db()
     
-    # Get role to verify ownership
     role_result = db.table("ai_roles").select("*").eq("id", role_id).execute()
     
     if not role_result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="AI role not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI role not found")
     
     role = role_result.data[0]
     
-    # Verify user owns this business
     user_result = db.table("users").select("business_id").eq("id", current_user["id"]).execute()
     
     if not user_result.data or user_result.data[0].get("business_id") != role["business_id"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     
-    # Map model fields to database fields
     update_dict = {}
     if role_data.ai_name is not None:
         update_dict["ai_personality_name"] = role_data.ai_name
@@ -193,20 +157,13 @@ async def update_ai_role(
         update_dict["is_enabled"] = role_data.is_enabled
     
     if not update_dict:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No data to update"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No data to update")
     
     result = db.table("ai_roles").update(update_dict).eq("id", role_id).execute()
     
     if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="AI role not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI role not found")
     
-    # Map response back to model format
     updated_role = result.data[0]
     return {
         "id": updated_role["id"],
@@ -219,4 +176,3 @@ async def update_ai_role(
         "is_enabled": updated_role["is_enabled"],
         "priority": updated_role.get("priority", 0)
     }
-

@@ -61,3 +61,4 @@ class TimeSlot(BaseModel):
     duration_minutes: int
     is_booked: bool
 
+

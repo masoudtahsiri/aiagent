@@ -2,20 +2,15 @@
 
 ## Server Details
 
-- **IP Address:** 185.8.130.155
-- **SSH Port:** 35655 (non-standard)
-- **Hostname:** 185.8.130.155_51094_73280
-- **Username:** root
+- **IP Address:** [YOUR_SERVER_IP]
+- **SSH Port:** [YOUR_SSH_PORT]
+- **Username:** [YOUR_USERNAME]
 
 ## SSH Connection
 
 ```bash
-ssh -p 35655 root@185.8.130.155
+ssh -p [PORT] [USER]@[IP]
 ```
-
-## Configuration Updated
-
-✅ `livekit-gemini/sip.yaml` - Updated with IP: 185.8.130.155
 
 ## Important Ports
 
@@ -28,29 +23,5 @@ ssh -p 35655 root@185.8.130.155
 | 8000 | TCP | FastAPI | Backend API |
 | 10000-20000 | UDP | RTP | Audio media |
 
-## Firewall Configuration
-
-Make sure these ports are open:
-```bash
-# On the server, run:
-ufw allow 5060/udp
-ufw allow 7880/tcp
-ufw allow 7881/tcp
-ufw allow 8000/tcp
-ufw allow 10000:20000/udp
-```
-
-## Quick Access Commands
-
-```bash
-# SSH into server
-ssh -p 35655 root@185.8.130.155
-
-# Check LiveKit services
-cd /opt/livekit-gemini
-docker-compose ps
-docker-compose logs -f agent
-
-# Check backend API
-curl http://localhost:8000/health
-```
+## Note
+Never commit actual credentials to this file. Use environment variables.

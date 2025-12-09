@@ -4,7 +4,10 @@
 SERVER_IP="185.8.130.155"
 SSH_PORT="35655"
 SSH_USER="root"
-SERVER_PASS="S7J9BPMa9#v4GmZ"
+SERVER_PASS="${SERVER_PASSWORD:-}"
+if [ -z "$SERVER_PASS" ]; then
+    echo "Please set SERVER_PASSWORD environment variable or enter password when prompted"
+fi
 REMOTE_DIR="/opt/n8n"
 
 echo "🚀 Deploying n8n to server..."
@@ -84,4 +87,5 @@ echo ""
 echo "Access n8n at: http://185.8.130.155:5678"
 echo "Default username: admin"
 echo "Password: (check /opt/n8n/docker-compose.yml on server)"
+
 

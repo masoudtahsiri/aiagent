@@ -672,3 +672,4 @@ LEFT JOIN call_logs cl ON b.id = cl.business_id
 GROUP BY b.id, b.business_name;
 
 
+

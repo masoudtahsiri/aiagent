@@ -1,16 +1,12 @@
 from fastapi import APIRouter, Depends, Query
-import sys
-from pathlib import Path
 from typing import Optional
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from models.customer import (
+from backend.models.customer import (
     CustomerCreate, CustomerUpdate, CustomerResponse,
     CustomerLookup, CustomerLookupResponse
 )
-from services.customer_service import CustomerService
-from middleware.auth import get_current_active_user
+from backend.services.customer_service import CustomerService
+from backend.middleware.auth import get_current_active_user
 
 
 router = APIRouter(prefix="/api/customers", tags=["Customer Management"])
@@ -18,22 +14,13 @@ router = APIRouter(prefix="/api/customers", tags=["Customer Management"])
 
 @router.post("/lookup", response_model=CustomerLookupResponse)
 async def lookup_customer(lookup_data: CustomerLookup):
-    """
-    Lookup customer by phone number (for AI agent)
-    
-    This endpoint does NOT require authentication - used by AI agent
-    """
+    """Lookup customer by phone number (for AI agent - no auth required)"""
     return await CustomerService.lookup_customer(lookup_data.phone, lookup_data.business_id)
 
 
 @router.post("/create", response_model=CustomerResponse)
 async def create_customer_for_agent(customer_data: CustomerCreate):
-    """
-    Create a new customer (for AI agent)
-    
-    This endpoint does NOT require authentication - used by AI agent
-    The AI agent already knows the business_id from phone lookup
-    """
+    """Create a new customer (for AI agent - no auth required)"""
     customer_dict = customer_data.model_dump()
     return await CustomerService.create_customer_for_agent(customer_dict)
 
@@ -89,4 +76,3 @@ async def delete_customer(
 ):
     """Delete/deactivate customer"""
     return await CustomerService.delete_customer(customer_id, current_user["id"])
-

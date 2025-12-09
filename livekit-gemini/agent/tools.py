@@ -20,6 +20,9 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         context: RunContext,
         first_name: str,
         last_name: str,
+        date_of_birth: str,
+        address: str,
+        city: str,
         email: str = None,
     ) -> dict:
         """Save information for a new customer calling for the first time.
@@ -27,9 +30,12 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         Args:
             first_name: Customer's first name
             last_name: Customer's last name
+            date_of_birth: Customer's date of birth (YYYY-MM-DD format)
+            address: Customer's street address
+            city: Customer's city
             email: Customer's email (optional)
         """
-        logger.info(f"🔧 Tool called: create_new_customer with first_name={first_name}, last_name={last_name}, email={email}")
+        logger.info(f"🔧 Tool called: create_new_customer with first_name={first_name}, last_name={last_name}, date_of_birth={date_of_birth}, address={address}, city={city}, email={email}")
         logger.info(f"📞 Calling backend.create_customer with business_id={session_data.business_id}, phone={session_data.caller_phone}")
         
         try:
@@ -38,6 +44,9 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 phone=session_data.caller_phone,
                 first_name=first_name,
                 last_name=last_name,
+                date_of_birth=date_of_birth,
+                address=address,
+                city=city,
                 email=email
             )
             

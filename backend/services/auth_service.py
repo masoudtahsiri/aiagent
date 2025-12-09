@@ -3,13 +3,9 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
-import sys
-from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import settings
-from database.supabase_client import get_db
+from backend.config import settings
+from backend.database.supabase_client import get_db
 
 
 # Password hashing

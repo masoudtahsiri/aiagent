@@ -79,3 +79,4 @@ echo ""
 echo "To monitor agent logs:"
 echo "  docker-compose logs -f agent"
 
+

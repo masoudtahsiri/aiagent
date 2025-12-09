@@ -1,37 +1,27 @@
-from fastapi import APIRouter, Depends, Query
-import sys
-from pathlib import Path
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from typing import List, Optional
+from datetime import date, timedelta, datetime
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from models.staff import (
+from backend.models.staff import (
     StaffCreate, StaffUpdate, StaffResponse,
     AvailabilityTemplateCreate, AvailabilityTemplateUpdate, AvailabilityTemplateResponse,
     AvailabilityExceptionCreate, AvailabilityExceptionResponse,
     BulkAvailabilityCreate
 )
-from services.staff_service import StaffService
-from middleware.auth import get_current_active_user
+from backend.services.staff_service import StaffService
+from backend.database.supabase_client import get_db
+from backend.middleware.auth import get_current_active_user
 
 
 router = APIRouter(prefix="/api/staff", tags=["Staff Management"])
 
-
-# Staff CRUD
 
 @router.post("", response_model=StaffResponse)
 async def create_staff(
     staff_data: StaffCreate,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Create a new staff member
-    
-    - **name**: Staff member's name
-    - **title**: Job title (Doctor, Stylist, Attorney, etc.)
-    - **specialty**: Specialty or area of expertise (optional)
-    """
+    """Create a new staff member"""
     staff_dict = staff_data.model_dump()
     return await StaffService.create_staff(staff_dict, current_user["id"])
 
@@ -42,9 +32,7 @@ async def get_business_staff(
     include_inactive: bool = Query(False),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Get all staff for a business
-    """
+    """Get all staff for a business"""
     return await StaffService.get_business_staff(business_id, current_user["id"], include_inactive)
 
 
@@ -53,9 +41,7 @@ async def get_staff(
     staff_id: str,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Get staff member by ID
-    """
+    """Get staff member by ID"""
     return await StaffService.get_staff(staff_id, current_user["id"])
 
 
@@ -65,9 +51,7 @@ async def update_staff(
     staff_data: StaffUpdate,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Update staff member
-    """
+    """Update staff member"""
     update_dict = staff_data.model_dump(exclude_unset=True)
     return await StaffService.update_staff(staff_id, update_dict, current_user["id"])
 
@@ -77,9 +61,7 @@ async def delete_staff(
     staff_id: str,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Delete/deactivate staff member
-    """
+    """Delete/deactivate staff member"""
     return await StaffService.delete_staff(staff_id, current_user["id"])
 
 
@@ -90,14 +72,7 @@ async def create_availability(
     availability_data: AvailabilityTemplateCreate,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Create availability template for staff
-    
-    - **day_of_week**: 0=Sunday, 1=Monday, ..., 6=Saturday
-    - **start_time**: Start time in HH:MM format (e.g., "09:00")
-    - **end_time**: End time in HH:MM format (e.g., "17:00")
-    - **slot_duration_minutes**: Duration of each appointment slot
-    """
+    """Create availability template for staff"""
     availability_dict = availability_data.model_dump()
     return await StaffService.create_availability_template(availability_dict, current_user["id"])
 
@@ -107,11 +82,7 @@ async def bulk_create_availability(
     bulk_data: BulkAvailabilityCreate,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Create multiple availability templates at once
-    
-    Example: Set Monday-Friday 9AM-5PM availability
-    """
+    """Create multiple availability templates at once"""
     templates = [template.model_dump() for template in bulk_data.templates]
     return await StaffService.bulk_create_availability(bulk_data.staff_id, templates, current_user["id"])
 
@@ -121,9 +92,7 @@ async def get_staff_availability(
     staff_id: str,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Get availability templates for staff
-    """
+    """Get availability templates for staff"""
     return await StaffService.get_staff_availability(staff_id, current_user["id"])
 
 
@@ -133,9 +102,7 @@ async def update_availability(
     availability_data: AvailabilityTemplateUpdate,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Update availability template
-    """
+    """Update availability template"""
     update_dict = availability_data.model_dump(exclude_unset=True)
     return await StaffService.update_availability_template(template_id, update_dict, current_user["id"])
 
@@ -145,25 +112,18 @@ async def delete_availability(
     template_id: str,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Delete availability template
-    """
+    """Delete availability template"""
     return await StaffService.delete_availability_template(template_id, current_user["id"])
 
 
-# Availability Exceptions (Time Off, Holidays)
+# Availability Exceptions
 
 @router.post("/exceptions", response_model=AvailabilityExceptionResponse)
 async def create_exception(
     exception_data: AvailabilityExceptionCreate,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Create availability exception (time off, holiday, etc.)
-    
-    - **exception_type**: "closed", "custom_hours", "lunch_break"
-    - **exception_date**: Date in YYYY-MM-DD format
-    """
+    """Create availability exception (time off, holiday, etc.)"""
     exception_dict = exception_data.model_dump()
     return await StaffService.create_availability_exception(exception_dict, current_user["id"])
 
@@ -175,9 +135,7 @@ async def get_staff_exceptions(
     end_date: Optional[str] = None,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Get availability exceptions for staff
-    """
+    """Get availability exceptions for staff"""
     return await StaffService.get_staff_exceptions(staff_id, current_user["id"], start_date, end_date)
 
 
@@ -187,16 +145,7 @@ async def generate_time_slots(
     days_ahead: int = Query(30, le=90),
     current_user: dict = Depends(get_current_active_user)
 ):
-    """
-    Generate time slots from availability templates
-    (Run this once after setting up availability)
-    """
-    from datetime import date, timedelta
-    from fastapi import HTTPException, status
-    
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from database.supabase_client import get_db
-    
+    """Generate time slots from availability templates"""
     db = get_db()
     
     # Verify staff ownership
@@ -228,19 +177,16 @@ async def generate_time_slots(
         day_templates = [t for t in templates if t["day_of_week"] == day_of_week]
         
         for template in day_templates:
-            # Generate slots for this template
-            from datetime import datetime, time as dt_time
-            
             start_time_str = template["start_time"]
-            if len(start_time_str) == 5:  # "09:00"
+            if len(start_time_str) == 5:
                 start_time = datetime.strptime(start_time_str, "%H:%M").time()
-            else:  # "09:00:00"
+            else:
                 start_time = datetime.strptime(start_time_str, "%H:%M:%S").time()
             
             end_time_str = template["end_time"]
-            if len(end_time_str) == 5:  # "17:00"
+            if len(end_time_str) == 5:
                 end_time = datetime.strptime(end_time_str, "%H:%M").time()
-            else:  # "17:00:00"
+            else:
                 end_time = datetime.strptime(end_time_str, "%H:%M:%S").time()
             
             duration = timedelta(minutes=template["slot_duration_minutes"])
@@ -249,13 +195,10 @@ async def generate_time_slots(
             end_datetime = datetime.combine(current_date, end_time)
             
             while current_time < end_datetime:
-                # Check if slot already exists
-                # Store time in HH:MM:SS format to match database
                 time_str = current_time.strftime("%H:%M:%S")
                 existing = db.table("time_slots").select("id").eq("staff_id", staff_id).eq("date", str(current_date)).eq("time", time_str).execute()
                 
                 if not existing.data:
-                    # Create slot
                     db.table("time_slots").insert({
                         "staff_id": staff_id,
                         "business_id": business_id,
@@ -274,4 +217,3 @@ async def generate_time_slots(
         "staff_id": staff_id,
         "days_ahead": days_ahead
     }
-

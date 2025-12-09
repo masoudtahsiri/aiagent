@@ -1,14 +1,10 @@
 from fastapi import HTTPException, status
-import sys
-from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from database.supabase_client import get_db
-from services.customer_service import CustomerService
-from services.staff_service import StaffService
+from backend.database.supabase_client import get_db
+from backend.services.customer_service import CustomerService
+from backend.services.staff_service import StaffService
 
 
 class AppointmentService:

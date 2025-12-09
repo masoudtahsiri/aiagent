@@ -31,3 +31,4 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
 
+

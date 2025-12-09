@@ -1,17 +1,13 @@
 from fastapi import APIRouter, Depends, Query
-import sys
-from pathlib import Path
 from typing import List, Optional
 from datetime import date
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from models.appointment import (
+from backend.models.appointment import (
     AppointmentCreate, AppointmentUpdate, AppointmentResponse,
     AppointmentWithDetails, TimeSlot
 )
-from services.appointment_service import AppointmentService
-from middleware.auth import get_current_active_user
+from backend.services.appointment_service import AppointmentService
+from backend.middleware.auth import get_current_active_user
 
 
 router = APIRouter(prefix="/api/appointments", tags=["Appointment Management"])
@@ -23,9 +19,7 @@ async def get_available_slots(
     start_date: date = Query(...),
     end_date: Optional[date] = None
 ):
-    """
-    Get available time slots for staff (no auth required - for AI agent)
-    """
+    """Get available time slots for staff (no auth required - for AI agent)"""
     return await AppointmentService.get_available_slots(staff_id, start_date, end_date)
 
 
@@ -82,4 +76,3 @@ async def cancel_appointment(
 ):
     """Cancel appointment"""
     return await AppointmentService.cancel_appointment(appointment_id, current_user["id"], cancellation_reason)
-
