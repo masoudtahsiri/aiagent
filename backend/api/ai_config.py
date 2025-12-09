@@ -23,9 +23,10 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
         )
     
     business = result.data[0]
+    business_id = business["id"]
     
-    roles_result = db.table("ai_roles").select("*").eq("business_id", business["id"]).eq("is_enabled", True).order("priority").execute()
-    staff_result = db.table("staff").select("*").eq("business_id", business["id"]).eq("is_active", True).execute()
+    # Get AI roles
+    roles_result = db.table("ai_roles").select("*").eq("business_id", business_id).eq("is_enabled", True).order("priority").execute()
     
     ai_roles = []
     for role in (roles_result.data if roles_result.data else []):
@@ -41,10 +42,83 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
             "priority": role.get("priority", 0)
         })
     
+    # Get staff with full details
+    staff_result = db.table("staff").select("*").eq("business_id", business_id).eq("is_active", True).execute()
+    
+    staff_list = []
+    for staff in (staff_result.data if staff_result.data else []):
+        # Get services this staff can perform
+        staff_services_result = db.table("staff_services").select("service_id").eq("staff_id", staff["id"]).execute()
+        service_ids = [ss["service_id"] for ss in (staff_services_result.data or [])]
+        
+        staff_list.append({
+            "id": staff["id"],
+            "name": staff["name"],
+            "title": staff["title"],
+            "specialty": staff.get("specialty"),
+            "bio": staff.get("bio"),
+            "email": staff.get("email"),
+            "phone": staff.get("phone"),
+            "service_ids": service_ids
+        })
+    
+    # Get services
+    services_result = db.table("services").select("*").eq("business_id", business_id).eq("is_active", True).order("category").order("name").execute()
+    
+    services = []
+    for svc in (services_result.data if services_result.data else []):
+        services.append({
+            "id": svc["id"],
+            "name": svc["name"],
+            "description": svc.get("description"),
+            "duration_minutes": svc["duration_minutes"],
+            "price": float(svc["price"]) if svc.get("price") else None,
+            "category": svc.get("category")
+        })
+    
+    # Get business hours
+    hours_result = db.table("business_hours").select("*").eq("business_id", business_id).order("day_of_week").execute()
+    
+    business_hours = []
+    for h in (hours_result.data if hours_result.data else []):
+        business_hours.append({
+            "day_of_week": h["day_of_week"],
+            "is_open": h["is_open"],
+            "open_time": h.get("open_time"),
+            "close_time": h.get("close_time")
+        })
+    
+    # Get knowledge base / FAQs
+    kb_result = db.table("knowledge_base").select("*").eq("business_id", business_id).eq("is_active", True).execute()
+    
+    knowledge_base = []
+    for kb in (kb_result.data if kb_result.data else []):
+        knowledge_base.append({
+            "id": kb["id"],
+            "category": kb.get("category"),
+            "question": kb["question"],
+            "answer": kb["answer"]
+        })
+    
     return {
-        "business": business,
+        "business": {
+            "id": business["id"],
+            "business_name": business["business_name"],
+            "industry": business.get("industry"),
+            "phone_number": business.get("phone_number"),
+            "ai_phone_number": business.get("ai_phone_number"),
+            "address": business.get("address"),
+            "city": business.get("city"),
+            "state": business.get("state"),
+            "zip_code": business.get("zip_code"),
+            "website": business.get("website"),
+            "timezone": business.get("timezone", "America/New_York")
+        },
         "ai_roles": ai_roles,
-        "staff": staff_result.data if staff_result.data else []
+        "staff": staff_list,
+        "services": services,
+        "business_hours": business_hours,
+        "knowledge_base": knowledge_base
     }
 
 

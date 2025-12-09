@@ -2,7 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.api import auth, businesses, staff, customers, appointments, ai_config
+from backend.api import (
+    auth, businesses, staff, customers, appointments, ai_config,
+    services, knowledge_base, call_logs, business_hours, appointments_agent
+)
 
 
 app = FastAPI(
@@ -19,12 +22,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Auth & Core
 app.include_router(auth.router)
 app.include_router(businesses.router)
 app.include_router(staff.router)
 app.include_router(customers.router)
 app.include_router(appointments.router)
 app.include_router(ai_config.router)
+
+# New endpoints
+app.include_router(services.router)
+app.include_router(knowledge_base.router)
+app.include_router(call_logs.router)
+app.include_router(business_hours.router)
+app.include_router(appointments_agent.router)
 
 
 @app.get("/")

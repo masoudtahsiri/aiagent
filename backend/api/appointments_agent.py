@@ -1,0 +1,528 @@
+"""Appointment endpoints for AI agent (no authentication required)"""
+
+from fastapi import APIRouter, Query, HTTPException, status
+
+from typing import Optional
+
+from datetime import date
+
+
+
+from backend.database.supabase_client import get_db
+
+from backend.services.reminder_service import ReminderService
+
+
+
+router = APIRouter(prefix="/api/agent/appointments", tags=["Agent Appointments"])
+
+
+
+
+
+@router.post("/book")
+
+async def book_appointment_for_agent(
+
+    business_id: str,
+
+    customer_id: str,
+
+    staff_id: str,
+
+    appointment_date: str,
+
+    appointment_time: str,
+
+    duration_minutes: int = 30,
+
+    service_id: Optional[str] = None,
+
+    notes: Optional[str] = None
+
+):
+
+    """Book appointment (no auth - for AI agent)"""
+
+    db = get_db()
+
+    
+
+    # Verify business exists
+
+    business_result = db.table("businesses").select("id").eq("id", business_id).eq("is_active", True).execute()
+
+    if not business_result.data:
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Business not found")
+
+    
+
+    # Verify customer exists
+
+    customer_result = db.table("customers").select("id").eq("id", customer_id).eq("business_id", business_id).execute()
+
+    if not customer_result.data:
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+
+    
+
+    # Verify staff exists
+
+    staff_result = db.table("staff").select("id, name").eq("id", staff_id).eq("business_id", business_id).execute()
+
+    if not staff_result.data:
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff not found")
+
+    
+
+    # Normalize time format
+
+    if len(appointment_time) == 5:
+
+        appointment_time_db = appointment_time + ":00"
+
+    else:
+
+        appointment_time_db = appointment_time
+
+    
+
+    # Check if slot is available
+
+    slot_result = db.table("time_slots").select("*").eq("staff_id", staff_id).eq("date", appointment_date).eq("time", appointment_time_db).eq("is_booked", False).eq("is_blocked", False).execute()
+
+    
+
+    if not slot_result.data:
+
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Time slot is not available")
+
+    
+
+    slot_id = slot_result.data[0]["id"]
+
+    
+
+    # Create appointment
+
+    appointment_data = {
+
+        "business_id": business_id,
+
+        "customer_id": customer_id,
+
+        "staff_id": staff_id,
+
+        "service_id": service_id,
+
+        "slot_id": slot_id,
+
+        "appointment_date": appointment_date,
+
+        "appointment_time": appointment_time_db,
+
+        "duration_minutes": duration_minutes,
+
+        "notes": notes,
+
+        "status": "scheduled",
+
+        "created_via": "ai_phone",
+
+        "reminder_sent_email": False,
+
+        "reminder_sent_call": False,
+
+        "reminder_sent_sms": False
+
+    }
+
+    
+
+    result = db.table("appointments").insert(appointment_data).execute()
+
+    
+
+    if not result.data:
+
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create appointment")
+
+    
+
+    appointment = result.data[0]
+
+    
+
+    # Mark slot as booked
+
+    db.table("time_slots").update({"is_booked": True}).eq("id", slot_id).execute()
+
+    
+
+    # Update customer stats
+
+    customer_data = db.table("customers").select("total_appointments").eq("id", customer_id).execute()
+
+    current_total = customer_data.data[0].get("total_appointments", 0) if customer_data.data else 0
+
+    db.table("customers").update({
+
+        "total_appointments": current_total + 1,
+
+        "last_visit_date": appointment_date
+
+    }).eq("id", customer_id).execute()
+
+    
+
+    # Log to appointment history
+
+    db.table("appointment_history").insert({
+
+        "appointment_id": appointment["id"],
+
+        "changed_by": "ai",
+
+        "change_type": "created",
+
+        "new_date": appointment_date,
+
+        "new_time": appointment_time_db,
+
+        "notes": "Booked via AI phone agent"
+
+    }).execute()
+
+    
+
+    # Create reminders
+
+    try:
+
+        await ReminderService.create_reminders_for_appointment(appointment)
+
+    except Exception as e:
+
+        # Log but don't fail the booking
+
+        print(f"Warning: Failed to create reminders: {e}")
+
+    
+
+    return {
+
+        "success": True,
+
+        "appointment": appointment,
+
+        "staff_name": staff_result.data[0]["name"]
+
+    }
+
+
+
+
+
+@router.get("/customer/{customer_id}")
+
+async def get_customer_appointments(
+
+    customer_id: str,
+
+    status: Optional[str] = Query(None),
+
+    upcoming_only: bool = Query(True)
+
+):
+
+    """Get appointments for a customer (no auth - for AI agent)"""
+
+    db = get_db()
+
+    
+
+    query = db.table("appointments").select(
+
+        "*, staff(name, title)"
+
+    ).eq("customer_id", customer_id)
+
+    
+
+    if status:
+
+        query = query.eq("status", status)
+
+    
+
+    if upcoming_only:
+
+        from datetime import date as date_type
+
+        today = date_type.today().isoformat()
+
+        query = query.gte("appointment_date", today)
+
+    
+
+    query = query.order("appointment_date").order("appointment_time")
+
+    
+
+    result = query.execute()
+
+    
+
+    return result.data if result.data else []
+
+
+
+
+
+@router.post("/{appointment_id}/cancel")
+
+async def cancel_appointment_for_agent(
+
+    appointment_id: str,
+
+    cancellation_reason: Optional[str] = None
+
+):
+
+    """Cancel appointment (no auth - for AI agent)"""
+
+    db = get_db()
+
+    
+
+    # Get appointment
+
+    apt_result = db.table("appointments").select("*").eq("id", appointment_id).execute()
+
+    
+
+    if not apt_result.data:
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
+
+    
+
+    appointment = apt_result.data[0]
+
+    
+
+    if appointment["status"] == "cancelled":
+
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment is already cancelled")
+
+    
+
+    # Free up slot
+
+    if appointment.get("slot_id"):
+
+        db.table("time_slots").update({"is_booked": False}).eq("id", appointment["slot_id"]).execute()
+
+    
+
+    # Update appointment
+
+    db.table("appointments").update({
+
+        "status": "cancelled",
+
+        "cancellation_reason": cancellation_reason
+
+    }).eq("id", appointment_id).execute()
+
+    
+
+    # Log to history
+
+    db.table("appointment_history").insert({
+
+        "appointment_id": appointment_id,
+
+        "changed_by": "ai",
+
+        "change_type": "cancelled",
+
+        "old_date": appointment["appointment_date"],
+
+        "old_time": appointment["appointment_time"],
+
+        "notes": cancellation_reason or "Cancelled via AI phone agent"
+
+    }).execute()
+
+    
+
+    # Cancel reminders
+
+    await ReminderService.cancel_appointment_reminders(appointment_id)
+
+    
+
+    return {"success": True, "message": "Appointment cancelled successfully"}
+
+
+
+
+
+@router.post("/{appointment_id}/reschedule")
+
+async def reschedule_appointment_for_agent(
+
+    appointment_id: str,
+
+    new_date: str,
+
+    new_time: str,
+
+    staff_id: Optional[str] = None
+
+):
+
+    """Reschedule appointment (no auth - for AI agent)"""
+
+    db = get_db()
+
+    
+
+    # Get appointment
+
+    apt_result = db.table("appointments").select("*").eq("id", appointment_id).execute()
+
+    
+
+    if not apt_result.data:
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
+
+    
+
+    appointment = apt_result.data[0]
+
+    
+
+    if appointment["status"] == "cancelled":
+
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reschedule cancelled appointment")
+
+    
+
+    # Use existing staff if not provided
+
+    target_staff_id = staff_id or appointment["staff_id"]
+
+    
+
+    # Normalize time format
+
+    if len(new_time) == 5:
+
+        new_time_db = new_time + ":00"
+
+    else:
+
+        new_time_db = new_time
+
+    
+
+    # Check new slot availability
+
+    slot_result = db.table("time_slots").select("*").eq("staff_id", target_staff_id).eq("date", new_date).eq("time", new_time_db).eq("is_booked", False).eq("is_blocked", False).execute()
+
+    
+
+    if not slot_result.data:
+
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New time slot is not available")
+
+    
+
+    new_slot_id = slot_result.data[0]["id"]
+
+    
+
+    # Free old slot
+
+    if appointment.get("slot_id"):
+
+        db.table("time_slots").update({"is_booked": False}).eq("id", appointment["slot_id"]).execute()
+
+    
+
+    # Book new slot
+
+    db.table("time_slots").update({"is_booked": True}).eq("id", new_slot_id).execute()
+
+    
+
+    # Update appointment
+
+    db.table("appointments").update({
+
+        "appointment_date": new_date,
+
+        "appointment_time": new_time_db,
+
+        "staff_id": target_staff_id,
+
+        "slot_id": new_slot_id
+
+    }).eq("id", appointment_id).execute()
+
+    
+
+    # Log to history
+
+    db.table("appointment_history").insert({
+
+        "appointment_id": appointment_id,
+
+        "changed_by": "ai",
+
+        "change_type": "rescheduled",
+
+        "old_date": appointment["appointment_date"],
+
+        "old_time": appointment["appointment_time"],
+
+        "new_date": new_date,
+
+        "new_time": new_time_db,
+
+        "notes": "Rescheduled via AI phone agent"
+
+    }).execute()
+
+    
+
+    # Cancel old reminders and create new ones
+
+    await ReminderService.cancel_appointment_reminders(appointment_id)
+
+    
+
+    # Get updated appointment
+
+    updated_apt = db.table("appointments").select("*").eq("id", appointment_id).execute()
+
+    if updated_apt.data:
+
+        try:
+
+            await ReminderService.create_reminders_for_appointment(updated_apt.data[0])
+
+        except Exception as e:
+
+            print(f"Warning: Failed to create reminders: {e}")
+
+    
+
+    return {"success": True, "message": "Appointment rescheduled successfully"}
+

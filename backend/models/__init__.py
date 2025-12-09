@@ -16,6 +16,10 @@ from .appointment import (
     AppointmentWithDetails, TimeSlot
 )
 from .ai_config import AIRoleCreate, AIRoleUpdate, AIRoleResponse
+from .service import ServiceCreate, ServiceUpdate, ServiceResponse
+from .knowledge_base import FAQCreate, FAQUpdate, FAQResponse
+from .call_log import CallLogCreate, CallLogUpdate, CallLogResponse
+from .business_hours import BusinessHourEntry, BusinessHoursSet, BusinessClosureCreate, BusinessClosureResponse
 
 __all__ = [
     # Auth
@@ -34,5 +38,13 @@ __all__ = [
     "AppointmentWithDetails", "TimeSlot",
     # AI Config
     "AIRoleCreate", "AIRoleUpdate", "AIRoleResponse",
+    # Service
+    "ServiceCreate", "ServiceUpdate", "ServiceResponse",
+    # Knowledge Base
+    "FAQCreate", "FAQUpdate", "FAQResponse",
+    # Call Log
+    "CallLogCreate", "CallLogUpdate", "CallLogResponse",
+    # Business Hours
+    "BusinessHourEntry", "BusinessHoursSet", "BusinessClosureCreate", "BusinessClosureResponse",
 ]
 
