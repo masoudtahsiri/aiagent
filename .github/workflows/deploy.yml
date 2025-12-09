@@ -58,10 +58,33 @@ jobs:
             pip install --upgrade pip
             pip install -r requirements.txt
             
+            # Update systemd service file to use correct command and load .env
+            echo "Updating systemd service configuration..."
+            cat > /etc/systemd/system/aiagent-backend.service << 'EOFSERVICE'
+[Unit]
+Description=AI Receptionist FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/aiagent
+Environment="PATH=/opt/aiagent/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONPATH=/opt/aiagent"
+EnvironmentFile=/opt/aiagent/backend/.env
+ExecStart=/opt/aiagent/backend/venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOFSERVICE
+            systemctl daemon-reload
+            
             # Restart backend service
             echo "Restarting backend service..."
             systemctl restart aiagent-backend
-            sleep 3
+            sleep 5
             systemctl status aiagent-backend --no-pager | head -5
             
             # ============================================
@@ -104,6 +127,23 @@ jobs:
               sed -i "s|BACKEND_URL=.*|BACKEND_URL=http://127.0.0.1:8000|" .env
             else
               echo "BACKEND_URL=http://127.0.0.1:8000" >> .env
+            fi
+            
+            # Update livekit.yaml with API keys from .env
+            echo "Updating livekit.yaml with API keys..."
+            if [ -f .env ] && [ -f livekit.yaml ]; then
+              API_KEY=$(grep "^LIVEKIT_API_KEY=" .env | cut -d'=' -f2)
+              API_SECRET=$(grep "^LIVEKIT_API_SECRET=" .env | cut -d'=' -f2)
+              if [ -n "$API_KEY" ] && [ -n "$API_SECRET" ]; then
+                # Replace placeholder or existing keys in livekit.yaml
+                if grep -q "YOUR_API_KEY_HERE" livekit.yaml; then
+                  sed -i "s/YOUR_API_KEY_HERE: YOUR_API_SECRET_HERE/$API_KEY: $API_SECRET/" livekit.yaml
+                else
+                  # Update existing keys if they don't match
+                  sed -i "s/^keys:.*/keys:\n  $API_KEY: $API_SECRET/" livekit.yaml
+                fi
+                echo "Updated livekit.yaml with API keys"
+              fi
             fi
             
             # Rebuild and restart containers
