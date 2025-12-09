@@ -32,6 +32,9 @@ backend/.env
 livekit-gemini/.env
 n8n/.env
 
+# SIP configuration (contains API keys on server)
+livekit-gemini/sip.yaml
+
 # Never commit these
 SERVER_INFO.md
 **/secrets/
