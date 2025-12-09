@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-import sys
-sys.path.insert(0, "backend")
-from database.supabase_client import get_db
+# Run with: python -m check_customers (from project root)
+from backend.database.supabase_client import get_db
 
 db = get_db()
 business_id = "931211d9-e024-4897-ae46-ad60b8009399"
