@@ -1,0 +1,132 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy Backend and LiveKit Agent
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            set -e
+            
+            echo "🚀 Starting deployment..."
+            
+            # ============================================
+            # Deploy Backend
+            # ============================================
+            echo ""
+            echo "📦 Deploying Backend..."
+            cd /opt/aiagent
+            
+            # Clone or pull latest code
+            if [ -d .git ]; then
+              echo "Pulling latest code..."
+              git pull origin main
+            else
+              echo "Cloning repository..."
+              git clone https://github.com/${{ github.repository }}.git /tmp/aiagent-temp
+              cp -r /tmp/aiagent-temp/backend/* backend/
+              cp -r /tmp/aiagent-temp/backend/.* backend/ 2>/dev/null || true
+              rm -rf /tmp/aiagent-temp
+            fi
+            
+            cd backend
+            
+            # Update virtual environment
+            echo "Updating dependencies..."
+            if [ ! -d venv ]; then
+              python3 -m venv venv
+            fi
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements.txt
+            
+            # Restart backend service
+            echo "Restarting backend service..."
+            systemctl restart aiagent-backend
+            sleep 3
+            systemctl status aiagent-backend --no-pager | head -5
+            
+            # ============================================
+            # Deploy LiveKit-Gemini Agent
+            # ============================================
+            echo ""
+            echo "📦 Deploying LiveKit-Gemini Agent..."
+            cd /opt/livekit-gemini
+            
+            # Clone or pull latest code
+            if [ -d .git ]; then
+              echo "Pulling latest code..."
+              git pull origin main
+            else
+              echo "Copying latest agent files..."
+              cd /opt/aiagent
+              if [ -d livekit-gemini ]; then
+                cp -r livekit-gemini/* /opt/livekit-gemini/
+                cp -r livekit-gemini/.* /opt/livekit-gemini/ 2>/dev/null || true
+              fi
+              cd /opt/livekit-gemini
+            fi
+            
+            # Ensure .env exists and has required values
+            if [ ! -f .env ]; then
+              echo "Creating .env file..."
+              cp .env.example .env 2>/dev/null || touch .env
+            fi
+            
+            # Update .env with Gemini API key if provided
+            if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+              echo "Updating GEMINI_API_KEY in .env..."
+              if grep -q "GEMINI_API_KEY=" .env; then
+                sed -i "s|GEMINI_API_KEY=.*|GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}|" .env
+              else
+                echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+              fi
+            fi
+            
+            # Update BACKEND_URL if needed
+            if grep -q "BACKEND_URL=" .env; then
+              sed -i "s|BACKEND_URL=.*|BACKEND_URL=http://127.0.0.1:8000|" .env
+            else
+              echo "BACKEND_URL=http://127.0.0.1:8000" >> .env
+            fi
+            
+            # Rebuild and restart containers
+            echo "Rebuilding and restarting containers..."
+            docker-compose down
+            docker-compose build --no-cache agent
+            docker-compose up -d
+            
+            echo ""
+            echo "Waiting for services to start..."
+            sleep 10
+            
+            # Check status
+            echo ""
+            echo "✅ Deployment complete!"
+            echo ""
+            echo "=== Service Status ==="
+            echo "Backend:"
+            systemctl status aiagent-backend --no-pager | head -3
+            echo ""
+            echo "LiveKit Containers:"
+            docker-compose ps
+            echo ""
+            echo "=== Health Checks ==="
+            curl -s http://localhost:8000/health || echo "Backend health check failed"
+            echo ""
+
