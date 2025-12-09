@@ -530,6 +530,78 @@ async def reschedule_appointment_for_agent(
     return {"success": True, "message": "Appointment rescheduled successfully"}
 
 
+@router.get("/customer-context/{customer_id}")
+async def get_customer_context(customer_id: str):
+    """Get full customer context for AI agent (no auth)
+
+    
+    Returns:
+    - Customer tags
+    - Recent appointments (last 10)
+    - Appointment history (changes, cancellations)
+    """
+    db = get_db()
+    
+    # Verify customer exists
+    customer_result = db.table("customers").select("id, business_id").eq("id", customer_id).execute()
+    if not customer_result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+    
+    business_id = customer_result.data[0]["business_id"]
+    
+    # Get customer tags
+    tags_result = db.table("customer_tags").select("tag").eq("customer_id", customer_id).execute()
+    tags = [t["tag"] for t in (tags_result.data or [])]
+    
+    # Get recent appointments (last 10, any status)
+    appointments_result = db.table("appointments").select(
+        "id, appointment_date, appointment_time, status, notes, staff_id, service_id, cancellation_reason, created_at"
+    ).eq("customer_id", customer_id).order("appointment_date", desc=True).limit(10).execute()
+    
+    recent_appointments = []
+    for apt in (appointments_result.data or []):
+        # Get staff name
+        staff_name = None
+        if apt.get("staff_id"):
+            staff_result = db.table("staff").select("name").eq("id", apt["staff_id"]).execute()
+            if staff_result.data:
+                staff_name = staff_result.data[0]["name"]
+        
+        # Get service name
+        service_name = None
+        if apt.get("service_id"):
+            service_result = db.table("services").select("name").eq("id", apt["service_id"]).execute()
+            if service_result.data:
+                service_name = service_result.data[0]["name"]
+        
+        recent_appointments.append({
+            "id": apt["id"],
+            "date": apt["appointment_date"],
+            "time": apt["appointment_time"],
+            "status": apt["status"],
+            "staff_name": staff_name,
+            "service_name": service_name,
+            "notes": apt.get("notes"),
+            "cancellation_reason": apt.get("cancellation_reason")
+        })
+    
+    # Count cancellations and no-shows
+    cancellation_count = len([a for a in recent_appointments if a["status"] == "cancelled"])
+    no_show_count = len([a for a in recent_appointments if a["status"] == "no_show"])
+    completed_count = len([a for a in recent_appointments if a["status"] == "completed"])
+    
+    return {
+        "customer_id": customer_id,
+        "tags": tags,
+        "recent_appointments": recent_appointments,
+        "stats": {
+            "recent_completed": completed_count,
+            "recent_cancelled": cancellation_count,
+            "recent_no_shows": no_show_count
+        }
+    }
+
+
 @customer_router.put("/{customer_id}")
 async def update_customer_for_agent(
     customer_id: str,
@@ -544,7 +616,11 @@ async def update_customer_for_agent(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
     
     # Only allow certain fields to be updated
-    allowed_fields = ['email', 'phone', 'address', 'city', 'state', 'zip_code', 'first_name', 'last_name', 'notes']
+    allowed_fields = [
+        'email', 'phone', 'address', 'city', 'state', 'zip_code', 
+        'first_name', 'last_name', 'notes',
+        'preferred_contact_method', 'accommodations', 'language'
+    ]
     filtered_data = {k: v for k, v in update_data.items() if k in allowed_fields and v is not None}
     
     if not filtered_data:

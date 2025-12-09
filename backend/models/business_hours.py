@@ -64,3 +64,5 @@ class BusinessClosureResponse(BaseModel):
 
         from_attributes = True
 
+
+

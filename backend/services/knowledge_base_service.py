@@ -240,3 +240,5 @@ class KnowledgeBaseService:
 
         return {"message": "FAQ deleted successfully"}
 
+
+

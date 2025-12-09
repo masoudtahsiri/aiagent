@@ -62,3 +62,5 @@ class TimeSlot(BaseModel):
     is_booked: bool
 
 
+
+

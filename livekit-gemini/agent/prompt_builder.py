@@ -1,28 +1,44 @@
 """
-Prompt Builder - Clean, modular system prompt generation
+Prompt Builder - Comprehensive system prompt generation
 
-Builds a well-organized prompt from business configuration.
+Builds well-organized prompts from business configuration.
 Works with any business type (dental, salon, legal, etc.)
+Includes all relevant context for natural conversation.
 """
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 
+# Day name mapping
+DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+
 class PromptBuilder:
-    """Builds clean, organized system prompts from business data"""
+    """Builds comprehensive, organized system prompts from business data"""
     
-    def __init__(self, business_config: Dict, customer: Optional[Dict] = None, ai_config: Optional[Dict] = None):
+    def __init__(
+        self, 
+        business_config: Dict, 
+        customer: Optional[Dict] = None, 
+        customer_context: Optional[Dict] = None,
+        ai_config: Optional[Dict] = None
+    ):
         self.business = business_config.get("business", {})
         self.staff = business_config.get("staff", [])
         self.services = business_config.get("services", [])
         self.hours = business_config.get("business_hours", [])
+        self.closures = business_config.get("business_closures", [])
         self.knowledge = business_config.get("knowledge_base", [])
         self.customer = customer
+        self.customer_context = customer_context  # tags, history, stats
         self.ai_config = ai_config or {}
         
         # Build service lookup for staff mapping
         self.service_map = {s["id"]: s for s in self.services}
+        
+        # Build staff lookup
+        self.staff_map = {s["id"]: s for s in self.staff}
     
     def build(self) -> str:
         """Build the complete system prompt"""
@@ -30,6 +46,7 @@ class PromptBuilder:
             self._build_identity(),
             self._build_business(),
             self._build_hours(),
+            self._build_closures(),
             self._build_team(),
             self._build_services(),
             self._build_knowledge(),
@@ -69,6 +86,12 @@ Your style: Friendly, professional, efficient. Keep responses concise for phone 
 Your job: Help potential customers understand services, answer questions, book consultations.
 Your style: Helpful, informative, not pushy. Focus on customer needs."""
         
+        elif role_type == "support":
+            return f"""You are {name}, handling customer support at {business_name}.
+
+Your job: Help customers with issues, answer questions, resolve concerns.
+Your style: Patient, empathetic, solution-focused."""
+        
         else:
             return f"""You are {name} at {business_name}.
 
@@ -81,6 +104,10 @@ Your style: Friendly, professional, helpful."""
         name = b.get("business_name", "")
         
         lines = [f"BUSINESS: {name}"]
+        
+        # Industry context
+        if b.get("industry"):
+            lines.append(f"Industry: {b['industry']}")
         
         # Address
         address_parts = [b.get("address"), b.get("city"), b.get("state"), b.get("zip_code")]
@@ -101,12 +128,11 @@ Your style: Friendly, professional, helpful."""
         if not self.hours:
             return ""
         
-        days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        lines = ["HOURS:"]
+        lines = ["BUSINESS HOURS:"]
         
         for h in sorted(self.hours, key=lambda x: x.get("day_of_week", 0)):
             day_idx = h.get("day_of_week", 0)
-            day_name = days[day_idx] if 0 <= day_idx < 7 else "Unknown"
+            day_name = DAY_NAMES[day_idx] if 0 <= day_idx < 7 else "Unknown"
             
             if h.get("is_open"):
                 open_t = self._format_time(h.get("open_time", ""))
@@ -117,8 +143,39 @@ Your style: Friendly, professional, helpful."""
         
         return "\n".join(lines)
     
+    def _build_closures(self) -> str:
+        """Build upcoming closures section"""
+        if not self.closures:
+            return ""
+        
+        # Only show next 30 days of closures
+        today = datetime.now().date()
+        max_date = today + timedelta(days=30)
+        
+        upcoming = []
+        for c in self.closures:
+            try:
+                closure_date = datetime.strptime(c["date"], "%Y-%m-%d").date()
+                if today <= closure_date <= max_date:
+                    upcoming.append(c)
+            except (ValueError, KeyError):
+                continue
+        
+        if not upcoming:
+            return ""
+        
+        lines = ["UPCOMING CLOSURES:"]
+        for c in upcoming[:5]:  # Max 5 closures
+            date_str = self._format_date(c["date"])
+            reason = c.get("reason", "Closed")
+            lines.append(f"  {date_str}: {reason}")
+        
+        lines.append("→ When these dates are requested, explain why unavailable.")
+        
+        return "\n".join(lines)
+    
     def _build_team(self) -> str:
-        """Build staff section with their services"""
+        """Build staff section with their services and schedules"""
         if not self.staff:
             return ""
         
@@ -128,11 +185,13 @@ Your style: Friendly, professional, helpful."""
             name = s.get("name", "Staff")
             title = s.get("title", "")
             
-            # Build staff line
+            # Build staff header
             if title:
                 staff_line = f"  {name} ({title})"
             else:
                 staff_line = f"  {name}"
+            
+            lines.append(staff_line)
             
             # Add services this staff can perform
             service_ids = s.get("service_ids", [])
@@ -142,13 +201,40 @@ Your style: Friendly, professional, helpful."""
                     if sid in self.service_map:
                         service_names.append(self.service_map[sid]["name"])
                 if service_names:
-                    staff_line += f" - does: {', '.join(service_names)}"
-            
-            # Add specialty if no service mapping
+                    lines.append(f"    Services: {', '.join(service_names)}")
             elif s.get("specialty"):
-                staff_line += f" - {s['specialty']}"
+                lines.append(f"    Specialty: {s['specialty']}")
             
-            lines.append(staff_line)
+            # Add working schedule
+            schedule = s.get("availability_schedule", [])
+            if schedule:
+                working_days = []
+                for avail in schedule:
+                    day_idx = avail.get("day_of_week", 0)
+                    day_name = DAY_NAMES[day_idx] if 0 <= day_idx < 7 else "?"
+                    start = self._format_time(avail.get("start_time", ""))
+                    end = self._format_time(avail.get("end_time", ""))
+                    working_days.append(f"{day_name} {start}-{end}")
+                if working_days:
+                    lines.append(f"    Schedule: {', '.join(working_days)}")
+            
+            # Add upcoming exceptions (vacation, sick, etc.)
+            exceptions = s.get("availability_exceptions", [])
+            if exceptions:
+                exception_notes = []
+                for exc in exceptions[:3]:  # Max 3 exceptions per staff
+                    exc_date = self._format_date(exc.get("date", ""))
+                    exc_type = exc.get("type", "unavailable")
+                    exc_reason = exc.get("reason", "")
+                    
+                    if exc_type == "closed":
+                        if exc_reason:
+                            exception_notes.append(f"{exc_date}: {exc_reason}")
+                        else:
+                            exception_notes.append(f"{exc_date}: Unavailable")
+                
+                if exception_notes:
+                    lines.append(f"    Time off: {'; '.join(exception_notes)}")
         
         return "\n".join(lines)
     
@@ -215,45 +301,149 @@ Your style: Friendly, professional, helpful."""
             return self._build_new_customer()
     
     def _build_existing_customer(self) -> str:
-        """Build context for returning customer"""
+        """Build comprehensive context for returning customer"""
         c = self.customer
-        name = c.get("first_name", "")
+        ctx = self.customer_context or {}
         
-        lines = [f"CALLER: {name} (returning customer)"]
+        first_name = c.get("first_name", "")
+        last_name = c.get("last_name", "")
+        full_name = f"{first_name} {last_name}".strip() or "Customer"
         
-        # Only include relevant details
-        if c.get("notes"):
-            lines.append(f"Notes: {c['notes']}")
+        lines = [f"CALLER: {full_name} (returning customer)"]
+        lines.append("")
+        
+        # Contact information (AI has this - should NOT ask)
+        lines.append("Contact info on file:")
+        if c.get("phone"):
+            lines.append(f"  Phone: {c['phone']}")
+        if c.get("email"):
+            lines.append(f"  Email: {c['email']}")
+        if c.get("address"):
+            address_parts = [c.get("address"), c.get("city"), c.get("state"), c.get("zip_code")]
+            address = ", ".join(p for p in address_parts if p)
+            if address:
+                lines.append(f"  Address: {address}")
+        
+        # Personal details
+        if c.get("date_of_birth"):
+            lines.append(f"  Date of birth: {c['date_of_birth']}")
+        
+        # Preferences
+        preferences = []
+        if c.get("preferred_contact_method") and c.get("preferred_contact_method") != "any":
+            preferences.append(f"prefers {c['preferred_contact_method']} contact")
+        if c.get("language"):
+            preferences.append(f"language: {c['language']}")
+        if preferences:
+            lines.append(f"  Preferences: {', '.join(preferences)}")
+        
+        # Special accommodations - IMPORTANT
+        if c.get("accommodations"):
+            lines.append("")
+            lines.append(f"⚠️ ACCOMMODATIONS: {c['accommodations']}")
+        
+        # Preferred staff
+        if c.get("preferred_staff_id") and c["preferred_staff_id"] in self.staff_map:
+            pref_staff = self.staff_map[c["preferred_staff_id"]]
+            lines.append(f"  Preferred provider: {pref_staff.get('name', 'Unknown')}")
+        
+        # Customer tenure and value
+        lines.append("")
+        lines.append("Customer history:")
+        if c.get("customer_since"):
+            try:
+                since = datetime.fromisoformat(c["customer_since"].replace("Z", "+00:00"))
+                tenure = (datetime.now(since.tzinfo) - since).days // 365
+                if tenure >= 1:
+                    lines.append(f"  Customer for {tenure} year(s)")
+                else:
+                    lines.append(f"  New customer this year")
+            except:
+                pass
         
         if c.get("total_appointments"):
-            lines.append(f"Previous visits: {c['total_appointments']}")
-        
+            lines.append(f"  Total visits: {c['total_appointments']}")
         if c.get("last_visit_date"):
-            lines.append(f"Last visit: {c['last_visit_date']}")
+            lines.append(f"  Last visit: {c['last_visit_date']}")
+        if c.get("total_spent") and float(c.get("total_spent", 0)) > 0:
+            lines.append(f"  Total spent: ${float(c['total_spent']):.2f}")
         
-        # Key instruction
+        # Customer tags (VIP, etc.)
+        tags = ctx.get("tags", [])
+        if tags:
+            lines.append(f"  Tags: {', '.join(tags)}")
+        
+        # Recent appointment history
+        recent = ctx.get("recent_appointments", [])
+        if recent:
+            lines.append("")
+            lines.append("Recent appointments:")
+            for apt in recent[:5]:
+                date = apt.get("date", "")
+                status = apt.get("status", "")
+                staff_name = apt.get("staff_name", "")
+                service_name = apt.get("service_name", "")
+                
+                apt_desc = f"  {date}: {status}"
+                if service_name:
+                    apt_desc += f" - {service_name}"
+                if staff_name:
+                    apt_desc += f" with {staff_name}"
+                if status == "cancelled" and apt.get("cancellation_reason"):
+                    apt_desc += f" (reason: {apt['cancellation_reason']})"
+                lines.append(apt_desc)
+        
+        # Stats from context
+        stats = ctx.get("stats", {})
+        if stats.get("recent_no_shows", 0) >= 2:
+            lines.append("")
+            lines.append(f"⚠️ Note: {stats['recent_no_shows']} recent no-shows")
+        
+        # Notes
+        if c.get("notes"):
+            lines.append("")
+            lines.append(f"Notes: {c['notes']}")
+        
+        # Key instructions
         lines.append("")
-        lines.append("→ Address them by name. Do NOT ask for name, phone, or email - you have it.")
+        lines.append("IMPORTANT:")
+        lines.append("→ Address them by first name ({}).".format(first_name or "their name"))
+        lines.append("→ Do NOT ask for: name, phone number, email, or address - you already have it.")
+        lines.append("→ If they want to update contact info, use the update tool.")
         
         return "\n".join(lines)
     
     def _build_new_customer(self) -> str:
         """Build context for new customer"""
-        return """CALLER: New customer
+        return """CALLER: New customer (not in system)
 
-→ Collect their first name and last name naturally during conversation.
-→ Use create_new_customer tool to save their info before booking."""
+You need to collect:
+- First name
+- Last name
+
+Optional (only if relevant to booking):
+- Email (for confirmation)
+
+IMPORTANT:
+→ Collect name naturally during conversation, not as interrogation.
+→ Use create_new_customer tool to save their info before booking.
+→ Phone number is captured automatically from caller ID."""
     
     def _build_behavior(self) -> str:
         """Build behavior rules section"""
         rules = [
-            "RULES:",
-            "• Keep responses short - this is a phone call, not text",
-            "• Confirm details before booking (date, time, staff)",
+            "CONVERSATION RULES:",
+            "• Keep responses short and natural - this is a phone call",
+            "• Confirm details before booking (date, time, provider)",
             "• If asked something you don't know, offer to take a message",
             "• Use tools to check real availability - don't guess",
-            "• When slots unavailable, offer alternatives",
+            "• When slots unavailable, explain why if you know (closure, staff off, etc.)",
+            "• Offer alternatives when first choice isn't available",
         ]
+        
+        # Add accommodation reminder if exists
+        if self.customer and self.customer.get("accommodations"):
+            rules.append(f"• Remember: Customer has accommodations noted - be mindful")
         
         return "\n".join(rules)
     
@@ -283,6 +473,17 @@ Your style: Friendly, professional, helpful."""
                 return f"{display_hour}:{minute:02d} {period}"
         except (ValueError, IndexError):
             return time_str
+    
+    def _format_date(self, date_str: str) -> str:
+        """Format date for speech: 2025-01-15 -> Wednesday, January 15"""
+        if not date_str:
+            return ""
+        
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            return date_obj.strftime("%A, %B %d")
+        except ValueError:
+            return date_str
 
 
 def build_greeting(business_config: Dict, customer: Optional[Dict], ai_config: Optional[Dict]) -> str:
@@ -306,4 +507,3 @@ def build_greeting(business_config: Dict, customer: Optional[Dict], ai_config: O
             return f"Hello! Thanks for calling {business_name}. How can I help you today?"
     else:
         return f"Hello! Thanks for calling {business_name}. How can I help you today?"
-

@@ -112,3 +112,5 @@ async def delete_closure(
 
     return await BusinessHoursService.delete_closure(closure_id, current_user["id"])
 
+
+

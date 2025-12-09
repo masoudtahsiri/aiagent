@@ -99,3 +99,5 @@ class BulkAvailabilityCreate(BaseModel):
     templates: List[AvailabilityTemplateBase]
 
 
+
+

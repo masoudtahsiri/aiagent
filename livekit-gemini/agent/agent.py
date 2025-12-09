@@ -144,10 +144,16 @@ async def entrypoint(ctx: JobContext):
     
     lookup = await backend.lookup_customer(caller_phone, business_id)
     is_existing = lookup.get("exists", False)
+    customer_context = None
     
     if is_existing:
         session_data.customer = lookup["customer"]
         logger.info(f"Existing customer: {session_data.customer.get('first_name', 'Unknown')}")
+        
+        # Fetch customer context (history, tags)
+        customer_context = await backend.get_customer_context(session_data.customer["id"])
+        if customer_context:
+            logger.info(f"Customer context loaded: {len(customer_context.get('recent_appointments', []))} recent appointments, tags: {customer_context.get('tags', [])}")
     else:
         logger.info("New customer")
     
@@ -176,6 +182,7 @@ async def entrypoint(ctx: JobContext):
     prompt_builder = PromptBuilder(
         business_config=business_config,
         customer=session_data.customer,
+        customer_context=customer_context,
         ai_config=ai_config
     )
     system_prompt = prompt_builder.build()

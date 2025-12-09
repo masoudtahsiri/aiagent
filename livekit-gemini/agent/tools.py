@@ -287,10 +287,40 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         )
         
         if not slots:
-            return {
-                "success": True,
-                "message": f"I don't see any availability with {resolved_name} in the next two weeks. Would you like me to check further out, or with someone else?"
-            }
+            # Check WHY no availability - provide context
+            staff_info = None
+            for s in staff_list:
+                if s["id"] == staff_id:
+                    staff_info = s
+                    break
+            
+            # Check for staff exceptions in the date range
+            unavailable_reasons = []
+            if staff_info:
+                exceptions = staff_info.get("availability_exceptions", [])
+                for exc in exceptions:
+                    exc_date = exc.get("date", "")
+                    exc_reason = exc.get("reason", "")
+                    if exc_reason:
+                        unavailable_reasons.append(f"{exc_date}: {exc_reason}")
+            
+            # Check business closures
+            closures = session_data.business_config.get("business_closures", [])
+            for closure in closures:
+                closure_reason = closure.get("reason", "closed")
+                unavailable_reasons.append(f"{closure.get('date', '')}: {closure_reason}")
+            
+            if unavailable_reasons:
+                reasons_text = "; ".join(unavailable_reasons[:3])
+                return {
+                    "success": True,
+                    "message": f"I don't see availability with {resolved_name} in that time range. Note: {reasons_text}. Would you like me to check further out, or with someone else?"
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": f"I don't see any availability with {resolved_name} in the next two weeks. Would you like me to check further out, or with someone else?"
+                }
         
         # Filter by time preference
         if time_preference:
@@ -699,7 +729,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 "message": "I need to verify who you are first."
             }
         
-        allowed = ['email', 'phone', 'address', 'city', 'state', 'zip_code']
+        allowed = ['email', 'phone', 'address', 'city', 'state', 'zip_code', 'preferred_contact_method', 'accommodations', 'language']
         field_clean = field.lower().replace(" ", "_")
         
         if field_clean not in allowed:

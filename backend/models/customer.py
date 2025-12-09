@@ -14,6 +14,10 @@ class CustomerBase(BaseModel):
     state: Optional[str] = None
     zip_code: Optional[str] = None
     notes: Optional[str] = None
+    # Preference fields
+    preferred_contact_method: Optional[str] = "any"  # phone, email, sms, whatsapp, any
+    accommodations: Optional[str] = None  # Free text: wheelchair, anxiety, allergies, etc.
+    language: Optional[str] = None  # Language code: en, es, tr, fr, etc.
 
 
 class CustomerCreate(CustomerBase):
@@ -31,6 +35,10 @@ class CustomerUpdate(BaseModel):
     state: Optional[str] = None
     zip_code: Optional[str] = None
     notes: Optional[str] = None
+    # Preference fields
+    preferred_contact_method: Optional[str] = None
+    accommodations: Optional[str] = None
+    language: Optional[str] = None
 
 
 class CustomerResponse(CustomerBase):
@@ -41,6 +49,7 @@ class CustomerResponse(CustomerBase):
     last_visit_date: Optional[date]
     customer_since: datetime
     is_active: bool
+    preferred_staff_id: Optional[str] = None  # Already in DB, now in response
     
     class Config:
         from_attributes = True
@@ -55,5 +64,7 @@ class CustomerLookup(BaseModel):
 class CustomerLookupResponse(BaseModel):
     exists: bool
     customer: Optional[CustomerResponse] = None
+
+
 
 

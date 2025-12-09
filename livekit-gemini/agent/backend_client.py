@@ -113,6 +113,19 @@ class BackendClient:
             logger.error(f"update_customer error: {e}")
             return None
     
+    async def get_customer_context(self, customer_id: str) -> Optional[Dict]:
+        """Get full customer context including history and tags"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/agent/appointments/customer-context/{customer_id}"
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"get_customer_context error: {e}")
+            return None
+    
     # =========================================================================
     # APPOINTMENTS
     # =========================================================================

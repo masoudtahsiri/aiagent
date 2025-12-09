@@ -11,7 +11,18 @@ router = APIRouter(prefix="/api/ai", tags=["AI Configuration"])
 
 @router.post("/lookup-by-phone")
 async def lookup_business_by_phone(lookup: PhoneNumberLookup):
-    """Lookup business by AI phone number (for agent routing - no auth)"""
+    """Lookup business by AI phone number (for agent routing - no auth)
+
+    
+    Returns complete business configuration including:
+    - Business details
+    - AI roles
+    - Staff with services and availability
+    - Services
+    - Business hours
+    - Business closures (holidays, special closures)
+    - Knowledge base / FAQs
+    """
     db = get_db()
     
     result = db.table("businesses").select("*").eq("ai_phone_number", lookup.phone_number).eq("is_active", True).execute()
@@ -47,19 +58,51 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
     
     staff_list = []
     for staff in (staff_result.data if staff_result.data else []):
+        staff_id = staff["id"]
+        
         # Get services this staff can perform
-        staff_services_result = db.table("staff_services").select("service_id").eq("staff_id", staff["id"]).execute()
+        staff_services_result = db.table("staff_services").select("service_id").eq("staff_id", staff_id).execute()
         service_ids = [ss["service_id"] for ss in (staff_services_result.data or [])]
         
+        # Get staff availability templates (regular schedule)
+        availability_result = db.table("availability_templates").select("*").eq("staff_id", staff_id).eq("is_active", True).order("day_of_week").execute()
+        
+        availability_schedule = []
+        for avail in (availability_result.data or []):
+            availability_schedule.append({
+                "day_of_week": avail["day_of_week"],
+                "start_time": avail["start_time"],
+                "end_time": avail["end_time"],
+                "slot_duration_minutes": avail.get("slot_duration_minutes", 30)
+            })
+        
+        # Get staff exceptions (vacation, sick days, etc.) - upcoming only
+        from datetime import date as date_type
+        today = date_type.today().isoformat()
+        
+        exceptions_result = db.table("availability_exceptions").select("*").eq("staff_id", staff_id).gte("exception_date", today).order("exception_date").execute()
+        
+        availability_exceptions = []
+        for exc in (exceptions_result.data or []):
+            availability_exceptions.append({
+                "date": exc["exception_date"],
+                "type": exc["exception_type"],  # 'closed', 'custom_hours', etc.
+                "reason": exc.get("reason"),
+                "start_time": exc.get("start_time"),
+                "end_time": exc.get("end_time")
+            })
+        
         staff_list.append({
-            "id": staff["id"],
+            "id": staff_id,
             "name": staff["name"],
             "title": staff["title"],
             "specialty": staff.get("specialty"),
             "bio": staff.get("bio"),
             "email": staff.get("email"),
             "phone": staff.get("phone"),
-            "service_ids": service_ids
+            "service_ids": service_ids,
+            "availability_schedule": availability_schedule,
+            "availability_exceptions": availability_exceptions
         })
     
     # Get services
@@ -86,6 +129,16 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
             "is_open": h["is_open"],
             "open_time": h.get("open_time"),
             "close_time": h.get("close_time")
+        })
+    
+    # Get business closures (holidays, special closures) - upcoming only
+    closures_result = db.table("business_closures").select("*").eq("business_id", business_id).gte("closure_date", today).order("closure_date").execute()
+    
+    business_closures = []
+    for closure in (closures_result.data or []):
+        business_closures.append({
+            "date": closure["closure_date"],
+            "reason": closure.get("reason")
         })
     
     # Get knowledge base / FAQs
@@ -118,6 +171,7 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
         "staff": staff_list,
         "services": services,
         "business_hours": business_hours,
+        "business_closures": business_closures,
         "knowledge_base": knowledge_base
     }
 

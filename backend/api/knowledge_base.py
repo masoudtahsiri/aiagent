@@ -108,3 +108,5 @@ async def delete_faq(
 
     return await KnowledgeBaseService.delete_faq(faq_id, current_user["id"])
 
+
+
