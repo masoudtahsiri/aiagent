@@ -16,6 +16,9 @@ from backend.services.reminder_service import ReminderService
 
 router = APIRouter(prefix="/api/agent/appointments", tags=["Agent Appointments"])
 
+# Separate router for customer agent endpoints
+customer_router = APIRouter(prefix="/api/agent/customers", tags=["Agent Customers"])
+
 
 
 
@@ -525,4 +528,32 @@ async def reschedule_appointment_for_agent(
     
 
     return {"success": True, "message": "Appointment rescheduled successfully"}
+
+
+@customer_router.put("/{customer_id}")
+async def update_customer_for_agent(
+    customer_id: str,
+    update_data: dict
+):
+    """Update customer info (no auth - for AI agent)"""
+    db = get_db()
+    
+    # Verify customer exists
+    customer_result = db.table("customers").select("id").eq("id", customer_id).execute()
+    if not customer_result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+    
+    # Only allow certain fields to be updated
+    allowed_fields = ['email', 'phone', 'address', 'city', 'state', 'zip_code', 'first_name', 'last_name', 'notes']
+    filtered_data = {k: v for k, v in update_data.items() if k in allowed_fields and v is not None}
+    
+    if not filtered_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid fields to update")
+    
+    result = db.table("customers").update(filtered_data).eq("id", customer_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update customer")
+    
+    return result.data[0]
 

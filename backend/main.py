@@ -36,6 +36,7 @@ app.include_router(knowledge_base.router)
 app.include_router(call_logs.router)
 app.include_router(business_hours.router)
 app.include_router(appointments_agent.router)
+app.include_router(appointments_agent.customer_router)
 
 
 @app.get("/")

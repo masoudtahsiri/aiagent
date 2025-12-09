@@ -188,6 +188,42 @@ class BackendClient:
 
     
 
+    async def update_customer(
+
+        self,
+
+        customer_id: str,
+
+        update_data: dict
+
+    ) -> Optional[Dict]:
+
+        """Update customer information"""
+
+        try:
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+
+                response = await client.put(
+
+                    f"{self.base_url}/api/agent/customers/{customer_id}",
+
+                    json=update_data
+
+                )
+
+                response.raise_for_status()
+
+                return response.json()
+
+        except Exception as e:
+
+            logger.error(f"Error updating customer: {e}")
+
+            return None
+
+    
+
     # ==================== APPOINTMENTS ====================
 
     

@@ -236,9 +236,15 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         staff_id: str = None,
 
+        staff_name: str = None,
+
+        service_name: str = None,
+
+        time_preference: str = None,
+
     ) -> dict:
 
-        """Check available appointment times.
+        """Check available appointment times with smart filtering.
 
         
 
@@ -246,41 +252,151 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
             start_date: Date to start checking (YYYY-MM-DD format). Uses today if not specified.
 
-            staff_id: Specific staff member ID. Uses default if not specified.
+            staff_id: Specific staff member ID.
+
+            staff_name: Staff member name (if customer says "Dr. Smith" or "with Sarah").
+
+            service_name: Service name to filter by duration (e.g., "cleaning", "whitening").
+
+            time_preference: Preferred time - 'morning' (before 12pm), 'afternoon' (12pm-5pm), 'evening' (after 5pm).
 
         """
 
-        target_staff_id = staff_id or session_data.default_staff_id
+        # Resolve staff by name if provided
+
+        target_staff_id = staff_id
+
+        resolved_staff_name = None
 
         
 
-        if not target_staff_id:
-
-            # Return list of staff for selection
+        if staff_name and not staff_id:
 
             staff_list = session_data.business_config.get("staff", [])
 
-            if staff_list:
+            staff_name_lower = staff_name.lower()
+
+            
+
+            for staff in staff_list:
+
+                if (staff_name_lower in staff.get("name", "").lower() or 
+
+                    staff_name_lower in staff.get("title", "").lower()):
+
+                    target_staff_id = staff["id"]
+
+                    resolved_staff_name = staff["name"]
+
+                    break
+
+            
+
+            if not target_staff_id:
 
                 names = [f"{s['name']} ({s.get('title', 'Staff')})" for s in staff_list]
 
-                return {"success": True, "message": f"Which provider would you like to see? We have: {', '.join(names)}"}
+                return {
 
-            return {"success": False, "message": "I need to know which provider you'd like to see."}
+                    "success": False, 
+
+                    "message": f"I couldn't find {staff_name}. Our staff members are: {', '.join(names)}. Who would you like to see?"
+
+                }
 
         
 
+        # Use default staff if still not set
+
+        if not target_staff_id:
+
+            target_staff_id = session_data.default_staff_id
+
+        
+
+        # If still no staff and multiple options, ask
+
+        if not target_staff_id:
+
+            staff_list = session_data.business_config.get("staff", [])
+
+            if len(staff_list) > 1:
+
+                names = [f"{s['name']} ({s.get('title', 'Staff')})" for s in staff_list]
+
+                return {
+
+                    "success": True, 
+
+                    "message": f"We have several providers available. Would you like to see {', or '.join(names)}?"
+
+                }
+
+            elif len(staff_list) == 1:
+
+                target_staff_id = staff_list[0]["id"]
+
+                resolved_staff_name = staff_list[0]["name"]
+
+            else:
+
+                return {"success": False, "message": "I'm having trouble finding available providers. Let me connect you with someone who can help."}
+
+        
+
+        # Get staff name for response if not already resolved
+
+        if not resolved_staff_name:
+
+            staff_list = session_data.business_config.get("staff", [])
+
+            for staff in staff_list:
+
+                if staff["id"] == target_staff_id:
+
+                    resolved_staff_name = staff["name"]
+
+                    break
+
+        
+
+        # Determine service duration if service specified
+
+        service_duration = 30  # default
+
+        if service_name:
+
+            services = session_data.business_config.get("services", [])
+
+            service_name_lower = service_name.lower()
+
+            for svc in services:
+
+                if service_name_lower in svc.get("name", "").lower():
+
+                    service_duration = svc.get("duration_minutes", 30)
+
+                    break
+
+        
+
+        # Set date range
+
         if not start_date:
+
+            from datetime import datetime
 
             start_date = datetime.now().strftime("%Y-%m-%d")
 
         
 
-        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+        from datetime import datetime, timedelta
+
+        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=14)).strftime("%Y-%m-%d")
 
         
 
-        logger.info(f"🔧 Tool: check_availability - staff={target_staff_id}, dates={start_date} to {end_date}")
+        logger.info(f"🔧 Tool: check_availability - staff={target_staff_id}, dates={start_date} to {end_date}, preference={time_preference}")
 
         
 
@@ -296,19 +412,91 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         
 
+        if not slots:
+
+            return {
+
+                "success": True, 
+
+                "message": f"I don't see any available appointments with {resolved_staff_name or 'that provider'} in the next two weeks. Would you like me to check with another provider, or look further out?"
+
+            }
+
+        
+
+        # Filter by time preference if specified
+
+        if time_preference:
+
+            time_pref_lower = time_preference.lower()
+
+            filtered_slots = []
+
+            
+
+            for slot in slots:
+
+                time_str = slot["time"]
+
+                hour = int(time_str.split(":")[0])
+
+                
+
+                if time_pref_lower in ["morning", "am", "early"] and hour < 12:
+
+                    filtered_slots.append(slot)
+
+                elif time_pref_lower in ["afternoon", "pm", "mid"] and 12 <= hour < 17:
+
+                    filtered_slots.append(slot)
+
+                elif time_pref_lower in ["evening", "late", "after work"] and hour >= 17:
+
+                    filtered_slots.append(slot)
+
+            
+
+            if filtered_slots:
+
+                slots = filtered_slots
+
+            else:
+
+                # No slots match preference, inform customer
+
+                formatted = format_slots_for_speech(slots[:10])
+
+                return {
+
+                    "success": True,
+
+                    "message": f"I don't have any {time_preference} appointments available, but here are other times with {resolved_staff_name or 'your provider'}: {formatted}. Would any of these work?"
+
+                }
+
+        
+
         session_data.available_slots = slots
 
         
 
-        if slots:
+        # Format response
 
-            formatted = format_slots_for_speech(slots)
+        formatted = format_slots_for_speech(slots[:10])
 
-            return {"success": True, "message": f"Here are the available times: {formatted}. Which would work best for you?"}
+        
 
-        else:
+        staff_mention = f" with {resolved_staff_name}" if resolved_staff_name else ""
 
-            return {"success": True, "message": "I don't see any available appointments in the next week. Would you like me to check further out?"}
+        
+
+        return {
+
+            "success": True, 
+
+            "message": f"Here are available times{staff_mention}: {formatted}. Which would work best for you?"
+
+        }
 
 
 
@@ -465,6 +653,238 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         else:
 
             return {"success": True, "message": "You don't have any upcoming appointments. Would you like to schedule one?"}
+
+
+
+    @function_tool()
+
+    async def get_appointment_history(
+
+        context: RunContext,
+
+        limit: int = 5,
+
+    ) -> dict:
+
+        """Get the customer's past appointment history.
+
+        
+
+        Args:
+
+            limit: Maximum number of past appointments to return (default: 5)
+
+        """
+
+        if not session_data.customer:
+
+            return {"success": False, "message": "I don't have your information yet. Could you tell me your name so I can look up your history?"}
+
+        
+
+        logger.info(f"🔧 Tool: get_appointment_history - customer={session_data.customer['id']}")
+
+        
+
+        # Get past appointments (not upcoming)
+
+        appointments = await backend.get_customer_appointments(
+
+            customer_id=session_data.customer["id"],
+
+            upcoming_only=False
+
+        )
+
+        
+
+        if not appointments:
+
+            return {"success": True, "message": "I don't see any appointment history on file. Is this your first time visiting us?"}
+
+        
+
+        # Filter to past appointments only and completed/no-show status
+
+        from datetime import datetime
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        past_appointments = [
+
+            apt for apt in appointments 
+
+            if apt["appointment_date"] < today or apt.get("status") in ["completed", "no_show", "cancelled"]
+
+        ]
+
+        
+
+        if not past_appointments:
+
+            return {"success": True, "message": "I don't see any past appointments. You may have upcoming appointments scheduled."}
+
+        
+
+        # Sort by date descending (most recent first) and limit
+
+        past_appointments.sort(key=lambda x: x["appointment_date"], reverse=True)
+
+        past_appointments = past_appointments[:limit]
+
+        
+
+        # Format for speech
+
+        lines = []
+
+        for apt in past_appointments:
+
+            date_obj = datetime.strptime(apt["appointment_date"], "%Y-%m-%d")
+
+            formatted_date = date_obj.strftime("%B %d, %Y")
+
+            
+
+            staff_name = "a provider"
+
+            if apt.get("staff") and apt["staff"].get("name"):
+
+                staff_name = apt["staff"]["name"]
+
+            
+
+            status = apt.get("status", "completed")
+
+            if status == "completed":
+
+                lines.append(f"{formatted_date} with {staff_name}")
+
+            elif status == "cancelled":
+
+                lines.append(f"{formatted_date} with {staff_name} (cancelled)")
+
+            elif status == "no_show":
+
+                lines.append(f"{formatted_date} with {staff_name} (missed)")
+
+        
+
+        history_text = ". ".join(lines)
+
+        
+
+        # Add summary
+
+        total = session_data.customer.get("total_appointments", len(past_appointments))
+
+        last_visit = session_data.customer.get("last_visit_date", "unknown")
+
+        
+
+        return {
+
+            "success": True, 
+
+            "message": f"Here's your recent appointment history: {history_text}. You've had {total} total appointments with us."
+
+        }
+
+
+
+    @function_tool()
+
+    async def update_my_info(
+
+        context: RunContext,
+
+        field: str,
+
+        new_value: str,
+
+    ) -> dict:
+
+        """Update customer's information.
+
+        
+
+        Args:
+
+            field: The field to update - 'email', 'phone', 'address', 'city', 'state', 'zip_code'
+
+            new_value: The new value for the field
+
+        """
+
+        if not session_data.customer:
+
+            return {"success": False, "message": "I need to verify your identity first. Could you tell me your name?"}
+
+        
+
+        # Validate field
+
+        allowed_fields = ['email', 'phone', 'address', 'city', 'state', 'zip_code', 'first_name', 'last_name']
+
+        field_lower = field.lower().replace(' ', '_')
+
+        
+
+        if field_lower not in allowed_fields:
+
+            return {
+
+                "success": False, 
+
+                "message": f"I can update your email, phone, address, city, state, or zip code. Which would you like to change?"
+
+            }
+
+        
+
+        logger.info(f"🔧 Tool: update_my_info - field={field_lower}, value={new_value}")
+
+        
+
+        try:
+
+            result = await backend.update_customer(
+
+                customer_id=session_data.customer["id"],
+
+                update_data={field_lower: new_value}
+
+            )
+
+            
+
+            if result:
+
+                # Update local session data
+
+                session_data.customer[field_lower] = new_value
+
+                
+
+                field_display = field_lower.replace('_', ' ')
+
+                return {
+
+                    "success": True, 
+
+                    "message": f"I've updated your {field_display} to {new_value}. Is there anything else you'd like to update?"
+
+                }
+
+            else:
+
+                return {"success": False, "message": "I wasn't able to update that information. Let me connect you with someone who can help."}
+
+        except Exception as e:
+
+            logger.error(f"Error updating customer info: {e}")
+
+            return {"success": False, "message": "I'm having trouble updating your information right now. Please try again later or speak with our staff directly."}
 
 
 
@@ -956,9 +1376,13 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         get_my_appointments,
 
+        get_appointment_history,      # NEW
+
         cancel_appointment,
 
         reschedule_appointment,
+
+        update_my_info,               # NEW
 
         get_services,
 
@@ -976,11 +1400,11 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
 
         tools.insert(0, create_new_customer)
 
-        logger.info("Tools loaded: create_new_customer + 8 standard tools")
+        logger.info("Tools loaded: create_new_customer + 10 standard tools")
 
     else:
 
-        logger.info("Tools loaded: 8 standard tools (existing customer)")
+        logger.info("Tools loaded: 10 standard tools (existing customer)")
 
     
 
