@@ -117,51 +117,6 @@ async def get_business_config(called_number: str) -> dict:
         raise Exception(f"No business found for number: {called_number}")
 
 
-async def play_hold_message(ctx: JobContext, duration: float = 5.0):
-    """
-    Play a hold message using TTS while backend API calls are happening.
-    This provides audio feedback to the caller during processing.
-    Uses a temporary AgentSession with a simple model to speak the message.
-    """
-    try:
-        logger.info("🎵 Playing hold message...")
-        
-        # Create a simple temporary model for the hold message
-        temp_model = google_beta.realtime.RealtimeModel(
-            model="gemini-2.5-flash-native-audio-preview-09-2025",
-            voice="Kore",
-        )
-        
-        # Create a minimal agent for the hold message
-        hold_agent = Agent(
-            instructions="You are a phone system. Say exactly what you are told to say, nothing more.",
-        )
-        
-        # Create a minimal session just for the hold message
-        temp_session = AgentSession(
-            llm=temp_model,
-            vad=None,  # No VAD needed for hold message
-        )
-        
-        # Start the session
-        await temp_session.start(agent=hold_agent, room=ctx.room)
-        
-        # Generate and speak the hold message
-        hold_text = "Please hold while we connect you."
-        await temp_session.generate_reply(instructions=f"Say this exactly: {hold_text}")
-        
-        # Wait for the specified duration (or until message finishes)
-        await asyncio.sleep(duration)
-        
-        # Clean up the temporary session
-        await temp_session.aclose()
-        
-        logger.info("✅ Hold message finished")
-    except Exception as e:
-        logger.warning(f"Could not play hold message: {e}")
-        # Don't fail the call if hold message fails
-
-
 async def entrypoint(ctx: JobContext):
     logger.info(f"========== NEW CALL ==========")
     logger.info(f"Room: {ctx.room.name}")
@@ -176,16 +131,11 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Caller: {caller_phone}")
     logger.info(f"Called number: {called_number}")
     
-    # Start playing hold message in background while we do API calls
-    hold_task = asyncio.create_task(play_hold_message(ctx, duration=5.0))
-    
-    # Lookup business configuration (runs in parallel with hold message)
+    # Lookup business configuration
     try:
         business_config = await get_business_config(called_number)
     except Exception as e:
         logger.error(f"Failed to get business config: {e}")
-        hold_task.cancel()  # Cancel hold message if we're going to fail
-        # Could play error message here
         return
     
     business = business_config["business"]
@@ -199,15 +149,8 @@ async def entrypoint(ctx: JobContext):
     session_data.caller_phone = caller_phone
     sessions[ctx.room.name] = session_data
     
-    # Lookup customer (still running in parallel with hold message)
+    # Lookup customer
     lookup_result = await backend.lookup_customer(caller_phone, business_id)
-    
-    # Wait for hold message to finish (or cancel if it's still running)
-    try:
-        await asyncio.wait_for(hold_task, timeout=0.1)  # Quick check if done
-    except (asyncio.TimeoutError, asyncio.CancelledError):
-        # Hold message is still playing or was cancelled, that's fine
-        pass
     
     # Get AI configuration
     ai_roles = business_config.get("ai_roles", [])
