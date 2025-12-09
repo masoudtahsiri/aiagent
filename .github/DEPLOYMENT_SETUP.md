@@ -12,11 +12,11 @@ You need to add these secrets to your GitHub repository:
 
 | Secret Name | Value | Description |
 |-------------|-------|-------------|
-| `SERVER_IP` | `185.8.130.155` | Server IP address |
-| `SSH_PORT` | `35655` | SSH port |
-| `SSH_USER` | `root` | SSH username |
-| `SERVER_PASSWORD` | `S7J9BPMa9#v4GmZ` | Server password |
-| `GEMINI_API_KEY` | `AIzaSyBEv_P7Nhf2f0PH28qYdmueaC8Mc8tt5O4` | Google Gemini API key |
+| `SERVER_IP` | `[YOUR_SERVER_IP]` | Server IP address |
+| `SSH_PORT` | `[YOUR_SSH_PORT]` | SSH port |
+| `SSH_USER` | `[YOUR_SSH_USER]` | SSH username |
+| `SERVER_PASSWORD` | `[YOUR_SERVER_PASSWORD]` | Server password |
+| `GEMINI_API_KEY` | `[YOUR_GEMINI_API_KEY]` | Google Gemini API key |
 
 ## How It Works
 
