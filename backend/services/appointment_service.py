@@ -16,7 +16,7 @@ class AppointmentService:
         end_date: Optional[date] = None,
         user_id: Optional[str] = None
     ) -> List[dict]:
-        """Get available time slots for staff"""
+        """Get available time slots for staff, filtered by closures and exceptions"""
         db = get_db()
         
         # If user_id provided, verify they have access
@@ -27,10 +27,49 @@ class AppointmentService:
         if not end_date:
             end_date = start_date + timedelta(days=30)
         
-        # Get available slots
+        # Get staff's business_id
+        staff_result = db.table("staff").select("business_id").eq("id", staff_id).execute()
+        if not staff_result.data:
+            return []
+        business_id = staff_result.data[0]["business_id"]
+        
+        # 1. Get business closures (holidays, etc.)
+        closures_result = db.table("business_closures").select("closure_date").eq("business_id", business_id).gte("closure_date", str(start_date)).lte("closure_date", str(end_date)).execute()
+        closed_dates = {c["closure_date"] for c in (closures_result.data or [])}
+        
+        # 2. Get staff availability exceptions (sick days, vacation)
+        exceptions_result = db.table("availability_exceptions").select("exception_date, exception_type").eq("staff_id", staff_id).eq("exception_type", "closed").gte("exception_date", str(start_date)).lte("exception_date", str(end_date)).execute()
+        staff_off_dates = {e["exception_date"] for e in (exceptions_result.data or [])}
+        
+        # 3. Get business hours (to filter closed days of week)
+        hours_result = db.table("business_hours").select("day_of_week").eq("business_id", business_id).eq("is_open", False).execute()
+        closed_weekdays = {h["day_of_week"] for h in (hours_result.data or [])}
+        
+        # 4. Get available slots from time_slots table
         result = db.table("time_slots").select("*").eq("staff_id", staff_id).eq("is_booked", False).eq("is_blocked", False).gte("date", str(start_date)).lte("date", str(end_date)).order("date").order("time").execute()
         
-        return result.data if result.data else []
+        # 5. Filter out closed dates
+        filtered_slots = []
+        for slot in (result.data or []):
+            slot_date = slot["date"]
+            
+            # Skip business closures (holidays)
+            if slot_date in closed_dates:
+                continue
+            
+            # Skip staff exceptions (sick days, vacation)
+            if slot_date in staff_off_dates:
+                continue
+            
+            # Skip closed weekdays (0=Sunday, 6=Saturday)
+            slot_date_obj = datetime.strptime(slot_date, "%Y-%m-%d").date()
+            day_of_week = (slot_date_obj.weekday() + 1) % 7  # Convert to our format (0=Sunday)
+            if day_of_week in closed_weekdays:
+                continue
+            
+            filtered_slots.append(slot)
+        
+        return filtered_slots
     
     @staticmethod
     async def create_appointment(appointment_data: dict, user_id: Optional[str] = None) -> dict:
@@ -294,4 +333,3 @@ class AppointmentService:
         }).eq("id", appointment_id).execute()
         
         return {"message": "Appointment cancelled successfully"}
-
