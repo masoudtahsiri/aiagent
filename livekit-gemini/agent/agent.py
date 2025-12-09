@@ -60,6 +60,17 @@ logger = logging.getLogger("multi-tenant-agent")
 
 
 
+# Force use of GEMINI_API_KEY instead of GOOGLE_API_KEY
+# Google SDK checks GOOGLE_API_KEY first, so we need to explicitly set it from GEMINI_API_KEY
+gemini_key = os.getenv("GEMINI_API_KEY")
+if gemini_key:
+    os.environ["GOOGLE_API_KEY"] = gemini_key
+    # Remove GOOGLE_API_KEY from env if it was set separately to avoid conflicts
+    if "GOOGLE_API_KEY" in os.environ and os.environ.get("GOOGLE_API_KEY") != gemini_key:
+        logger.warning("GOOGLE_API_KEY was set but will be overridden by GEMINI_API_KEY")
+
+
+
 # Configuration
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")

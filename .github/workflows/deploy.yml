@@ -119,6 +119,10 @@ jobs:
               else
                 echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
               fi
+              
+              # Remove GOOGLE_API_KEY to force use of GEMINI_API_KEY
+              echo "Removing GOOGLE_API_KEY from .env to use GEMINI_API_KEY..."
+              sed -i '/^GOOGLE_API_KEY=/d' .env
             fi
             
             # Update BACKEND_URL if needed
