@@ -139,12 +139,16 @@ EOFSERVICE
                 if grep -q "YOUR_API_KEY_HERE" livekit.yaml; then
                   sed -i "s/YOUR_API_KEY_HERE: YOUR_API_SECRET_HERE/$API_KEY: $API_SECRET/" livekit.yaml
                 else
-                  # Update existing keys if they don't match
-                  sed -i "s/^keys:.*/keys:\n  $API_KEY: $API_SECRET/" livekit.yaml
+                  # Update existing keys - replace the line after "keys:" with the new key:secret
+                  sed -i "/^keys:/,/^[^ ]/ { /^  /s/.*/  $API_KEY: $API_SECRET/; }" livekit.yaml
                 fi
-                echo "Updated livekit.yaml with API keys"
+                echo "Updated livekit.yaml with API keys: $API_KEY"
               fi
             fi
+            
+            # Restart LiveKit server to pick up new keys
+            echo "Restarting LiveKit server to apply configuration..."
+            docker-compose restart livekit || true
             
             # Rebuild and restart containers
             echo "Rebuilding and restarting containers..."
