@@ -2,13 +2,17 @@
 AI Agent Tools - Functions the AI can call during conversations
 
 Clean, focused tools with clear responses for natural conversation.
+
+Updated for livekit-agents v1.3.x with stable imports.
+
 """
 
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional
-from livekit.agents import function_tool, RunContext
-import logging
 import asyncio
+import logging
+from datetime import datetime, timedelta
+from typing import List, Dict
+
+from livekit.agents import function_tool, RunContext
 
 logger = logging.getLogger("agent-tools")
 
@@ -29,7 +33,6 @@ def format_date(date_str: str) -> str:
 def format_time(time_str: str) -> str:
     """Format time for speech: 14:30 -> 2:30 PM"""
     try:
-        # Handle HH:MM and HH:MM:SS
         parts = time_str.split(":")
         hour = int(parts[0])
         minute = int(parts[1]) if len(parts) > 1 else 0
@@ -52,7 +55,6 @@ def format_slots_for_speech(slots: List[Dict], max_days: int = 3, max_times_per_
     if not slots:
         return "I don't see any available appointments in that time range."
     
-    # Group by date
     by_date = {}
     for slot in slots:
         date = slot["date"]
@@ -60,7 +62,6 @@ def format_slots_for_speech(slots: List[Dict], max_days: int = 3, max_times_per_
             by_date[date] = []
         by_date[date].append(format_time(slot["time"]))
     
-    # Build response
     lines = []
     for date_str in sorted(by_date.keys())[:max_days]:
         times = by_date[date_str][:max_times_per_day]
@@ -89,19 +90,16 @@ def format_appointments_for_speech(appointments: List[Dict]) -> str:
         date = format_date(apt["appointment_date"])
         time = format_time(apt["appointment_time"])
         
-        # Get staff name
         staff_name = "your provider"
         if apt.get("staff") and isinstance(apt["staff"], dict):
             staff_name = apt["staff"].get("name", "your provider")
         
-        # Get service name if available
         service_info = ""
         if apt.get("service") and isinstance(apt["service"], dict):
             service_info = f" for {apt['service'].get('name', '')}"
         elif apt.get("service_name"):
             service_info = f" for {apt['service_name']}"
         
-        # Get status
         status = apt.get("status", "scheduled")
         status_note = ""
         if status == "confirmed":
@@ -122,28 +120,21 @@ def format_appointments_for_speech(appointments: List[Dict]) -> str:
 # =============================================================================
 
 def resolve_staff(staff_name: str, staff_list: List[Dict]) -> tuple:
-    """
-    Resolve staff name to (staff_id, staff_name) or (None, None) if not found.
-    Handles: "Dr. Smith", "Sarah", "smith", "Dr Smith", etc.
-    """
+    """Resolve staff name to (staff_id, staff_name) or (None, None) if not found."""
     if not staff_name or not staff_list:
         return None, None
     
-    # Normalize input
     search = staff_name.lower().replace(".", "").replace("dr ", "").strip()
     
     for staff in staff_list:
         name = staff.get("name", "").lower()
         
-        # Exact match
         if search == name:
             return staff["id"], staff["name"]
         
-        # Partial match (first name, last name, or contained)
         if search in name or name in search:
             return staff["id"], staff["name"]
         
-        # Check individual parts
         for part in name.split():
             if search == part:
                 return staff["id"], staff["name"]
@@ -158,11 +149,9 @@ def resolve_staff(staff_name: str, staff_list: List[Dict]) -> tuple:
 def get_tools_for_agent(session_data, backend, is_existing_customer: bool = False):
     """Create function tools for the Agent"""
     
-    # Helper to get staff list
     def get_staff_list():
         return session_data.business_config.get("staff", [])
     
-    # Helper to get default staff
     def get_default_staff_id():
         staff = get_staff_list()
         if len(staff) == 1:
@@ -240,7 +229,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         """
         staff_list = get_staff_list()
         
-        # Resolve staff
         staff_id, resolved_name = None, None
         if staff_name:
             staff_id, resolved_name = resolve_staff(staff_name, staff_list)
@@ -253,7 +241,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         else:
             staff_id, resolved_name = get_default_staff_id()
         
-        # If multiple staff and none specified, ask
         if not staff_id and len(staff_list) > 1:
             names = [s["name"] for s in staff_list]
             return {
@@ -261,7 +248,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 "message": f"We have {', '.join(names)}. Who would you like to see?"
             }
         
-        # Use first staff if only one
         if not staff_id and len(staff_list) == 1:
             staff_id = staff_list[0]["id"]
             resolved_name = staff_list[0]["name"]
@@ -272,7 +258,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 "message": "I need to know which provider you'd like to see."
             }
         
-        # Set date range
         if not start_date:
             start_date = datetime.now().strftime("%Y-%m-%d")
         
@@ -280,7 +265,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         
         logger.info(f"Tool: check_availability(staff={resolved_name}, {start_date} to {end_date})")
         
-        # Get slots from backend
         slots = await backend.get_available_slots(
             staff_id=staff_id,
             start_date=start_date,
@@ -288,14 +272,12 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         )
         
         if not slots:
-            # Check WHY no availability - provide context
             staff_info = None
             for s in staff_list:
                 if s["id"] == staff_id:
                     staff_info = s
                     break
             
-            # Check for staff exceptions in the date range
             unavailable_reasons = []
             if staff_info:
                 exceptions = staff_info.get("availability_exceptions", [])
@@ -305,7 +287,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                     if exc_reason:
                         unavailable_reasons.append(f"{exc_date}: {exc_reason}")
             
-            # Check business closures
             closures = session_data.business_config.get("business_closures", [])
             for closure in closures:
                 closure_reason = closure.get("reason", "closed")
@@ -323,7 +304,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                     "message": f"I don't see any availability with {resolved_name} in the next two weeks. Would you like me to check further out, or with someone else?"
                 }
         
-        # Filter by time preference
         if time_preference:
             pref = time_preference.lower()
             filtered = []
@@ -345,7 +325,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                     "message": f"No {time_preference} slots available. Here's what I have with {resolved_name}: {formatted}"
                 }
         
-        # Store for potential booking
         session_data.available_slots = slots
         
         formatted = format_slots_for_speech(slots)
@@ -376,7 +355,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             service_name: Service name (optional)
             notes: Any notes for the appointment (optional)
         """
-        # Require customer info
         if not session_data.customer:
             return {
                 "success": False,
@@ -385,7 +363,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         
         staff_list = get_staff_list()
         
-        # Resolve staff
         staff_id, resolved_name = None, None
         if staff_name:
             staff_id, resolved_name = resolve_staff(staff_name, staff_list)
@@ -403,7 +380,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 "message": "Which provider would you like to see?"
             }
         
-        # Resolve service to ID
         service_id = None
         if service_name:
             services = session_data.business_config.get("services", [])
@@ -490,7 +466,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         
         logger.info(f"Tool: cancel_appointment(date={appointment_date})")
         
-        # Get appointments
         appointments = await backend.get_customer_appointments(
             customer_id=session_data.customer["id"],
             upcoming_only=True
@@ -502,7 +477,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 "message": "I don't see any upcoming appointments to cancel."
             }
         
-        # Find appointment to cancel
         apt_to_cancel = None
         if appointment_date:
             for apt in appointments:
@@ -558,7 +532,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         
         logger.info(f"Tool: reschedule_appointment(to {new_date} {new_time})")
         
-        # Get appointments
         appointments = await backend.get_customer_appointments(
             customer_id=session_data.customer["id"],
             upcoming_only=True
@@ -570,7 +543,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                 "message": "I don't see any appointments to reschedule. Want to book a new one?"
             }
         
-        # Find appointment
         apt = None
         if current_date:
             for a in appointments:
@@ -683,13 +655,11 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         """
         logger.info(f"Tool: answer_question({question[:50]}...)")
         
-        # Search local knowledge base first
         knowledge = session_data.business_config.get("knowledge_base", [])
         question_lower = question.lower()
         
         for kb in knowledge:
             kb_question = kb.get("question", "").lower()
-            # Simple keyword matching
             if any(word in question_lower for word in kb_question.split() if len(word) > 3):
                 session_data.call_outcome = "question_answered"
                 return {
@@ -697,7 +667,6 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                     "message": kb["answer"]
                 }
         
-        # Try backend search
         results = await backend.search_knowledge_base(session_data.business_id, question)
         
         if results:
@@ -778,7 +747,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             # Say goodbye if message provided
             if farewell_message and session_data.session:
                 await session_data.session.say(farewell_message, allow_interruptions=False)
-                await asyncio.sleep(1.0)  # Let the message finish
+                await asyncio.sleep(1.5)  # Let the message finish
             
             # Disconnect from room (ends the call)
             if session_data.room:

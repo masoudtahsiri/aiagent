@@ -3,10 +3,14 @@
 """
 Multi-tenant AI Receptionist Agent
 
-Clean, focused implementation using:
-- PromptBuilder for system prompts
-- Modular tools for actions
-- Backend client for API calls
+Updated to LiveKit Agents v1.3.x patterns:
+
+- AgentServer with @server.rtc_session() decorator
+
+- Stable google.realtime import (not beta)
+
+- Fixed greeting via generate_reply() after session.start()
+
 """
 
 import asyncio
@@ -15,17 +19,18 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 
+from livekit import rtc
 from livekit.agents import (
+    AgentServer,
+    AgentSession,
+    Agent,
     AutoSubscribe,
     JobContext,
     JobProcess,
-    WorkerOptions,
+    RoomInputOptions,
     cli,
-    Agent,
-    AgentSession,
 )
-from livekit.plugins.google import beta as google_beta
-from livekit.plugins import silero
+from livekit.plugins import google, silero
 
 from backend_client import BackendClient
 from prompt_builder import PromptBuilder, build_greeting
@@ -44,6 +49,9 @@ logger = logging.getLogger("ai-receptionist")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 backend = BackendClient(BACKEND_URL)
 
+# Create AgentServer instance
+server = AgentServer()
+
 
 class SessionData:
     """Stores state for a single call session"""
@@ -58,8 +66,8 @@ class SessionData:
         self.call_log_id = None
         self.call_start_time = None
         self.call_outcome = "general_inquiry"
-        self.session = None  # Store session reference for end_call tool
-        self.room = None     # Store room reference for end_call tool
+        self.session = None
+        self.room = None
         
         # Set default staff if only one exists
         staff = business_config.get("staff", [])
@@ -69,15 +77,12 @@ class SessionData:
 
 def extract_caller_phone(identity: str) -> str:
     """Extract phone number from SIP identity string"""
-    # Remove sip: prefix
     if identity.startswith("sip:"):
         identity = identity.replace("sip:", "")
     
-    # Handle sip_ format
     if identity.startswith("sip_"):
         phone = "+" + identity.replace("sip_", "")
     else:
-        # Remove @domain if present
         if "@" in identity:
             identity = identity.split("@")[0]
         phone = identity.strip()
@@ -89,7 +94,7 @@ def extract_caller_phone(identity: str) -> str:
 def extract_called_number(ctx: JobContext) -> str:
     """Extract the number that was called (business AI number)"""
     for participant in ctx.room.remote_participants.values():
-        attrs = getattr(participant, 'attributes', {})
+        attrs = participant.attributes
         
         if attrs and 'sip.trunkPhoneNumber' in attrs:
             called = attrs['sip.trunkPhoneNumber']
@@ -101,6 +106,15 @@ def extract_called_number(ctx: JobContext) -> str:
     raise ValueError("Could not extract called number from participant attributes")
 
 
+@server.on_prewarm
+def prewarm(proc: JobProcess):
+    """Preload VAD model for faster call handling"""
+    logger.info("Loading VAD model...")
+    proc.userdata["vad"] = silero.VAD.load()
+    logger.info("VAD ready")
+
+
+@server.rtc_session(agent_name="ai-receptionist")
 async def entrypoint(ctx: JobContext):
     """Main entry point for each incoming call"""
     logger.info("=" * 50)
@@ -135,11 +149,11 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"Business: {business_name} ({business_id})")
     
-    # Create session
+    # Create session data
     session_data = SessionData(business_id, business_config)
     session_data.caller_phone = caller_phone
     session_data.call_start_time = call_start
-    session_data.room = ctx.room  # Store room reference
+    session_data.room = ctx.room
     
     # =========================================================================
     # LOOKUP CUSTOMER
@@ -153,10 +167,9 @@ async def entrypoint(ctx: JobContext):
         session_data.customer = lookup["customer"]
         logger.info(f"Existing customer: {session_data.customer.get('first_name', 'Unknown')}")
         
-        # Fetch customer context (history, tags)
         customer_context = await backend.get_customer_context(session_data.customer["id"])
         if customer_context:
-            logger.info(f"Customer context loaded: {len(customer_context.get('recent_appointments', []))} recent appointments, tags: {customer_context.get('tags', [])}")
+            logger.info(f"Customer context loaded: {len(customer_context.get('recent_appointments', []))} recent appointments")
     else:
         logger.info("New customer")
     
@@ -167,7 +180,6 @@ async def entrypoint(ctx: JobContext):
     ai_roles = business_config.get("ai_roles", [])
     ai_config = None
     
-    # Find receptionist role or use first enabled
     for role in ai_roles:
         if role.get("role_type") == "receptionist" and role.get("is_enabled"):
             ai_config = role
@@ -212,7 +224,7 @@ async def entrypoint(ctx: JobContext):
         logger.warning(f"Failed to log call start: {e}")
     
     # =========================================================================
-    # CREATE AGENT
+    # CREATE AGENT WITH TOOLS
     # =========================================================================
     
     tools = get_tools_for_agent(
@@ -226,49 +238,49 @@ async def entrypoint(ctx: JobContext):
         tools=tools,
     )
     
-    model = google_beta.realtime.RealtimeModel(
+    # =========================================================================
+    # CREATE MODEL (Stable google.realtime import - NOT beta)
+    # =========================================================================
+    
+    model = google.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
         voice=voice,
         temperature=0.8,
     )
+    
+    # =========================================================================
+    # CREATE AND START SESSION
+    # =========================================================================
     
     session = AgentSession(
         llm=model,
         vad=ctx.proc.userdata.get("vad"),
     )
     
-    # =========================================================================
-    # START SESSION
-    # =========================================================================
+    # Store session reference for tools (e.g., end_call)
+    session_data.session = session
     
-    await session.start(agent=agent, room=ctx.room)
-    logger.info("Agent session started")
-    session_data.session = session  # Store session reference for end_call
-    
-    # Wait for audio track subscription (native LiveKit pattern)
-    if hasattr(session, 'room_io') and session.room_io and hasattr(session.room_io, 'subscribed_fut'):
-        try:
-            await asyncio.wait_for(session.room_io.subscribed_fut, timeout=10.0)
-            logger.info("Audio track subscribed - ready to speak")
-        except asyncio.TimeoutError:
-            logger.warning("Audio subscription timeout - proceeding anyway")
-    
-    # Industry-standard delay for RTP stream stabilization (1s)
-    await asyncio.sleep(1.0)
-    
-    # Send greeting
-    await session.generate_reply(
-        instructions=f"Greet the caller: {greeting}"
+    # Start the session with room input options
+    await session.start(
+        agent=agent,
+        room=ctx.room,
+        room_input_options=RoomInputOptions(
+            noise_cancellation=True,
+        ),
     )
     
-    logger.info(f"Greeting sent - Voice: {voice}")
-
-
-def prewarm(proc: JobProcess):
-    """Preload VAD model for faster call handling"""
-    logger.info("Loading VAD model...")
-    proc.userdata["vad"] = silero.VAD.load()
-    logger.info("VAD ready")
+    logger.info(f"Agent session started - Voice: {voice}")
+    
+    # =========================================================================
+    # SEND GREETING - MUST be AFTER session.start()
+    # Using generate_reply with instructions forces immediate response
+    # =========================================================================
+    
+    await session.generate_reply(
+        instructions=f"Greet the caller immediately with: {greeting}"
+    )
+    
+    logger.info("Greeting sent")
 
 
 if __name__ == "__main__":
@@ -278,11 +290,4 @@ if __name__ == "__main__":
     logger.info(f"Backend: {BACKEND_URL}")
     logger.info("Waiting for calls...")
     
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
-            num_idle_processes=2,
-            agent_name="ai-receptionist",
-        ),
-    )
+    cli.run_app(server)
