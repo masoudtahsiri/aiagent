@@ -439,6 +439,8 @@ IMPORTANT:
             "• Use tools to check real availability - don't guess",
             "• When slots unavailable, explain why if you know (closure, staff off, etc.)",
             "• Offer alternatives when first choice isn't available",
+            "• When the caller says goodbye, thanks you, or indicates they're done, use the end_call tool to hang up politely",
+            "• Always say a brief farewell before ending the call",
         ]
         
         # Add accommodation reminder if exists

@@ -58,6 +58,8 @@ class SessionData:
         self.call_log_id = None
         self.call_start_time = None
         self.call_outcome = "general_inquiry"
+        self.session = None  # Store session reference for end_call tool
+        self.room = None     # Store room reference for end_call tool
         
         # Set default staff if only one exists
         staff = business_config.get("staff", [])
@@ -137,6 +139,7 @@ async def entrypoint(ctx: JobContext):
     session_data = SessionData(business_id, business_config)
     session_data.caller_phone = caller_phone
     session_data.call_start_time = call_start
+    session_data.room = ctx.room  # Store room reference
     
     # =========================================================================
     # LOOKUP CUSTOMER
@@ -240,10 +243,24 @@ async def entrypoint(ctx: JobContext):
     
     await session.start(agent=agent, room=ctx.room)
     logger.info("Agent session started")
+    session_data.session = session  # Store session reference for end_call
     
-    # Send greeting
-    await asyncio.sleep(0.5)
-    await session.generate_reply(instructions=f"Greet the caller: {greeting}")
+    # Wait for audio track subscription (native LiveKit pattern)
+    if hasattr(session, 'room_io') and session.room_io and hasattr(session.room_io, 'subscribed_fut'):
+        try:
+            await asyncio.wait_for(session.room_io.subscribed_fut, timeout=10.0)
+            logger.info("Audio track subscribed - ready to speak")
+        except asyncio.TimeoutError:
+            logger.warning("Audio subscription timeout - proceeding anyway")
+    
+    # Industry-standard delay for RTP stream stabilization (700ms)
+    await asyncio.sleep(0.7)
+    
+    # Send greeting with interruption protection
+    await session.generate_reply(
+        instructions=f"Greet the caller: {greeting}",
+        allow_interruptions=False
+    )
     
     logger.info(f"Greeting sent - Voice: {voice}")
 

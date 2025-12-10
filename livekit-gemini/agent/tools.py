@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from livekit.agents import function_tool, RunContext
 import logging
+import asyncio
 
 logger = logging.getLogger("agent-tools")
 
@@ -758,6 +759,39 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             }
 
     # =========================================================================
+    # CALL CONTROL TOOLS
+    # =========================================================================
+    
+    @function_tool()
+    async def end_call(
+        context: RunContext,
+        farewell_message: str = None,
+    ) -> dict:
+        """End the phone call gracefully. Use this when the conversation is complete.
+        
+        Args:
+            farewell_message: Optional final message before hanging up
+        """
+        logger.info("Tool: end_call()")
+        
+        try:
+            # Say goodbye if message provided
+            if farewell_message and session_data.session:
+                await session_data.session.say(farewell_message, allow_interruptions=False)
+                await asyncio.sleep(1.0)  # Let the message finish
+            
+            # Disconnect from room (ends the call)
+            if session_data.room:
+                await session_data.room.disconnect()
+                logger.info("Call ended successfully")
+                return {"success": True, "message": "Call ended"}
+            
+            return {"success": False, "message": "Could not end call"}
+        except Exception as e:
+            logger.error(f"end_call error: {e}")
+            return {"success": False, "message": str(e)}
+
+    # =========================================================================
     # BUILD TOOL LIST
     # =========================================================================
     
@@ -771,6 +805,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         get_business_hours,
         answer_question,
         update_customer_info,
+        end_call,
     ]
     
     # Only add create_new_customer for new customers
