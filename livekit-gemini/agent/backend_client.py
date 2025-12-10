@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 
 class BackendClient:
     """HTTP client for backend API"""
-    
+
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url.rstrip("/")
         self.timeout = 10.0
-    
+
     # =========================================================================
     # BUSINESS
     # =========================================================================
-    
+
     async def lookup_business_by_phone(self, phone_number: str) -> Dict:
         """Lookup business configuration by AI phone number"""
         try:
@@ -37,11 +37,11 @@ class BackendClient:
         except Exception as e:
             logger.error(f"lookup_business_by_phone error: {e}")
             raise
-    
+
     # =========================================================================
     # CUSTOMER
     # =========================================================================
-    
+
     async def lookup_customer(self, phone: str, business_id: str) -> Dict:
         """Check if customer exists"""
         try:
@@ -55,7 +55,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"lookup_customer error: {e}")
             return {"exists": False, "customer": None}
-    
+
     async def create_customer(
         self,
         business_id: str,
@@ -70,18 +70,18 @@ class BackendClient:
         """Create a new customer"""
         try:
             data = {
-                "business_id": business_id,
-                "phone": phone,
-                "first_name": first_name,
-                "last_name": last_name,
-            }
+                    "business_id": business_id,
+                    "phone": phone,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                }
             if email:
                 data["email"] = email
-            if date_of_birth:
+                if date_of_birth:
                 data["date_of_birth"] = date_of_birth
-            if address:
+                if address:
                 data["address"] = address
-            if city:
+                if city:
                 data["city"] = city
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -98,7 +98,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"create_customer error: {e}")
             return None
-    
+
     async def update_customer(self, customer_id: str, update_data: dict) -> Optional[Dict]:
         """Update customer information"""
         try:
@@ -112,7 +112,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"update_customer error: {e}")
             return None
-    
+
     async def get_customer_context(self, customer_id: str) -> Optional[Dict]:
         """Get full customer context including history and tags"""
         try:
@@ -125,11 +125,11 @@ class BackendClient:
         except Exception as e:
             logger.error(f"get_customer_context error: {e}")
             return None
-    
+
     # =========================================================================
     # APPOINTMENTS
     # =========================================================================
-    
+
     async def get_available_slots(
         self,
         staff_id: str,
@@ -141,7 +141,7 @@ class BackendClient:
             params = {"start_date": start_date}
             if end_date:
                 params["end_date"] = end_date
-            
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
                     f"{self.base_url}/api/appointments/staff/{staff_id}/slots",
@@ -152,7 +152,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"get_available_slots error: {e}")
             return []
-    
+
     async def book_appointment(
         self,
         business_id: str,
@@ -166,19 +166,19 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Book an appointment"""
         try:
-            params = {
-                "business_id": business_id,
-                "customer_id": customer_id,
-                "staff_id": staff_id,
-                "appointment_date": appointment_date,
-                "appointment_time": appointment_time,
-                "duration_minutes": duration_minutes
-            }
-            if service_id:
-                params["service_id"] = service_id
-            if notes:
-                params["notes"] = notes
-            
+                params = {
+                    "business_id": business_id,
+                    "customer_id": customer_id,
+                    "staff_id": staff_id,
+                    "appointment_date": appointment_date,
+                    "appointment_time": appointment_time,
+                    "duration_minutes": duration_minutes
+                }
+                if service_id:
+                    params["service_id"] = service_id
+                if notes:
+                    params["notes"] = notes
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/api/agent/appointments/book",
@@ -193,7 +193,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"book_appointment error: {e}")
             return None
-    
+
     async def get_customer_appointments(
         self,
         customer_id: str,
@@ -211,7 +211,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"get_customer_appointments error: {e}")
             return []
-    
+
     async def cancel_appointment(
         self,
         appointment_id: str,
@@ -222,7 +222,7 @@ class BackendClient:
             params = {}
             if cancellation_reason:
                 params["cancellation_reason"] = cancellation_reason
-            
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/api/agent/appointments/{appointment_id}/cancel",
@@ -237,7 +237,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"cancel_appointment error: {e}")
             return None
-    
+
     async def reschedule_appointment(
         self,
         appointment_id: str,
@@ -247,13 +247,13 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Reschedule an appointment"""
         try:
-            params = {
-                "new_date": new_date,
-                "new_time": new_time
-            }
-            if staff_id:
-                params["staff_id"] = staff_id
-            
+                params = {
+                    "new_date": new_date,
+                    "new_time": new_time
+                }
+                if staff_id:
+                    params["staff_id"] = staff_id
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/api/agent/appointments/{appointment_id}/reschedule",
@@ -268,11 +268,11 @@ class BackendClient:
         except Exception as e:
             logger.error(f"reschedule_appointment error: {e}")
             return None
-    
+
     # =========================================================================
     # KNOWLEDGE BASE
     # =========================================================================
-    
+
     async def search_knowledge_base(self, business_id: str, query: str) -> List[Dict]:
         """Search FAQs"""
         try:
@@ -286,11 +286,11 @@ class BackendClient:
         except Exception as e:
             logger.error(f"search_knowledge_base error: {e}")
             return []
-    
+
     # =========================================================================
     # CALL LOGGING
     # =========================================================================
-    
+
     async def log_call_start(
         self,
         business_id: str,
@@ -309,7 +309,7 @@ class BackendClient:
                 data["customer_id"] = customer_id
             if role_id:
                 data["current_role_id"] = role_id
-            
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/api/calls/log",
@@ -320,7 +320,7 @@ class BackendClient:
         except Exception as e:
             logger.error(f"log_call_start error: {e}")
             return None
-    
+
     async def log_call_end(
         self,
         call_log_id: str,
@@ -332,16 +332,16 @@ class BackendClient:
         """Update call log when call ends"""
         try:
             data = {
-                "call_status": "completed",
-                "call_duration": call_duration,
-                "outcome": outcome,
-                "ended_at": datetime.utcnow().isoformat()
-            }
-            if transcript:
+                    "call_status": "completed",
+                    "call_duration": call_duration,
+                    "outcome": outcome,
+                    "ended_at": datetime.utcnow().isoformat()
+                }
+                if transcript:
                 data["transcript"] = transcript
-            if customer_id:
+                if customer_id:
                 data["customer_id"] = customer_id
-            
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.put(
                     f"{self.base_url}/api/calls/log/{call_log_id}",
