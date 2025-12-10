@@ -106,12 +106,16 @@ def extract_called_number(ctx: JobContext) -> str:
     raise ValueError("Could not extract called number from participant attributes")
 
 
-@server.on_prewarm
+# Define prewarm function (NOT a decorator)
 def prewarm(proc: JobProcess):
     """Preload VAD model for faster call handling"""
     logger.info("Loading VAD model...")
     proc.userdata["vad"] = silero.VAD.load()
     logger.info("VAD ready")
+
+
+# Assign prewarm via property - this is the key change
+server.setup_fnc = prewarm
 
 
 @server.rtc_session(agent_name="ai-receptionist")
