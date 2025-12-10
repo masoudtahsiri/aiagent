@@ -253,8 +253,8 @@ async def entrypoint(ctx: JobContext):
         except asyncio.TimeoutError:
             logger.warning("Audio subscription timeout - proceeding anyway")
     
-    # Industry-standard delay for RTP stream stabilization (700ms)
-    await asyncio.sleep(0.7)
+    # Industry-standard delay for RTP stream stabilization (1s)
+    await asyncio.sleep(1.0)
     
     # Send greeting with interruption protection
     await session.generate_reply(
