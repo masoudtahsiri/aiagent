@@ -70,18 +70,18 @@ class BackendClient:
         """Create a new customer"""
         try:
             data = {
-                    "business_id": business_id,
-                    "phone": phone,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                }
+                "business_id": business_id,
+                "phone": phone,
+                "first_name": first_name,
+                "last_name": last_name,
+            }
             if email:
                 data["email"] = email
-                if date_of_birth:
+            if date_of_birth:
                 data["date_of_birth"] = date_of_birth
-                if address:
+            if address:
                 data["address"] = address
-                if city:
+            if city:
                 data["city"] = city
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -166,18 +166,18 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Book an appointment"""
         try:
-                params = {
-                    "business_id": business_id,
-                    "customer_id": customer_id,
-                    "staff_id": staff_id,
-                    "appointment_date": appointment_date,
-                    "appointment_time": appointment_time,
-                    "duration_minutes": duration_minutes
-                }
-                if service_id:
-                    params["service_id"] = service_id
-                if notes:
-                    params["notes"] = notes
+            params = {
+                "business_id": business_id,
+                "customer_id": customer_id,
+                "staff_id": staff_id,
+                "appointment_date": appointment_date,
+                "appointment_time": appointment_time,
+                "duration_minutes": duration_minutes
+            }
+            if service_id:
+                params["service_id"] = service_id
+            if notes:
+                params["notes"] = notes
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -247,12 +247,12 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Reschedule an appointment"""
         try:
-                params = {
-                    "new_date": new_date,
-                    "new_time": new_time
-                }
-                if staff_id:
-                    params["staff_id"] = staff_id
+            params = {
+                "new_date": new_date,
+                "new_time": new_time
+            }
+            if staff_id:
+                params["staff_id"] = staff_id
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -332,14 +332,14 @@ class BackendClient:
         """Update call log when call ends"""
         try:
             data = {
-                    "call_status": "completed",
-                    "call_duration": call_duration,
-                    "outcome": outcome,
-                    "ended_at": datetime.utcnow().isoformat()
-                }
-                if transcript:
+                "call_status": "completed",
+                "call_duration": call_duration,
+                "outcome": outcome,
+                "ended_at": datetime.utcnow().isoformat()
+            }
+            if transcript:
                 data["transcript"] = transcript
-                if customer_id:
+            if customer_id:
                 data["customer_id"] = customer_id
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
