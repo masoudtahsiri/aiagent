@@ -27,7 +27,6 @@ from livekit.agents import (
     AutoSubscribe,
     JobContext,
     JobProcess,
-    RoomInputOptions,
     cli,
 )
 from livekit.plugins import google, silero
@@ -264,13 +263,10 @@ async def entrypoint(ctx: JobContext):
     # Store session reference for tools (e.g., end_call)
     session_data.session = session
     
-    # Start the session with room input options
+    # Start the session
     await session.start(
         agent=agent,
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            noise_cancellation=True,
-        ),
     )
     
     logger.info(f"Agent session started - Voice: {voice}")
@@ -278,7 +274,11 @@ async def entrypoint(ctx: JobContext):
     # =========================================================================
     # SEND GREETING - MUST be AFTER session.start()
     # Using generate_reply with instructions forces immediate response
+    # Add small delay to allow realtime session to fully establish (fixes timeout)
     # =========================================================================
+    
+    # Wait for the realtime session to fully establish
+    await asyncio.sleep(0.5)  # Small delay to prevent timeout
     
     await session.generate_reply(
         instructions=f"Greet the caller immediately with: {greeting}"
