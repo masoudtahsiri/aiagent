@@ -294,4 +294,12 @@ if __name__ == "__main__":
     logger.info(f"Backend: {BACKEND_URL}")
     logger.info("Waiting for calls...")
     
+    # Using AgentServer pattern (v1.3.x)
     cli.run_app(server)
+    
+    # Legacy pattern (still works in v1.3.x but not used here)
+    # cli.run_app(WorkerOptions(
+    #     entrypoint_fnc=entrypoint,
+    #     prewarm_fnc=prewarm,
+    #     agent_name="ai-receptionist",
+    # ))
