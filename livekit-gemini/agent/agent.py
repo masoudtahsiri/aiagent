@@ -256,10 +256,9 @@ async def entrypoint(ctx: JobContext):
     # Industry-standard delay for RTP stream stabilization (1s)
     await asyncio.sleep(1.0)
     
-    # Send greeting with interruption protection
+    # Send greeting
     await session.generate_reply(
-        instructions=f"Greet the caller: {greeting}",
-        allow_interruptions=False
+        instructions=f"Greet the caller: {greeting}"
     )
     
     logger.info(f"Greeting sent - Voice: {voice}")
