@@ -277,12 +277,16 @@ async def entrypoint(ctx: JobContext):
     # Fixes:
     # 1. Empty turns bug - generate_reply() now sends user turn even without instructions
     # 2. Send immediately after session.start() - greeting is already personalized
+    # 3. Use the actual greeting text so AI says it verbatim (consistent greeting)
     # =========================================================================
     
     # Send greeting immediately - all context (customer name, business info) is already loaded
-    # The greeting will be personalized because customer context was loaded before session.start()
-    logger.info("Sending personalized greeting immediately...")
-    await session.generate_reply(user_input="Hello")
+    # Use instructions to tell AI to say the exact greeting text verbatim
+    logger.info(f"Sending personalized greeting: {greeting}")
+    await session.generate_reply(
+        user_input="Hello",
+        instructions=f"Say this greeting verbatim exactly as written: {greeting}"
+    )
     
     logger.info("✓ Greeting sent")
 
