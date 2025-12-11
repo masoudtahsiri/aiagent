@@ -289,12 +289,17 @@ async def entrypoint(ctx: JobContext):
     
     if rt_session and hasattr(rt_session, 'wait_until_ready'):
         logger.info("Waiting for Gemini session to be ready...")
-        await rt_session.wait_until_ready(timeout=10.0)
-        logger.info("✓ Gemini session ready")
+        try:
+            # Increase timeout to 20 seconds and handle timeout gracefully
+            await rt_session.wait_until_ready(timeout=20.0)
+            logger.info("✓ Gemini session ready")
+        except TimeoutError:
+            logger.warning("Gemini session did not become ready within timeout, proceeding with delay fallback...")
+            await asyncio.sleep(1.0)
     else:
         # Fallback: small delay if wait_until_ready not available
         logger.info("wait_until_ready() not available, using delay...")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
     
     # Send greeting - fixed version now works with user_input
     # The fix ensures it sends a user turn even when instructions is NOT_GIVEN
