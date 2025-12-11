@@ -272,19 +272,36 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Agent session started - Voice: {voice}")
     
     # =========================================================================
-    # SEND GREETING - MUST be AFTER session.start()
-    # Using generate_reply with instructions forces immediate response
-    # Add small delay to allow realtime session to fully establish (fixes timeout)
+    # SEND GREETING - Using fixed version of livekit-plugins-google
+    # Repository: https://github.com/masoudtahsiri/Gemini-live
+    # Fixes:
+    # 1. Empty turns bug - generate_reply() now sends user turn even without instructions
+    # 2. Timing issue - Added wait_until_ready() method
     # =========================================================================
     
-    # Wait for the realtime session to fully establish
-    await asyncio.sleep(0.5)  # Small delay to prevent timeout
+    # Wait for Gemini session to be ready (using fixed version's new method)
+    # Access realtime session from the agent's LLM
+    rt_session = None
+    if hasattr(agent, 'realtime_llm_session'):
+        rt_session = agent.realtime_llm_session
+    elif hasattr(session, '_llm') and hasattr(session._llm, '_rt_session'):
+        rt_session = session._llm._rt_session
     
-    await session.generate_reply(
-        instructions=f"Greet the caller immediately with: {greeting}"
-    )
+    if rt_session and hasattr(rt_session, 'wait_until_ready'):
+        logger.info("Waiting for Gemini session to be ready...")
+        await rt_session.wait_until_ready(timeout=10.0)
+        logger.info("✓ Gemini session ready")
+    else:
+        # Fallback: small delay if wait_until_ready not available
+        logger.info("wait_until_ready() not available, using delay...")
+        await asyncio.sleep(0.5)
     
-    logger.info("Greeting sent")
+    # Send greeting - fixed version now works with user_input
+    # The fix ensures it sends a user turn even when instructions is NOT_GIVEN
+    logger.info("Sending greeting via generate_reply(user_input='Hello')...")
+    await session.generate_reply(user_input="Hello")
+    
+    logger.info("✓ Greeting sent")
 
 
 if __name__ == "__main__":
