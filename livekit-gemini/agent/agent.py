@@ -276,17 +276,12 @@ async def entrypoint(ctx: JobContext):
     # Repository: https://github.com/masoudtahsiri/Gemini-live
     # Fixes:
     # 1. Empty turns bug - generate_reply() now sends user turn even without instructions
-    # 2. Timing issue - Using 1-second delay instead of wait_until_ready() (faster and more reliable)
+    # 2. Send immediately after session.start() - greeting is already personalized
     # =========================================================================
     
-    # Brief delay to ensure Gemini session is initialized before sending greeting
-    # This is faster and more reliable than waiting for session to be "ready"
-    logger.info("Waiting for Gemini session initialization...")
-    await asyncio.sleep(1.0)
-    
-    # Send greeting - fixed version now works with user_input
-    # The fix ensures it sends a user turn even when instructions is NOT_GIVEN
-    logger.info("Sending greeting via generate_reply(user_input='Hello')...")
+    # Send greeting immediately - all context (customer name, business info) is already loaded
+    # The greeting will be personalized because customer context was loaded before session.start()
+    logger.info("Sending personalized greeting immediately...")
     await session.generate_reply(user_input="Hello")
     
     logger.info("✓ Greeting sent")
