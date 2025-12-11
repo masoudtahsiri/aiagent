@@ -197,6 +197,9 @@ async def entrypoint(ctx: JobContext):
     # BUILD PROMPT
     # =========================================================================
     
+    # Build greeting first (needed for system prompt)
+    greeting = build_greeting(business_config, session_data.customer, ai_config)
+    
     prompt_builder = PromptBuilder(
         business_config=business_config,
         customer=session_data.customer,
@@ -205,10 +208,16 @@ async def entrypoint(ctx: JobContext):
     )
     system_prompt = prompt_builder.build()
     
-    logger.info(f"System prompt built ({len(system_prompt)} chars)")
+    # Add greeting instruction to system prompt so AI says it verbatim
+    system_prompt = f"""{system_prompt}
+
+IMPORTANT - FIRST GREETING:
+When the caller says "Hello" or starts the conversation, you MUST say this EXACT greeting word-for-word, do not paraphrase or change it:
+"{greeting}"
+
+After saying this exact greeting, continue the conversation naturally."""
     
-    # Build greeting
-    greeting = build_greeting(business_config, session_data.customer, ai_config)
+    logger.info(f"System prompt built ({len(system_prompt)} chars)")
     
     # =========================================================================
     # LOG CALL START
@@ -281,12 +290,9 @@ async def entrypoint(ctx: JobContext):
     # =========================================================================
     
     # Send greeting immediately - all context (customer name, business info) is already loaded
-    # Use instructions to tell AI to say the exact greeting text verbatim
+    # The greeting is already in the system prompt, so AI will say it verbatim
     logger.info(f"Sending personalized greeting: {greeting}")
-    await session.generate_reply(
-        user_input="Hello",
-        instructions=f"Say this greeting verbatim exactly as written: {greeting}"
-    )
+    await session.generate_reply(user_input="Hello")
     
     logger.info("✓ Greeting sent")
 
