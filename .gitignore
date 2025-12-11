@@ -48,6 +48,9 @@ ENV/
 .venv/
 backend/venv/
 
+# Local fixed packages (installed from GitHub)
+livekit-gemini/agent/livekit-plugins-google-fixed/
+
 # IDE
 .idea/
 .vscode/
