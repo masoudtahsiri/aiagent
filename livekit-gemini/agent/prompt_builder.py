@@ -81,9 +81,24 @@ class PromptBuilder:
         if custom and "{" not in custom:
             return custom
         
-        return f"""You are {name}, receptionist at {biz_name}.
+        role_type = self.ai_config.get("role_type", "receptionist")
+        
+        if role_type == "receptionist":
+            return f"""You are {name}, receptionist at {biz_name}.
 Job: Help with appointments, answer questions, provide info.
 Style: Friendly, professional, concise. This is a phone call."""
+        elif role_type == "sales":
+            return f"""You are {name}, handling sales at {biz_name}.
+Job: Help customers understand services, answer questions, book consultations.
+Style: Helpful, informative, not pushy. Focus on customer needs."""
+        elif role_type == "support":
+            return f"""You are {name}, handling support at {biz_name}.
+Job: Help customers with issues, answer questions, resolve concerns.
+Style: Patient, empathetic, solution-focused."""
+        else:
+            return f"""You are {name} at {biz_name}.
+Job: Assist callers with their needs.
+Style: Friendly, professional, helpful."""
     
     def _build_business_compact(self) -> str:
         """Build business info - compact"""
@@ -94,13 +109,15 @@ Style: Friendly, professional, concise. This is a phone call."""
             parts.append(f"Industry: {b['industry']}")
         
         # Compact address
-        addr_parts = [b.get("address"), b.get("city"), b.get("state")]
+        addr_parts = [b.get("address"), b.get("city"), b.get("state"), b.get("zip_code")]
         addr = ", ".join(p for p in addr_parts if p)
         if addr:
             parts.append(f"Location: {addr}")
         
         if b.get("phone_number"):
             parts.append(f"Phone: {b['phone_number']}")
+        if b.get("website"):
+            parts.append(f"Website: {b['website']}")
         
         return "\n".join(parts)
     
@@ -133,21 +150,26 @@ Style: Friendly, professional, concise. This is a phone call."""
             return ""
         
         today = datetime.now().date()
-        max_date = today + timedelta(days=14)
+        max_date = today + timedelta(days=30)
         
         upcoming = []
         for c in self.closures:
             try:
                 d = datetime.strptime(c["date"], "%Y-%m-%d").date()
                 if today <= d <= max_date:
-                    upcoming.append(f"{self._fmt_date_short(c['date'])}: {c.get('reason', 'Closed')}")
+                    upcoming.append(f"{self._format_date(c['date'])}: {c.get('reason', 'Closed')}")
             except (ValueError, KeyError):
                 continue
         
         if not upcoming:
             return ""
         
-        return "Closures: " + "; ".join(upcoming[:3])
+        lines = ["Closures:"]
+        for c in upcoming[:5]:
+            lines.append(f"  {c}")
+        lines.append("→ When these dates requested, explain why unavailable.")
+        
+        return "\n".join(lines)
     
     def _build_team_compact(self) -> str:
         """Build staff - compact format"""
@@ -172,47 +194,80 @@ Style: Friendly, professional, concise. This is a phone call."""
             elif s.get("specialty"):
                 line += f" - {s['specialty']}"
             
-            # Schedule (compact)
+            # Schedule with times
             schedule = s.get("availability_schedule", [])
             if schedule:
-                days = [_DAYS[a["day_of_week"]] for a in schedule]
-                line += f" [{', '.join(days)}]"
+                schedule_parts = []
+                for avail in schedule:
+                    day_idx = avail.get("day_of_week", 0)
+                    day = _DAYS[day_idx]
+                    start = self._fmt_time(avail.get("start_time", ""))
+                    end = self._fmt_time(avail.get("end_time", ""))
+                    schedule_parts.append(f"{day} {start}-{end}")
+                if schedule_parts:
+                    line += f" [{', '.join(schedule_parts)}]"
             
             lines.append(line)
+            
+            # Exceptions (time off)
+            exceptions = s.get("availability_exceptions", [])
+            if exceptions:
+                exc_notes = []
+                for exc in exceptions[:3]:
+                    if exc.get("type") == "closed":
+                        exc_date = self._format_date(exc.get("date", ""))
+                        exc_reason = exc.get("reason", "Unavailable")
+                        exc_notes.append(f"{exc_date}: {exc_reason}")
+                if exc_notes:
+                    lines.append(f"  Time off: {'; '.join(exc_notes)}")
         
         return "\n".join(lines)
     
     def _build_services_compact(self) -> str:
-        """Build services - compact list"""
+        """Build services - compact list with categories"""
         if not self.services:
             return ""
         
-        items = []
-        for svc in self.services[:8]:  # Max 8 services
-            name = svc.get("name", "")
-            dur = svc.get("duration_minutes", 30)
-            price = svc.get("price")
-            
-            if price:
-                items.append(f"{name} (${price:.0f}, {dur}min)")
-            else:
-                items.append(f"{name} ({dur}min)")
+        # Group by category if categories exist
+        by_category = {}
+        for svc in self.services:
+            cat = svc.get("category", "General")
+            if cat not in by_category:
+                by_category[cat] = []
+            by_category[cat].append(svc)
         
-        return "Services: " + ", ".join(items)
+        lines = ["Services:"]
+        for category, services in by_category.items():
+            if len(by_category) > 1:
+                lines.append(f"  [{category}]")
+            
+            for svc in services[:8]:  # Max 8 per category
+                name = svc.get("name", "")
+                dur = svc.get("duration_minutes", 30)
+                price = svc.get("price")
+                
+                if price:
+                    lines.append(f"  {name}: ${price:.0f}, {dur}min")
+                else:
+                    lines.append(f"  {name}: {dur}min")
+        
+        return "\n".join(lines)
     
     def _build_knowledge_compact(self) -> str:
-        """Build FAQ - top 5 only"""
+        """Build FAQ - top 10 with longer answers"""
         if not self.knowledge:
             return ""
         
         lines = ["FAQs:"]
-        for faq in self.knowledge[:5]:
-            q = faq.get("question", "")[:60]
-            a = faq.get("answer", "")[:100]
-            if len(faq.get("answer", "")) > 100:
-                a += "..."
-            lines.append(f"Q: {q}")
-            lines.append(f"A: {a}")
+        for faq in self.knowledge[:10]:
+            q = faq.get("question", "")
+            a = faq.get("answer", "")
+            if q and a:
+                # Keep answers concise but longer than before
+                if len(a) > 200:
+                    a = a[:197] + "..."
+                lines.append(f"Q: {q}")
+                lines.append(f"A: {a}")
         
         return "\n".join(lines)
     
@@ -223,65 +278,114 @@ Style: Friendly, professional, concise. This is a phone call."""
         return self._build_new_customer()
     
     def _build_existing_customer(self) -> str:
-        """Build returning customer context - compact"""
+        """Build returning customer context - compact but complete"""
         c = self.customer
         ctx = self.customer_context or {}
         
-        name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip()
+        first_name = c.get("first_name", "")
+        last_name = c.get("last_name", "")
+        full_name = f"{first_name} {last_name}".strip() or "Customer"
         
-        lines = [f"CALLER: {name} (returning)"]
+        lines = [f"CALLER: {full_name} (returning)"]
         
-        # Contact on file
-        contact = []
+        # Contact information (AI has this - should NOT ask)
+        lines.append("Contact on file:")
         if c.get("phone"):
-            contact.append(f"Ph: {c['phone']}")
+            lines.append(f"  Phone: {c['phone']}")
         if c.get("email"):
-            contact.append(f"Em: {c['email']}")
-        if contact:
-            lines.append("On file: " + ", ".join(contact))
+            lines.append(f"  Email: {c['email']}")
+        if c.get("address"):
+            addr_parts = [c.get("address"), c.get("city"), c.get("state"), c.get("zip_code")]
+            address = ", ".join(p for p in addr_parts if p)
+            if address:
+                lines.append(f"  Address: {address}")
+        
+        # Personal details
+        if c.get("date_of_birth"):
+            lines.append(f"  Date of birth: {c['date_of_birth']}")
+        
+        # Preferences
+        preferences = []
+        if c.get("preferred_contact_method") and c.get("preferred_contact_method") != "any":
+            preferences.append(f"prefers {c['preferred_contact_method']} contact")
+        if c.get("language"):
+            preferences.append(f"language: {c['language']}")
+        if preferences:
+            lines.append(f"  Preferences: {', '.join(preferences)}")
         
         # Accommodations - IMPORTANT
         if c.get("accommodations"):
+            lines.append("")
             lines.append(f"⚠️ ACCOMMODATIONS: {c['accommodations']}")
         
         # Preferred staff
         if c.get("preferred_staff_id") and c["preferred_staff_id"] in self._staff_map:
             pref = self._staff_map[c["preferred_staff_id"]]
-            lines.append(f"Prefers: {pref.get('name', '')}")
+            lines.append(f"  Preferred provider: {pref.get('name', '')}")
         
-        # History stats
-        stats = []
+        # Customer tenure and value
+        lines.append("")
+        lines.append("History:")
+        if c.get("customer_since"):
+            try:
+                since = datetime.fromisoformat(c["customer_since"].replace("Z", "+00:00"))
+                tenure = (datetime.now(since.tzinfo) - since).days // 365
+                if tenure >= 1:
+                    lines.append(f"  Customer for {tenure} year(s)")
+                else:
+                    lines.append(f"  New customer this year")
+            except:
+                pass
+        
         if c.get("total_appointments"):
-            stats.append(f"{c['total_appointments']} visits")
+            lines.append(f"  Total visits: {c['total_appointments']}")
         if c.get("last_visit_date"):
-            stats.append(f"Last: {c['last_visit_date']}")
-        if stats:
-            lines.append("History: " + ", ".join(stats))
+            lines.append(f"  Last visit: {c['last_visit_date']}")
+        if c.get("total_spent") and float(c.get("total_spent", 0)) > 0:
+            lines.append(f"  Total spent: ${float(c['total_spent']):.2f}")
         
         # Tags
         tags = ctx.get("tags", [])
         if tags:
-            lines.append(f"Tags: {', '.join(tags)}")
+            lines.append(f"  Tags: {', '.join(tags)}")
         
-        # Recent appointments (last 3)
+        # Recent appointments (detailed)
         recent = ctx.get("recent_appointments", [])
         if recent:
-            apt_lines = []
-            for apt in recent[:3]:
-                status = apt.get("status", "")
+            lines.append("")
+            lines.append("Recent appointments:")
+            for apt in recent[:5]:
                 date = apt.get("date", "")
-                apt_lines.append(f"{date} ({status})")
-            lines.append("Recent: " + ", ".join(apt_lines))
+                status = apt.get("status", "")
+                staff_name = apt.get("staff_name", "")
+                service_name = apt.get("service_name", "")
+                
+                apt_desc = f"  {date}: {status}"
+                if service_name:
+                    apt_desc += f" - {service_name}"
+                if staff_name:
+                    apt_desc += f" with {staff_name}"
+                if status == "cancelled" and apt.get("cancellation_reason"):
+                    apt_desc += f" (reason: {apt['cancellation_reason']})"
+                lines.append(apt_desc)
         
-        # No-show warning
-        no_shows = ctx.get("stats", {}).get("recent_no_shows", 0)
-        if no_shows >= 2:
-            lines.append(f"⚠️ {no_shows} recent no-shows")
+        # Stats from context
+        stats = ctx.get("stats", {})
+        if stats.get("recent_no_shows", 0) >= 2:
+            lines.append("")
+            lines.append(f"⚠️ Note: {stats['recent_no_shows']} recent no-shows")
+        
+        # Notes
+        if c.get("notes"):
+            lines.append("")
+            lines.append(f"Notes: {c['notes']}")
         
         # Instructions
         lines.append("")
-        lines.append(f"→ Call them {c.get('first_name', 'by name')}")
-        lines.append("→ DON'T ask for: name, phone, email (you have it)")
+        lines.append("IMPORTANT:")
+        lines.append(f"→ Address them by first name ({first_name or 'their name'})")
+        lines.append("→ Do NOT ask for: name, phone number, email, or address - you already have it.")
+        lines.append("→ If they want to update contact info, use the update tool.")
         
         return "\n".join(lines)
     
@@ -339,6 +443,16 @@ Optional: Email (if booking)
         try:
             d = datetime.strptime(date_str, "%Y-%m-%d")
             return d.strftime("%b %d")
+        except ValueError:
+            return date_str
+    
+    def _format_date(self, date_str: str) -> str:
+        """Format date for speech: 2025-01-15 -> Wednesday, January 15"""
+        if not date_str:
+            return ""
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            return date_obj.strftime("%A, %B %d")
         except ValueError:
             return date_str
 
