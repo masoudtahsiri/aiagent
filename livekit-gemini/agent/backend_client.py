@@ -26,30 +26,31 @@ class BackendClient:
 
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url.rstrip("/")
-        self.timeout = httpx.Timeout(
-            connect=5.0,      # Connection timeout
-            read=10.0,        # Read timeout
-            write=5.0,        # Write timeout
-            pool=5.0          # Pool timeout
-        )
+        self.timeout = httpx.Timeout(10.0)  # Simpler, same as before
         # Persistent client with connection pooling
         self._client: Optional[httpx.AsyncClient] = None
-        self._client_lock = asyncio.Lock()
+        self._client_lock: Optional[asyncio.Lock] = None  # Don't create here!
+    
+    def _get_lock(self) -> asyncio.Lock:
+        """Lazy lock creation - ensures correct event loop binding"""
+        if self._client_lock is None:
+            self._client_lock = asyncio.Lock()
+        return self._client_lock
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create persistent HTTP client with connection pooling"""
         if self._client is None or self._client.is_closed:
-            async with self._client_lock:
+            async with self._get_lock():
+                # Double-check after acquiring lock
                 if self._client is None or self._client.is_closed:
                     self._client = httpx.AsyncClient(
                         base_url=self.base_url,
                         timeout=self.timeout,
                         limits=httpx.Limits(
-                            max_keepalive_connections=10,
-                            max_connections=20,
+                            max_keepalive_connections=5,
+                            max_connections=10,
                             keepalive_expiry=30.0
                         ),
-                        http2=False,  # HTTP/1.1 is faster for our use case
                     )
         return self._client
     
@@ -58,6 +59,7 @@ class BackendClient:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
+            self._client_lock = None  # Reset lock too
 
     # =========================================================================
     # BUSINESS
