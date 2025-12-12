@@ -91,7 +91,7 @@ def format_slots_brief(slots: List[Dict], max_options: int = 6) -> str:
 
 
 def format_appointments_brief(appointments: List[Dict]) -> str:
-    """Format appointments concisely for speech"""
+    """Format appointments concisely for speech - includes status"""
     if not appointments:
         return "No upcoming appointments."
     
@@ -105,7 +105,15 @@ def format_appointments_brief(appointments: List[Dict]) -> str:
         if apt.get("staff") and isinstance(apt["staff"], dict):
             staff = f" with {apt['staff'].get('name', '')}"
         
-        parts.append(f"{date} at {time}{staff}")
+        # Include status - especially important for cancelled appointments
+        status = apt.get("status", "scheduled")
+        status_note = ""
+        if status == "cancelled":
+            status_note = " (cancelled)"
+        elif status == "confirmed":
+            status_note = " (confirmed)"
+        
+        parts.append(f"{date} at {time}{staff}{status_note}")
     
     result = ". ".join(parts)
     
@@ -371,23 +379,44 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         if not appointments:
             return {"success": False, "message": "No appointments to cancel."}
         
-        # Find appointment to cancel
+        # Filter out already cancelled appointments
+        active_appointments = [a for a in appointments if a.get("status") != "cancelled"]
+        
+        if not active_appointments:
+            # All appointments are cancelled - show them with status
+            formatted = format_appointments_brief(appointments)
+            return {"success": False, "message": f"All your appointments are already cancelled: {formatted}"}
+        
+        # Find appointment to cancel (only from active ones)
         apt = None
         if appointment_date:
-            for a in appointments:
+            for a in active_appointments:
                 if a["appointment_date"] == appointment_date:
                     apt = a
                     break
             if not apt:
-                return {"success": False, "message": "No appointment on that date."}
+                # Check if it exists but is cancelled
+                cancelled_apt = next((a for a in appointments if a["appointment_date"] == appointment_date), None)
+                if cancelled_apt and cancelled_apt.get("status") == "cancelled":
+                    return {"success": False, "message": f"Your appointment on {format_date(appointment_date)} is already cancelled."}
+                formatted = format_appointments_brief(active_appointments)
+                return {"success": False, "message": f"No active appointment on that date. Your appointments: {formatted}"}
         else:
-            apt = appointments[0]
+            apt = active_appointments[0]
+        
+        # Double-check status before attempting to cancel
+        if apt.get("status") == "cancelled":
+            return {"success": False, "message": f"Your appointment on {format_date(apt['appointment_date'])} is already cancelled."}
         
         result = await backend.cancel_appointment(apt["id"], reason)
         
         if result and result.get("success"):
             session_data.call_outcome = "appointment_cancelled"
             return {"success": True, "message": f"Cancelled your {format_date(apt['appointment_date'])} appointment. Reschedule?"}
+        
+        # Handle specific error from API
+        if result and "already cancelled" in str(result.get("message", "")).lower():
+            return {"success": False, "message": f"Your appointment on {format_date(apt['appointment_date'])} is already cancelled."}
         
         return {"success": False, "message": "Couldn't cancel. Let me connect you with someone."}
 
@@ -416,23 +445,42 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         if not appointments:
             return {"success": False, "message": "No appointments to reschedule."}
         
+        # Filter out cancelled appointments (can't reschedule cancelled)
+        active_appointments = [a for a in appointments if a.get("status") != "cancelled"]
+        
+        if not active_appointments:
+            formatted = format_appointments_brief(appointments)
+            return {"success": False, "message": f"All your appointments are cancelled. Can't reschedule cancelled appointments: {formatted}"}
+        
         apt = None
         if current_date:
-            for a in appointments:
+            for a in active_appointments:
                 if a["appointment_date"] == current_date:
                     apt = a
                     break
+            if not apt:
+                # Check if it exists but is cancelled
+                cancelled_apt = next((a for a in appointments if a["appointment_date"] == current_date), None)
+                if cancelled_apt and cancelled_apt.get("status") == "cancelled":
+                    return {"success": False, "message": f"Your appointment on {format_date(current_date)} is cancelled. Can't reschedule a cancelled appointment."}
+                formatted = format_appointments_brief(active_appointments)
+                return {"success": False, "message": f"No active appointment on that date. Your appointments: {formatted}"}
         else:
-            apt = appointments[0]
+            apt = active_appointments[0]
         
-        if not apt:
-            return {"success": False, "message": "Couldn't find that appointment."}
+        # Double-check status
+        if apt.get("status") == "cancelled":
+            return {"success": False, "message": f"Your appointment on {format_date(apt['appointment_date'])} is cancelled. Can't reschedule a cancelled appointment."}
         
         result = await backend.reschedule_appointment(apt["id"], new_date, new_time)
         
         if result and result.get("success"):
             session_data.call_outcome = "appointment_rescheduled"
             return {"success": True, "message": f"Rescheduled to {format_date(new_date)} at {format_time(new_time)}!"}
+        
+        # Handle specific error from API
+        if result and "cancelled" in str(result.get("message", "")).lower():
+            return {"success": False, "message": f"Can't reschedule a cancelled appointment."}
         
         return {"success": False, "message": "That time's not available. Other options?"}
 
