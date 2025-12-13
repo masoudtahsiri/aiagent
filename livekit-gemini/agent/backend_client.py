@@ -69,12 +69,12 @@ class BackendClient:
         """Lookup business configuration by AI phone number"""
         try:
             client = await self._get_client()
-                response = await client.post(
+            response = await client.post(
                 "/api/ai/lookup-by-phone",
-                    json={"phone_number": phone_number}
-                )
-                response.raise_for_status()
-                return response.json()
+                json={"phone_number": phone_number}
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             logger.error(f"lookup_business_by_phone HTTP error: {e.response.status_code}")
             raise
@@ -90,12 +90,12 @@ class BackendClient:
         """Check if customer exists"""
         try:
             client = await self._get_client()
-                response = await client.post(
+            response = await client.post(
                 "/api/customers/lookup",
-                    json={"phone": phone, "business_id": business_id}
-                )
-                response.raise_for_status()
-                return response.json()
+                json={"phone": phone, "business_id": business_id}
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"lookup_customer error: {e}")
             return {"exists": False, "customer": None}
@@ -132,24 +132,24 @@ class BackendClient:
         """Create a new customer"""
         try:
             data = {
-                    "business_id": business_id,
-                    "phone": phone,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                }
+                "business_id": business_id,
+                "phone": phone,
+                "first_name": first_name,
+                "last_name": last_name,
+            }
             if email:
                 data["email"] = email
-                if date_of_birth:
+            if date_of_birth:
                 data["date_of_birth"] = date_of_birth
-                if address:
+            if address:
                 data["address"] = address
-                if city:
+            if city:
                 data["city"] = city
             
             client = await self._get_client()
             response = await client.post("/api/customers/create", json=data)
-                response.raise_for_status()
-                return response.json()
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             detail = self._extract_error(e)
             logger.error(f"create_customer error: {e.response.status_code} - {detail}")
@@ -162,12 +162,12 @@ class BackendClient:
         """Update customer information"""
         try:
             client = await self._get_client()
-                response = await client.put(
+            response = await client.put(
                 f"/api/agent/customers/{customer_id}",
-                    json=update_data
-                )
-                response.raise_for_status()
-                return response.json()
+                json=update_data
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"update_customer error: {e}")
             return None
@@ -176,11 +176,11 @@ class BackendClient:
         """Get full customer context including history and tags"""
         try:
             client = await self._get_client()
-                response = await client.get(
+            response = await client.get(
                 f"/api/agent/appointments/customer-context/{customer_id}"
-                )
-                response.raise_for_status()
-                return response.json()
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"get_customer_context error: {e}")
             return None
@@ -202,12 +202,12 @@ class BackendClient:
                 params["end_date"] = end_date
 
             client = await self._get_client()
-                response = await client.get(
+            response = await client.get(
                 f"/api/appointments/staff/{staff_id}/slots",
-                    params=params
-                )
-                response.raise_for_status()
-                return response.json()
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"get_available_slots error: {e}")
             return []
@@ -225,26 +225,26 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Book an appointment"""
         try:
-                params = {
-                    "business_id": business_id,
-                    "customer_id": customer_id,
-                    "staff_id": staff_id,
-                    "appointment_date": appointment_date,
-                    "appointment_time": appointment_time,
-                    "duration_minutes": duration_minutes
-                }
-                if service_id:
-                    params["service_id"] = service_id
-                if notes:
-                    params["notes"] = notes
+            params = {
+                "business_id": business_id,
+                "customer_id": customer_id,
+                "staff_id": staff_id,
+                "appointment_date": appointment_date,
+                "appointment_time": appointment_time,
+                "duration_minutes": duration_minutes
+            }
+            if service_id:
+                params["service_id"] = service_id
+            if notes:
+                params["notes"] = notes
 
             client = await self._get_client()
-                response = await client.post(
+            response = await client.post(
                 "/api/agent/appointments/book",
-                    params=params
-                )
-                response.raise_for_status()
-                return response.json()
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             detail = self._extract_error(e)
             logger.error(f"book_appointment error: {e.response.status_code} - {detail}")
@@ -261,12 +261,12 @@ class BackendClient:
         """Get appointments for a customer"""
         try:
             client = await self._get_client()
-                response = await client.get(
+            response = await client.get(
                 f"/api/agent/appointments/customer/{customer_id}",
-                    params={"upcoming_only": upcoming_only}
-                )
-                response.raise_for_status()
-                return response.json()
+                params={"upcoming_only": upcoming_only}
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"get_customer_appointments error: {e}")
             return []
@@ -283,12 +283,12 @@ class BackendClient:
                 params["cancellation_reason"] = cancellation_reason
 
             client = await self._get_client()
-                response = await client.post(
+            response = await client.post(
                 f"/api/agent/appointments/{appointment_id}/cancel",
-                    params=params
-                )
-                response.raise_for_status()
-                return response.json()
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             detail = self._extract_error(e)
             logger.error(f"cancel_appointment error: {e.response.status_code} - {detail}")
@@ -306,20 +306,20 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Reschedule an appointment"""
         try:
-                params = {
-                    "new_date": new_date,
-                    "new_time": new_time
-                }
-                if staff_id:
-                    params["staff_id"] = staff_id
+            params = {
+                "new_date": new_date,
+                "new_time": new_time
+            }
+            if staff_id:
+                params["staff_id"] = staff_id
 
             client = await self._get_client()
-                response = await client.post(
+            response = await client.post(
                 f"/api/agent/appointments/{appointment_id}/reschedule",
-                    params=params
-                )
-                response.raise_for_status()
-                return response.json()
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             detail = self._extract_error(e)
             logger.error(f"reschedule_appointment error: {e.response.status_code} - {detail}")
@@ -336,12 +336,12 @@ class BackendClient:
         """Search FAQs"""
         try:
             client = await self._get_client()
-                response = await client.get(
+            response = await client.get(
                 f"/api/knowledge-base/search/{business_id}",
-                    params={"q": query}
-                )
-                response.raise_for_status()
-                return response.json()
+                params={"q": query}
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"search_knowledge_base error: {e}")
             return []
@@ -371,8 +371,8 @@ class BackendClient:
 
             client = await self._get_client()
             response = await client.post("/api/calls/log", json=data)
-                response.raise_for_status()
-                return response.json()
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"log_call_start error: {e}")
             return None
@@ -388,23 +388,23 @@ class BackendClient:
         """Update call log when call ends"""
         try:
             data = {
-                    "call_status": "completed",
-                    "call_duration": call_duration,
-                    "outcome": outcome,
-                    "ended_at": datetime.utcnow().isoformat()
-                }
-                if transcript:
+                "call_status": "completed",
+                "call_duration": call_duration,
+                "outcome": outcome,
+                "ended_at": datetime.utcnow().isoformat()
+            }
+            if transcript:
                 data["transcript"] = transcript
-                if customer_id:
+            if customer_id:
                 data["customer_id"] = customer_id
 
             client = await self._get_client()
-                response = await client.put(
+            response = await client.put(
                 f"/api/calls/log/{call_log_id}",
-                    json=data
-                )
-                response.raise_for_status()
-                return response.json()
+                json=data
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             logger.error(f"log_call_end error: {e}")
             return None
