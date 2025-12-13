@@ -70,3 +70,4 @@ docker-compose.override.yml
 
 # OAuth credentials and secrets
 **/client_secret*.json
+n8n/cursor-mcp-config.json
