@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from backend.config import settings
 from backend.api import (
     auth, businesses, staff, customers, appointments, ai_config,
-    services, knowledge_base, call_logs, business_hours, appointments_agent
+    services, knowledge_base, call_logs, business_hours, appointments_agent, calendar
 )
 
 
@@ -112,6 +112,7 @@ app.include_router(call_logs.router)
 app.include_router(business_hours.router)
 app.include_router(appointments_agent.router)
 app.include_router(appointments_agent.customer_router)
+app.include_router(calendar.router)
 
 
 # =============================================================================
