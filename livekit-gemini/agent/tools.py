@@ -252,7 +252,38 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         slots = await backend.get_available_slots(staff_id, start_date, end_date)
         
         if not slots:
-            return {"success": True, "message": f"No availability with {resolved_name} in the next two weeks. Check another time or provider?"}
+            # Check for availability exceptions in the date range
+            staff_info = next((s for s in _staff_list if s["id"] == staff_id), None)
+            exception_reasons = []
+            
+            if staff_info:
+                exceptions = staff_info.get("availability_exceptions", [])
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+                
+                for exc in exceptions:
+                    if exc.get("type") == "closed":
+                        exc_date_str = exc.get("date", "")
+                        if exc_date_str:
+                            try:
+                                exc_date = datetime.strptime(exc_date_str, "%Y-%m-%d").date()
+                                if start_dt <= exc_date <= end_dt:
+                                    reason = exc.get("reason", "Unavailable")
+                                    exc_date_formatted = format_date(exc_date_str)
+                                    exception_reasons.append(f"{exc_date_formatted}: {reason}")
+                            except (ValueError, TypeError):
+                                pass
+            
+            if exception_reasons:
+                reasons_text = "; ".join(exception_reasons[:5])  # Limit to 5 for brevity
+                if len(exception_reasons) > 5:
+                    reasons_text += f" (and {len(exception_reasons) - 5} more)"
+                return {
+                    "success": True,
+                    "message": f"No availability with {resolved_name} in that time range. Note: {reasons_text}. Would you like me to check further out, or with someone else?"
+                }
+            else:
+                return {"success": True, "message": f"No availability with {resolved_name} in the next two weeks. Check another time or provider?"}
         
         # Filter by time preference
         if time_preference:

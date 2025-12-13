@@ -213,7 +213,7 @@ Style: Friendly, professional, helpful."""
             exceptions = s.get("availability_exceptions", [])
             if exceptions:
                 exc_notes = []
-                for exc in exceptions[:3]:
+                for exc in exceptions:
                     if exc.get("type") == "closed":
                         exc_date = self._format_date(exc.get("date", ""))
                         exc_reason = exc.get("reason", "Unavailable")
