@@ -57,16 +57,15 @@ For each workflow you want to access via MCP:
    {
      "mcpServers": {
        "n8n": {
-         "url": "https://n8n.algorityai.com/mcp",
-         "headers": {
-           "Authorization": "Bearer YOUR_MCP_ACCESS_TOKEN_HERE"
-         }
+         "url": "https://n8n.algorityai.com/mcp-server/http?access_token=YOUR_ACCESS_TOKEN"
        }
      }
    }
    ```
    
-   Replace `YOUR_MCP_ACCESS_TOKEN_HERE` with the token from Step 1.
+   Replace `YOUR_ACCESS_TOKEN` with your MCP access token from Step 1.
+   
+   **Note:** The access token is included in the URL query parameter, not as a header.
 
 ### Method 2: Edit Settings File Directly
 
