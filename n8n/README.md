@@ -12,15 +12,16 @@ cd n8n
 ## Access
 
 - **URL:** http://localhost:5678 (or http://YOUR_SERVER_IP:5678)
-- **Username:** admin
-- **Password:** your_secure_password_here (change this!)
+- **Authentication:** Disabled (no login required)
 
 ## Configuration
 
-### Update Password
+### Enable Authentication (Optional)
 
-Edit `docker-compose.yml` and change:
+To enable authentication, edit `docker-compose.yml` and change:
 ```yaml
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
 N8N_BASIC_AUTH_PASSWORD=your_secure_password_here
 ```
 
@@ -61,7 +62,7 @@ docker-compose restart n8n
 
 ## Security
 
-⚠️ **Change the default password before production use!**
+⚠️ **Authentication is currently disabled. Enable it in production for security!**
 
 ## Firewall
 
