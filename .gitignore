@@ -67,3 +67,6 @@ logs/
 
 # Docker
 docker-compose.override.yml
+
+# OAuth credentials and secrets
+**/client_secret*.json
