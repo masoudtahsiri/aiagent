@@ -352,13 +352,21 @@ async def sync_events_to_db(request: dict):
     Receive Google Calendar events and sync to database.
     
     Called by n8n after fetching events from Google Calendar.
-    Accepts: { staff_id: str, events: List[dict] }
+    Accepts: { staff_id: str, events: List[dict] } or { staff_id: str, events: dict }
     """
-    events = request.get("events", [])
+    events_raw = request.get("events", [])
     staff_id = request.get("staff_id")
     
     if not staff_id:
         raise HTTPException(status_code=400, detail="staff_id required")
+    
+    # Handle both single event object and array of events
+    if isinstance(events_raw, dict):
+        events = [events_raw]
+    elif isinstance(events_raw, list):
+        events = events_raw
+    else:
+        events = []
     
     db = get_db()
     synced_count = 0
