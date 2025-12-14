@@ -329,3 +329,6 @@ staff table          calendar_connections table
 - If something changed in Google Calendar → updates your database
 - Both stay in sync automatically! 🎉
 
+
+
+

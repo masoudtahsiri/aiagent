@@ -17,6 +17,7 @@ import asyncio
 from datetime import date as date_type, datetime
 from functools import lru_cache
 import time
+import logging
 
 from backend.models.ai_config import AIRoleCreate, AIRoleUpdate, AIRoleResponse
 from backend.models.business import PhoneNumberLookup
@@ -24,6 +25,7 @@ from backend.database.supabase_client import get_db
 from backend.middleware.auth import get_current_active_user
 
 router = APIRouter(prefix="/api/ai", tags=["AI Configuration"])
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # SIMPLE IN-MEMORY CACHE
@@ -85,11 +87,16 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
     - Business closures (holidays, special closures)
     - Knowledge base / FAQs
     """
+    start = time.perf_counter()
+    cache_hit = False
     
     # Check cache first
     cache_key = f"biz_phone:{lookup.phone_number}"
     cached = _config_cache.get(cache_key)
     if cached:
+        cache_hit = True
+        elapsed = (time.perf_counter() - start) * 1000
+        logger.info(f"lookup_business_by_phone: {elapsed:.1f}ms (cache: {cache_hit})")
         return cached
     
     db = get_db()
@@ -312,6 +319,10 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
 
     # Cache the result
     _config_cache.set(cache_key, response)
+    
+    # Log timing
+    elapsed = (time.perf_counter() - start) * 1000
+    logger.info(f"lookup_business_by_phone: {elapsed:.1f}ms (cache: {cache_hit})")
     
     return response
 
