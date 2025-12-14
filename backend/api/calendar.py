@@ -479,4 +479,269 @@ async def get_sync_status(staff_id: str):
     }
 
 
+# =============================================================================
+# BLOCK/UNBLOCK SLOTS FROM EXTERNAL CALENDAR EVENTS
+# =============================================================================
+
+@router.post("/block-from-calendar")
+async def block_slots_from_calendar_event(request: dict):
+    """
+    Block time slots based on a Google Calendar event.
+    Called by n8n when external events are detected.
+    
+    This prevents double-booking when staff has personal events in Google Calendar.
+    """
+    from datetime import datetime, timedelta
+    
+    db = get_db()
+    
+    staff_id = request.get("staff_id")
+    google_event_id = request.get("google_event_id")
+    start_datetime = request.get("start")
+    end_datetime = request.get("end")
+    summary = request.get("summary", "External Event")
+    is_all_day = request.get("is_all_day", False)
+    
+    if not all([staff_id, google_event_id, start_datetime, end_datetime]):
+        raise HTTPException(status_code=400, detail="Missing required fields: staff_id, google_event_id, start, end")
+    
+    # Parse datetimes
+    try:
+        if 'T' in start_datetime:
+            start_dt = datetime.fromisoformat(start_datetime.replace('Z', '+00:00').replace('+00:00', ''))
+            end_dt = datetime.fromisoformat(end_datetime.replace('Z', '+00:00').replace('+00:00', ''))
+        else:
+            # All-day event (date only)
+            start_dt = datetime.strptime(start_datetime, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_datetime, "%Y-%m-%d")
+            is_all_day = True
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e}")
+    
+    # Get staff's business_id
+    staff_result = db.table("staff").select("business_id").eq("id", staff_id).execute()
+    if not staff_result.data:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    
+    business_id = staff_result.data[0]["business_id"]
+    
+    # Check if we already have this event
+    existing = db.table("external_calendar_events").select("id").eq(
+        "google_event_id", google_event_id
+    ).eq("staff_id", staff_id).execute()
+    
+    if existing.data:
+        # Update existing event
+        db.table("external_calendar_events").update({
+            "summary": summary,
+            "start_datetime": start_dt.isoformat(),
+            "end_datetime": end_dt.isoformat(),
+            "is_all_day": is_all_day,
+            "last_synced_at": datetime.utcnow().isoformat()
+        }).eq("google_event_id", google_event_id).eq("staff_id", staff_id).execute()
+    else:
+        # Insert new event
+        db.table("external_calendar_events").insert({
+            "staff_id": staff_id,
+            "business_id": business_id,
+            "google_event_id": google_event_id,
+            "summary": summary,
+            "start_datetime": start_dt.isoformat(),
+            "end_datetime": end_dt.isoformat(),
+            "is_all_day": is_all_day
+        }).execute()
+    
+    # Block overlapping time slots
+    current_date = start_dt.date()
+    end_date = end_dt.date()
+    blocked_count = 0
+    
+    while current_date <= end_date:
+        # Get all unbooked slots for this date
+        slots = db.table("time_slots").select("id, time, duration_minutes").eq(
+            "staff_id", staff_id
+        ).eq("date", str(current_date)).eq("is_booked", False).execute()
+        
+        for slot in (slots.data or []):
+            # Parse slot time
+            time_parts = slot["time"].split(":")
+            slot_hour = int(time_parts[0])
+            slot_minute = int(time_parts[1])
+            slot_datetime = datetime.combine(current_date, datetime.min.time().replace(hour=slot_hour, minute=slot_minute))
+            slot_end = slot_datetime + timedelta(minutes=slot.get("duration_minutes", 30))
+            
+            # Check if slot overlaps with the event
+            # For all-day events, block all slots on that day
+            if is_all_day:
+                overlaps = True
+            else:
+                overlaps = slot_datetime < end_dt and slot_end > start_dt
+            
+            if overlaps:
+                db.table("time_slots").update({
+                    "is_blocked": True,
+                    "google_event_id": google_event_id,
+                    "blocked_reason": summary
+                }).eq("id", slot["id"]).execute()
+                blocked_count += 1
+        
+        current_date += timedelta(days=1)
+    
+    return {
+        "success": True,
+        "slots_blocked": blocked_count,
+        "google_event_id": google_event_id,
+        "message": f"Blocked {blocked_count} time slots for event: {summary}"
+    }
+
+
+@router.post("/unblock-from-calendar")
+async def unblock_slots_from_calendar_event(request: dict):
+    """
+    Unblock time slots when a Google Calendar event is deleted or cancelled.
+    Called by n8n when events are removed from Google Calendar.
+    """
+    db = get_db()
+    
+    staff_id = request.get("staff_id")
+    google_event_id = request.get("google_event_id")
+    
+    if not google_event_id:
+        raise HTTPException(status_code=400, detail="google_event_id is required")
+    
+    # Remove external event record
+    db.table("external_calendar_events").delete().eq(
+        "google_event_id", google_event_id
+    ).execute()
+    
+    # Unblock time slots that were blocked by this event
+    query = db.table("time_slots").update({
+        "is_blocked": False,
+        "google_event_id": None,
+        "blocked_reason": None
+    }).eq("google_event_id", google_event_id)
+    
+    if staff_id:
+        query = query.eq("staff_id", staff_id)
+    
+    result = query.execute()
+    
+    unblocked_count = len(result.data) if result.data else 0
+    
+    return {
+        "success": True,
+        "slots_unblocked": unblocked_count,
+        "google_event_id": google_event_id,
+        "message": f"Unblocked {unblocked_count} time slots"
+    }
+
+
+@router.post("/mark-appointment-synced")
+async def mark_appointment_synced(request: dict):
+    """
+    Mark an appointment as synced to Google Calendar.
+    Called by n8n after successfully creating a Google Calendar event.
+    """
+    from datetime import datetime
+    
+    db = get_db()
+    
+    appointment_id = request.get("appointment_id")
+    google_event_id = request.get("google_event_id")
+    
+    if not appointment_id or not google_event_id:
+        raise HTTPException(status_code=400, detail="appointment_id and google_event_id are required")
+    
+    result = db.table("appointments").update({
+        "google_event_id": google_event_id,
+        "sync_status": "synced",
+        "last_synced_at": datetime.utcnow().isoformat()
+    }).eq("id", appointment_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    return {
+        "success": True,
+        "appointment_id": appointment_id,
+        "google_event_id": google_event_id
+    }
+
+
+@router.get("/external-events/{staff_id}")
+async def get_external_events(
+    staff_id: str,
+    start_date: str = Query(None),
+    end_date: str = Query(None)
+):
+    """
+    Get all external calendar events for a staff member.
+    Useful for debugging and viewing what's blocking availability.
+    """
+    db = get_db()
+    
+    query = db.table("external_calendar_events").select("*").eq("staff_id", staff_id)
+    
+    if start_date:
+        query = query.gte("start_datetime", f"{start_date}T00:00:00")
+    if end_date:
+        query = query.lte("end_datetime", f"{end_date}T23:59:59")
+    
+    result = query.order("start_datetime").execute()
+    
+    return result.data or []
+
+
+@router.get("/cancelled-appointments")
+async def get_cancelled_appointments_for_sync(
+    staff_id: str = Query(None),
+    business_id: str = Query(None)
+):
+    """
+    Get appointments that were cancelled and need to be deleted from Google Calendar.
+    Called by n8n to sync cancellations.
+    """
+    db = get_db()
+    
+    # Find appointments that are cancelled AND have a google_event_id AND are pending delete
+    query = db.table("appointments").select(
+        "id, google_event_id, staff_id, business_id, appointment_date, appointment_time"
+    ).eq("status", "cancelled").eq("sync_status", "pending_delete").not_.is_("google_event_id", "null")
+    
+    if staff_id:
+        query = query.eq("staff_id", staff_id)
+    if business_id:
+        query = query.eq("business_id", business_id)
+    
+    result = query.limit(50).execute()
+    
+    return result.data or []
+
+
+@router.post("/mark-appointment-deleted")
+async def mark_appointment_deleted_from_calendar(request: dict):
+    """
+    Mark an appointment as deleted from Google Calendar.
+    Called by n8n after successfully deleting the Google Calendar event.
+    """
+    db = get_db()
+    
+    appointment_id = request.get("appointment_id")
+    
+    if not appointment_id:
+        raise HTTPException(status_code=400, detail="appointment_id is required")
+    
+    result = db.table("appointments").update({
+        "sync_status": "deleted",
+        "google_event_id": None  # Clear the event ID since it no longer exists
+    }).eq("id", appointment_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    return {
+        "success": True,
+        "appointment_id": appointment_id
+    }
+
 

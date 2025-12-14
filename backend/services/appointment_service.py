@@ -16,7 +16,7 @@ class AppointmentService:
         end_date: Optional[date] = None,
         user_id: Optional[str] = None
     ) -> List[dict]:
-        """Get available time slots for staff, filtered by closures and exceptions"""
+        """Get available time slots for staff, filtered by closures, exceptions, and external calendar events"""
         db = get_db()
         
         # If user_id provided, verify they have access
@@ -34,21 +34,55 @@ class AppointmentService:
         business_id = staff_result.data[0]["business_id"]
         
         # 1. Get business closures (holidays, etc.)
-        closures_result = db.table("business_closures").select("closure_date").eq("business_id", business_id).gte("closure_date", str(start_date)).lte("closure_date", str(end_date)).execute()
+        closures_result = db.table("business_closures").select("closure_date").eq(
+            "business_id", business_id
+        ).gte("closure_date", str(start_date)).lte("closure_date", str(end_date)).execute()
         closed_dates = {c["closure_date"] for c in (closures_result.data or [])}
         
         # 2. Get staff availability exceptions (sick days, vacation)
-        exceptions_result = db.table("availability_exceptions").select("exception_date, exception_type").eq("staff_id", staff_id).eq("exception_type", "closed").gte("exception_date", str(start_date)).lte("exception_date", str(end_date)).execute()
+        exceptions_result = db.table("availability_exceptions").select(
+            "exception_date, exception_type"
+        ).eq("staff_id", staff_id).eq("exception_type", "closed").gte(
+            "exception_date", str(start_date)
+        ).lte("exception_date", str(end_date)).execute()
         staff_off_dates = {e["exception_date"] for e in (exceptions_result.data or [])}
         
         # 3. Get business hours (to filter closed days of week)
-        hours_result = db.table("business_hours").select("day_of_week").eq("business_id", business_id).eq("is_open", False).execute()
+        hours_result = db.table("business_hours").select("day_of_week").eq(
+            "business_id", business_id
+        ).eq("is_open", False).execute()
         closed_weekdays = {h["day_of_week"] for h in (hours_result.data or [])}
         
-        # 4. Get available slots from time_slots table
-        result = db.table("time_slots").select("*").eq("staff_id", staff_id).eq("is_booked", False).eq("is_blocked", False).gte("date", str(start_date)).lte("date", str(end_date)).order("date").order("time").execute()
+        # 4. Get available slots from time_slots table (not booked, not blocked)
+        result = db.table("time_slots").select("*").eq(
+            "staff_id", staff_id
+        ).eq("is_booked", False).eq("is_blocked", False).gte(
+            "date", str(start_date)
+        ).lte("date", str(end_date)).order("date").order("time").execute()
         
-        # 5. Filter out closed dates
+        # 5. NEW: Get external calendar events that block time
+        external_events_result = db.table("external_calendar_events").select(
+            "start_datetime, end_datetime, is_all_day"
+        ).eq("staff_id", staff_id).gte(
+            "start_datetime", f"{start_date}T00:00:00"
+        ).lte("end_datetime", f"{end_date}T23:59:59").execute()
+        
+        # Build list of blocked time ranges from external events
+        blocked_ranges = []
+        for event in (external_events_result.data or []):
+            try:
+                start_dt = datetime.fromisoformat(event["start_datetime"].replace("Z", ""))
+                end_dt = datetime.fromisoformat(event["end_datetime"].replace("Z", ""))
+                is_all_day = event.get("is_all_day", False)
+                blocked_ranges.append({
+                    "start": start_dt,
+                    "end": end_dt,
+                    "is_all_day": is_all_day
+                })
+            except (ValueError, TypeError):
+                continue
+        
+        # 6. Filter out unavailable slots
         filtered_slots = []
         for slot in (result.data or []):
             slot_date = slot["date"]
@@ -67,6 +101,37 @@ class AppointmentService:
             if day_of_week in closed_weekdays:
                 continue
             
+            # 7. NEW: Check against external calendar events
+            slot_time_str = slot["time"]
+            time_parts = slot_time_str.split(":")
+            slot_hour = int(time_parts[0])
+            slot_minute = int(time_parts[1])
+            
+            slot_datetime = datetime.combine(
+                slot_date_obj, 
+                datetime.min.time().replace(hour=slot_hour, minute=slot_minute)
+            )
+            slot_duration = slot.get("duration_minutes", 30)
+            slot_end = slot_datetime + timedelta(minutes=slot_duration)
+            
+            is_blocked_by_external = False
+            for blocked in blocked_ranges:
+                if blocked["is_all_day"]:
+                    # All-day event blocks the entire day
+                    if slot_date_obj == blocked["start"].date():
+                        is_blocked_by_external = True
+                        break
+                else:
+                    # Check for time overlap
+                    # Overlap exists if: slot_start < event_end AND slot_end > event_start
+                    if slot_datetime < blocked["end"] and slot_end > blocked["start"]:
+                        is_blocked_by_external = True
+                        break
+            
+            if is_blocked_by_external:
+                continue
+            
+            # Slot passed all filters - it's available
             filtered_slots.append(slot)
         
         return filtered_slots

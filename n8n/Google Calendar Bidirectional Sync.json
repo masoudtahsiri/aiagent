@@ -1,135 +1,83 @@
 {
-  "name": "Google Calendar Bidirectional Sync",
+  "name": "Google Calendar Sync (Complete)",
   "nodes": [
     {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "minutes"
+              "field": "minutes",
+              "minutesInterval": 5
             }
           ]
         }
       },
-      "id": "9ad014c6-1450-4e19-9b1e-5ff89b4970fb",
-      "name": "Schedule Trigger (Every 5 min)",
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "position": [
-        -880,
-        112
-      ],
-      "webhookId": "schedule-trigger",
+      "position": [-900, 300],
       "typeVersion": 1.2
     },
     {
       "parameters": {
-        "url": "={{ $env.BACKEND_URL }}/api/calendar/sync-status",
+        "method": "GET",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/sync-status",
         "options": {}
       },
-      "id": "fdc791a0-5d37-44a3-ac81-f379f6c47e93",
-      "name": "Get Staff with Calendar Connections",
+      "id": "get-staff-connections",
+      "name": "Get Staff with Calendar",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        -656,
-        112
-      ],
-      "typeVersion": 4.1,
-      "notes": "Get list of staff members with active Google Calendar connections"
+      "position": [-680, 300],
+      "typeVersion": 4.1
     },
     {
       "parameters": {
-        "jsCode": "// Extract staff IDs from the previous node's output\n// The previous node returns staff members with calendar connections\nconst items = $input.all();\nconst staffData = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Extract staff_id and other relevant data\n  if (data.staff_id) {\n    staffData.push({\n      json: {\n        staff_id: data.staff_id,\n        calendar_id: data.calendar_id,\n        last_sync_at: data.last_sync_at,\n        sync_direction: data.sync_direction,\n        staff_name: data.staff_name,\n        business_id: data.business_id\n      }\n    });\n  }\n}\n\nreturn staffData;"
+        "mode": "runOnceForEachItem"
       },
-      "id": "1c084c7b-8392-41ca-bd6b-8b05ff3d7135",
-      "name": "Extract Staff IDs",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        -448,
-        112
-      ],
-      "typeVersion": 2,
-      "notes": "Extract staff IDs from calendar connections"
+      "id": "loop-staff",
+      "name": "Loop Each Staff",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [-460, 300],
+      "typeVersion": 3
     },
     {
       "parameters": {
         "conditions": {
           "options": {
-            "leftValue": "",
             "caseSensitive": true,
             "typeValidation": "strict"
           },
           "combinator": "and",
           "conditions": [
             {
-              "id": "check-sync-needed",
+              "id": "has-staff-id",
+              "leftValue": "={{ $json.staff_id }}",
+              "rightValue": "",
               "operator": {
-                "type": "date",
-                "value": "5 minutes",
-                "operation": "olderThan",
-                "singleValue": true
-              },
-              "leftValue": "={{ $json.last_sync_at }}",
-              "rightValue": ""
+                "type": "string",
+                "operation": "notEmpty"
+              }
             }
           ]
         },
         "options": {}
       },
-      "id": "8aedaba7-f5be-4c82-8187-a89710f220f2",
-      "name": "Check if Sync Needed",
+      "id": "check-valid-staff",
+      "name": "Has Staff ID?",
       "type": "n8n-nodes-base.if",
-      "position": [
-        -224,
-        112
-      ],
-      "typeVersion": 2,
-      "notes": "Check if last sync was more than 5 minutes ago"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/calendar/sync",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "staff_id",
-              "value": "={{ $json.staff_id }}"
-            },
-            {
-              "name": "sync_type",
-              "value": "bidirectional"
-            },
-            {
-              "name": "start_date",
-              "value": "={{ $now.toISO().split('T')[0] }}"
-            },
-            {
-              "name": "end_date",
-              "value": "={{ $now.plus({days: 30}).toISO().split('T')[0] }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "f6b20aa5-6962-4bb0-822b-cfb4858bb4d7",
-      "name": "Trigger Backend Sync",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        0,
-        0
-      ],
-      "typeVersion": 4.1,
-      "notes": "Call backend sync endpoint"
+      "position": [-240, 300],
+      "typeVersion": 2
     },
     {
       "parameters": {
         "operation": "getAll",
         "calendar": {
           "__rl": true,
-          "mode": "list",
-          "value": ""
+          "mode": "id",
+          "value": "={{ $json.calendar_id || 'primary' }}"
         },
+        "returnAll": false,
+        "limit": 100,
         "options": {
           "timeMin": "={{ $now.toISO() }}",
           "timeMax": "={{ $now.plus({days: 30}).toISO() }}",
@@ -137,242 +85,351 @@
           "orderBy": "startTime"
         }
       },
-      "id": "71f2f805-5710-4074-8ae4-f277827e29ba",
+      "id": "get-google-events",
       "name": "Get Google Calendar Events",
       "type": "n8n-nodes-base.googleCalendar",
-      "position": [
-        224,
-        0
-      ],
+      "position": [0, 100],
       "typeVersion": 1,
-      "notes": "Fetch events from Google Calendar"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Process Google Calendar events and convert to database format\nconst events = $input.all();\nconst dbEvents = [];\n\nfor (const event of events) {\n  const item = event.json;\n  \n  // Check if event is from our system (has specific identifier)\n  // or if it's an external event to sync back\n  \n  if (item.start && item.end) {\n    dbEvents.push({\n      calendar_event_id: item.id,\n      summary: item.summary || '',\n      description: item.description || '',\n      start: item.start.dateTime || item.start.date,\n      end: item.end.dateTime || item.end.date,\n      location: item.location || '',\n      status: item.status,\n      source: 'google_calendar'\n    });\n  }\n}\n\nreturn dbEvents.map(event => ({ json: event }));"
-      },
-      "id": "efd0701d-9be8-4072-b1a6-3c1addca4f39",
-      "name": "Process Calendar Events",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        448,
-        0
-      ],
-      "typeVersion": 2,
-      "notes": "Convert Google Calendar events to database format"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/calendar/sync-events",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "staff_id",
-              "value": "={{ $('Trigger Backend Sync').item.json.staff_id }}"
-            },
-            {
-              "name": "events",
-              "value": "={{ $json }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "b95439a8-c43c-4510-beda-45f1b2ff54de",
-      "name": "Sync Events to Database",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        672,
-        0
-      ],
-      "typeVersion": 4.1,
-      "notes": "Push Google Calendar events to database"
-    },
-    {
-      "parameters": {
-        "url": "={{ $env.BACKEND_URL }}/api/calendar/sync-data",
-        "options": {}
-      },
-      "id": "d5ad1ac9-af39-4e51-842a-a0d2c6af4e76",
-      "name": "Get Database Data",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        224,
-        208
-      ],
-      "typeVersion": 4.1,
-      "notes": "Get appointments, time slots, exceptions from database"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Process database data and create/update Google Calendar events\nconst dbData = $input.first().json;\nconst calendarEvents = [];\n\n// Process appointments\nif (dbData.appointments) {\n  for (const apt of dbData.appointments) {\n    if (apt.status !== 'cancelled') {\n      const start = new Date(`${apt.appointment_date}T${apt.appointment_time}`);\n      const end = new Date(start.getTime() + (apt.duration_minutes || 30) * 60000);\n      \n      calendarEvents.push({\n        summary: `Appointment: ${apt.customers?.first_name || 'Customer'} ${apt.customers?.last_name || ''}`,\n        description: `Service: ${apt.services?.name || 'N/A'}\\nPhone: ${apt.customers?.phone || ''}\\nNotes: ${apt.notes || ''}`,\n        start: {\n          dateTime: start.toISOString(),\n          timeZone: 'UTC'\n        },\n        end: {\n          dateTime: end.toISOString(),\n          timeZone: 'UTC'\n        },\n        source: 'database',\n        appointment_id: apt.id\n      });\n    }\n  }\n}\n\n// Process time slots (blocked slots)\nif (dbData.time_slots) {\n  for (const slot of dbData.time_slots) {\n    if (slot.is_blocked) {\n      const start = new Date(`${slot.date}T${slot.time}`);\n      const end = new Date(start.getTime() + (slot.duration_minutes || 30) * 60000);\n      \n      calendarEvents.push({\n        summary: 'Blocked Time',\n        description: 'Time slot blocked in system',\n        start: {\n          dateTime: start.toISOString(),\n          timeZone: 'UTC'\n        },\n        end: {\n          dateTime: end.toISOString(),\n          timeZone: 'UTC'\n        },\n        transparency: 'opaque',\n        source: 'database',\n        slot_id: slot.id\n      });\n    }\n  }\n}\n\n// Process availability exceptions\nif (dbData.availability_exceptions) {\n  for (const exc of dbData.availability_exceptions) {\n    if (exc.exception_type === 'closed') {\n      calendarEvents.push({\n        summary: `Unavailable: ${exc.reason || 'Time off'}`,\n        description: exc.reason || 'Staff unavailable',\n        start: {\n          date: exc.exception_date\n        },\n        end: {\n          date: exc.exception_date\n        },\n        transparency: 'opaque',\n        source: 'database',\n        exception_id: exc.id\n      });\n    }\n  }\n}\n\n// Process business closures\nif (dbData.business_closures) {\n  for (const closure of dbData.business_closures) {\n    calendarEvents.push({\n      summary: `Business Closed: ${closure.reason || 'Closure'}`,\n      description: closure.reason || 'Business closed',\n      start: {\n        date: closure.closure_date\n      },\n      end: {\n        date: closure.closure_date\n      },\n      transparency: 'opaque',\n      source: 'database',\n      closure_id: closure.id\n    });\n  }\n}\n\nreturn calendarEvents.map(event => ({ json: event }));"
-      },
-      "id": "d441b973-2575-49f2-941c-fe70838e02a5",
-      "name": "Process Database Data",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        448,
-        208
-      ],
-      "typeVersion": 2,
-      "notes": "Convert database data to Google Calendar events"
-    },
-    {
-      "parameters": {
-        "calendar": {
-          "__rl": true,
-          "mode": "list",
-          "value": ""
-        },
-        "additionalFields": {
-          "description": "={{ $json.description }}",
-          "summary": "={{ $json.summary }}"
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar Account"
         }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Calendar events\n// Filter out events created by our system (to prevent duplicates)\n\nconst events = $input.all();\nconst staffId = $('Has Staff ID?').first().json.staff_id;\nconst externalEvents = [];\n\nfor (const item of events) {\n  const event = item.json;\n  \n  // Skip if no event ID\n  if (!event.id) continue;\n  \n  // Check if this is an event WE created (has our marker)\n  const description = event.description || '';\n  const isOurEvent = description.includes('appointment_id:') || \n                     description.includes('source:ai_receptionist') ||\n                     (event.extendedProperties?.private?.source === 'ai_receptionist');\n  \n  // Skip events we created\n  if (isOurEvent) {\n    continue;\n  }\n  \n  // Skip cancelled events\n  if (event.status === 'cancelled') {\n    continue;\n  }\n  \n  // Extract start/end times\n  let startTime, endTime, isAllDay;\n  \n  if (event.start?.dateTime) {\n    startTime = event.start.dateTime;\n    endTime = event.end?.dateTime || event.start.dateTime;\n    isAllDay = false;\n  } else if (event.start?.date) {\n    startTime = event.start.date;\n    endTime = event.end?.date || event.start.date;\n    isAllDay = true;\n  } else {\n    continue; // Skip if no valid time\n  }\n  \n  externalEvents.push({\n    json: {\n      staff_id: staffId,\n      google_event_id: event.id,\n      summary: event.summary || 'Busy',\n      start: startTime,\n      end: endTime,\n      is_all_day: isAllDay,\n      status: event.status\n    }\n  });\n}\n\n// If no external events, return empty signal\nif (externalEvents.length === 0) {\n  return [{ json: { no_events: true, staff_id: staffId } }];\n}\n\nreturn externalEvents;"
       },
-      "id": "8594692c-4ae8-4952-a5a4-d986e22244ed",
-      "name": "Create/Update Calendar Event",
-      "type": "n8n-nodes-base.googleCalendar",
-      "position": [
-        672,
-        208
-      ],
-      "typeVersion": 1,
-      "notes": "Create or update events in Google Calendar"
+      "id": "filter-external-events",
+      "name": "Filter External Events",
+      "type": "n8n-nodes-base.code",
+      "position": [220, 100],
+      "typeVersion": 2
     },
     {
       "parameters": {
         "conditions": {
           "options": {
-            "leftValue": "",
             "caseSensitive": true,
             "typeValidation": "strict"
           },
           "combinator": "and",
           "conditions": [
             {
-              "id": "check-errors",
+              "id": "has-events",
+              "leftValue": "={{ $json.no_events }}",
+              "rightValue": true,
               "operator": {
-                "type": "array",
-                "operation": "notEmpty"
-              },
-              "leftValue": "={{ $json.errors }}",
-              "rightValue": ""
+                "type": "boolean",
+                "operation": "notEquals"
+              }
             }
           ]
         },
         "options": {}
       },
-      "id": "00103f57-93c0-4215-af06-a016d97fead4",
-      "name": "Check for Errors",
+      "id": "has-external-events",
+      "name": "Has External Events?",
       "type": "n8n-nodes-base.if",
-      "position": [
-        880,
-        112
-      ],
-      "typeVersion": 2,
-      "notes": "Check if sync had errors"
+      "position": [440, 100],
+      "typeVersion": 2
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/calendar/webhook",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/block-from-calendar",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"staff_id\": \"{{ $json.staff_id }}\",\n  \"google_event_id\": \"{{ $json.google_event_id }}\",\n  \"start\": \"{{ $json.start }}\",\n  \"end\": \"{{ $json.end }}\",\n  \"summary\": \"{{ $json.summary }}\",\n  \"is_all_day\": {{ $json.is_all_day }}\n}",
+        "options": {}
+      },
+      "id": "block-slots",
+      "name": "Block Time Slots",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [660, 0],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/sync-data",
+        "qs": {
+          "staff_id": "={{ $('Has Staff ID?').first().json.staff_id }}",
+          "start_date": "={{ $now.toFormat('yyyy-MM-dd') }}",
+          "end_date": "={{ $now.plus({days: 30}).toFormat('yyyy-MM-dd') }}"
+        },
+        "options": {}
+      },
+      "id": "get-db-appointments",
+      "name": "Get DB Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [0, 300],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process appointments from database\n// Only sync appointments that haven't been synced yet\n\nconst data = $input.first().json;\nconst appointments = data.appointments || [];\nconst eventsToCreate = [];\n\nfor (const apt of appointments) {\n  // Skip if already synced to Google Calendar\n  if (apt.google_event_id) {\n    continue;\n  }\n  \n  // Skip cancelled appointments\n  if (apt.status === 'cancelled') {\n    continue;\n  }\n  \n  // Build event data\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  \n  // Calculate end time\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  const endDateTime = endDate.toISOString();\n  \n  // Customer name\n  const customerName = apt.customers \n    ? `${apt.customers.first_name || ''} ${apt.customers.last_name || ''}`.trim() \n    : 'Customer';\n  \n  // Service name\n  const serviceName = apt.services?.name || 'Appointment';\n  \n  eventsToCreate.push({\n    json: {\n      appointment_id: apt.id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customers?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start: {\n        dateTime: startDateTime,\n        timeZone: 'UTC'\n      },\n      end: {\n        dateTime: endDateTime,\n        timeZone: 'UTC'\n      },\n      staff_id: apt.staff_id\n    }\n  });\n}\n\n// If no events to create, return empty signal\nif (eventsToCreate.length === 0) {\n  return [{ json: { no_appointments: true } }];\n}\n\nreturn eventsToCreate;"
+      },
+      "id": "filter-unsynced-appointments",
+      "name": "Filter Unsynced Appointments",
+      "type": "n8n-nodes-base.code",
+      "position": [220, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
             {
-              "name": "staff_id",
-              "value": "={{ $('Trigger Backend Sync').item.json.staff_id }}"
-            },
-            {
-              "name": "status",
-              "value": "={{ $json.success ? 'success' : 'failed' }}"
-            },
-            {
-              "name": "events_synced",
-              "value": "={{ $json.events_synced }}"
-            },
-            {
-              "name": "errors",
-              "value": "={{ $json.errors }}"
+              "id": "has-appointments",
+              "leftValue": "={{ $json.no_appointments }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
             }
           ]
         },
         "options": {}
       },
-      "id": "9fb28126-c005-4a9d-ae5f-83a755d6afc3",
-      "name": "Log Sync Result",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        1104,
-        0
-      ],
-      "typeVersion": 4.1,
-      "notes": "Log sync result to database"
+      "id": "has-unsynced-appointments",
+      "name": "Has Unsynced?",
+      "type": "n8n-nodes-base.if",
+      "position": [440, 300],
+      "typeVersion": 2
     },
     {
       "parameters": {
-        "content": "Sync completed with errors. Check logs."
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Has Staff ID?').first().json.calendar_id || 'primary' }}"
+        },
+        "start": "={{ $json.start.dateTime }}",
+        "end": "={{ $json.end.dateTime }}",
+        "additionalFields": {
+          "summary": "={{ $json.summary }}",
+          "description": "={{ $json.description }}"
+        }
       },
-      "id": "d057e107-8085-4dc3-98b7-dff7eacea4a8",
-      "name": "Notify on Errors",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        1104,
-        208
-      ],
+      "id": "create-google-event",
+      "name": "Create Google Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "position": [660, 200],
       "typeVersion": 1,
-      "notes": "Send notification if errors occurred"
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/mark-appointment-synced",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"appointment_id\": \"{{ $('Filter Unsynced Appointments').item.json.appointment_id }}\",\n  \"google_event_id\": \"{{ $json.id }}\"\n}",
+        "options": {}
+      },
+      "id": "mark-synced",
+      "name": "Mark as Synced",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [880, 200],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/cancelled-appointments",
+        "qs": {
+          "staff_id": "={{ $('Has Staff ID?').first().json.staff_id }}"
+        },
+        "options": {}
+      },
+      "id": "get-cancelled",
+      "name": "Get Cancelled Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [0, 500],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process cancelled appointments\nconst data = $input.first().json;\nconst staffId = $('Has Staff ID?').first().json.staff_id;\nconst calendarId = $('Has Staff ID?').first().json.calendar_id || 'primary';\n\n// Handle both array response and single object\nlet appointments = [];\nif (Array.isArray(data)) {\n  appointments = data;\n} else if (data && data.id) {\n  appointments = [data];\n}\n\nif (appointments.length === 0) {\n  return [{ json: { no_cancelled: true } }];\n}\n\nreturn appointments.map(apt => ({\n  json: {\n    appointment_id: apt.id,\n    google_event_id: apt.google_event_id,\n    staff_id: staffId,\n    calendar_id: calendarId\n  }\n}));"
+      },
+      "id": "filter-cancelled",
+      "name": "Filter Cancelled",
+      "type": "n8n-nodes-base.code",
+      "position": [220, 500],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-cancelled",
+              "leftValue": "={{ $json.no_cancelled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "has-cancelled",
+      "name": "Has Cancelled?",
+      "type": "n8n-nodes-base.if",
+      "position": [440, 500],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.calendar_id || 'primary' }}"
+        },
+        "eventId": "={{ $json.google_event_id }}"
+      },
+      "id": "delete-google-event",
+      "name": "Delete Google Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "position": [660, 400],
+      "typeVersion": 1,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/mark-appointment-deleted",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"appointment_id\": \"{{ $('Filter Cancelled').item.json.appointment_id }}\"\n}",
+        "options": {}
+      },
+      "id": "mark-deleted",
+      "name": "Mark as Deleted",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [880, 400],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "content": "## Google Calendar Bidirectional Sync (Complete)\n\n**What this workflow does:**\n\n1. **Every 5 minutes**, checks all staff with calendar connections\n\n2. **PULL: Google → Database:**\n   - Gets events from Google Calendar\n   - Filters out events WE created (prevents duplicates)\n   - Blocks time slots for external events\n\n3. **PUSH: Database → Google:**\n   - Gets unsynced appointments\n   - Creates Google Calendar events\n   - Marks appointments as synced\n\n4. **DELETE: Cancelled Appointments:**\n   - Gets cancelled appointments with Google event IDs\n   - Deletes events from Google Calendar\n   - Marks as deleted in database\n\n**Setup Required:**\n1. Add Google Calendar OAuth credentials\n2. Set BACKEND_URL environment variable\n3. Connect staff to their Google Calendar in database",
+        "height": 480,
+        "width": 350
+      },
+      "id": "sticky-note",
+      "name": "Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-900, -100],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## PULL: Google → Database\nBlock time slots when staff has personal events",
+        "height": 80,
+        "width": 350,
+        "color": 4
+      },
+      "id": "note-pull",
+      "name": "Note Pull",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [0, 0],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## PUSH: Database → Google\nCreate calendar events for new appointments",
+        "height": 80,
+        "width": 350,
+        "color": 6
+      },
+      "id": "note-push",
+      "name": "Note Push",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [0, 580],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## DELETE: Remove Cancelled\nDelete Google events for cancelled appointments",
+        "height": 80,
+        "width": 350,
+        "color": 2
+      },
+      "id": "note-delete",
+      "name": "Note Delete",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [500, 580],
+      "typeVersion": 1
     }
   ],
-  "pinData": {},
   "connections": {
-    "Schedule Trigger (Every 5 min)": {
+    "Every 5 Minutes": {
       "main": [
         [
           {
-            "node": "Get Staff with Calendar Connections",
+            "node": "Get Staff with Calendar",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Staff with Calendar Connections": {
+    "Get Staff with Calendar": {
       "main": [
         [
           {
-            "node": "Extract Staff IDs",
+            "node": "Loop Each Staff",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract Staff IDs": {
+    "Loop Each Staff": {
       "main": [
         [
           {
-            "node": "Check if Sync Needed",
+            "node": "Has Staff ID?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Each Staff",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check if Sync Needed": {
-      "main": [
-        [
-          {
-            "node": "Trigger Backend Sync",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Trigger Backend Sync": {
+    "Has Staff ID?": {
       "main": [
         [
           {
@@ -381,7 +438,12 @@
             "index": 0
           },
           {
-            "node": "Get Database Data",
+            "node": "Get DB Appointments",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Cancelled Appointments",
             "type": "main",
             "index": 0
           }
@@ -392,73 +454,117 @@
       "main": [
         [
           {
-            "node": "Process Calendar Events",
+            "node": "Filter External Events",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process Calendar Events": {
+    "Filter External Events": {
       "main": [
         [
           {
-            "node": "Sync Events to Database",
+            "node": "Has External Events?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Database Data": {
+    "Has External Events?": {
       "main": [
         [
           {
-            "node": "Process Database Data",
+            "node": "Block Time Slots",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process Database Data": {
+    "Get DB Appointments": {
       "main": [
         [
           {
-            "node": "Create/Update Calendar Event",
+            "node": "Filter Unsynced Appointments",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Sync Events to Database": {
+    "Filter Unsynced Appointments": {
       "main": [
         [
           {
-            "node": "Check for Errors",
+            "node": "Has Unsynced?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Create/Update Calendar Event": {
+    "Has Unsynced?": {
       "main": [
         [
           {
-            "node": "Check for Errors",
+            "node": "Create Google Event",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check for Errors": {
+    "Create Google Event": {
       "main": [
         [
           {
-            "node": "Log Sync Result",
+            "node": "Mark as Synced",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Cancelled Appointments": {
+      "main": [
+        [
+          {
+            "node": "Filter Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Has Cancelled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Cancelled?": {
+      "main": [
+        [
+          {
+            "node": "Delete Google Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Google Event": {
+      "main": [
+        [
+          {
+            "node": "Mark as Deleted",
             "type": "main",
             "index": 0
           }
@@ -470,10 +576,8 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "81dbb4a4-7957-4cfc-9caf-ede52b3a6912",
   "meta": {
-    "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"
+    "instanceId": "ai-receptionist-calendar-sync-complete"
   },
-  "id": "ZkQplwjtccGdKYZd",
   "tags": []
 }

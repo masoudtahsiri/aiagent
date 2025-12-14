@@ -331,13 +331,15 @@ async def cancel_appointment_for_agent(
 
     
 
-    # Update appointment
+    # Update appointment - keep google_event_id for deletion tracking
 
     db.table("appointments").update({
 
         "status": "cancelled",
 
-        "cancellation_reason": cancellation_reason
+        "cancellation_reason": cancellation_reason,
+
+        "sync_status": "pending_delete"  # NEW: Mark for deletion from Google Calendar
 
     }).eq("id", appointment_id).execute()
 
@@ -369,7 +371,11 @@ async def cancel_appointment_for_agent(
 
     
 
-    return {"success": True, "message": "Appointment cancelled successfully"}
+    return {
+        "success": True, 
+        "message": "Appointment cancelled successfully",
+        "google_event_id": appointment.get("google_event_id")  # Return this for n8n to delete
+    }
 
 
 
