@@ -745,3 +745,113 @@ async def mark_appointment_deleted_from_calendar(request: dict):
     }
 
 
+@router.get("/rescheduled-appointments")
+async def get_rescheduled_appointments_for_sync(
+    staff_id: str = Query(None),
+    business_id: str = Query(None)
+):
+    """
+    Get appointments that were rescheduled and need to be updated in Google Calendar.
+    """
+    db = get_db()
+    
+    query = db.table("appointments").select(
+        "id, google_event_id, staff_id, business_id, appointment_date, appointment_time, duration_minutes, notes, service_id, customer_id"
+    ).eq("sync_status", "pending_update").not_.is_("google_event_id", "null")
+    
+    if staff_id:
+        query = query.eq("staff_id", staff_id)
+    if business_id:
+        query = query.eq("business_id", business_id)
+    
+    result = query.limit(50).execute()
+    
+    # Get customer and service details
+    appointments = result.data or []
+    enriched = []
+    
+    for apt in appointments:
+        # Get customer
+        if apt.get("customer_id"):
+            cust = db.table("customers").select("first_name, last_name, phone").eq("id", apt["customer_id"]).execute()
+            apt["customer"] = cust.data[0] if cust.data else None
+        
+        # Get service
+        if apt.get("service_id"):
+            svc = db.table("services").select("name").eq("id", apt["service_id"]).execute()
+            apt["service"] = svc.data[0] if svc.data else None
+        
+        enriched.append(apt)
+    
+    return enriched
+
+
+@router.post("/mark-appointment-updated")
+async def mark_appointment_updated_in_calendar(request: dict):
+    """
+    Mark an appointment as updated in Google Calendar.
+    """
+    db = get_db()
+    
+    appointment_id = request.get("appointment_id")
+    
+    if not appointment_id:
+        raise HTTPException(status_code=400, detail="appointment_id is required")
+    
+    result = db.table("appointments").update({
+        "sync_status": "synced",
+        "last_synced_at": datetime.utcnow().isoformat()
+    }).eq("id", appointment_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    return {"success": True, "appointment_id": appointment_id}
+
+
+@router.post("/cleanup-deleted-events")
+async def cleanup_deleted_google_events(request: dict):
+    """
+    Remove external_calendar_events entries for Google events that no longer exist.
+    Called by n8n after fetching current Google Calendar events.
+    """
+    db = get_db()
+    
+    staff_id = request.get("staff_id")
+    active_event_ids = request.get("active_event_ids", [])  # List of event IDs that still exist in Google
+    
+    if not staff_id:
+        raise HTTPException(status_code=400, detail="staff_id is required")
+    
+    # Get all external events we have stored for this staff
+    stored_result = db.table("external_calendar_events").select(
+        "id, google_event_id"
+    ).eq("staff_id", staff_id).execute()
+    
+    stored_events = stored_result.data or []
+    deleted_count = 0
+    
+    for event in stored_events:
+        # If this event is not in the active list, it was deleted from Google
+        if event["google_event_id"] not in active_event_ids:
+            # Delete from our database
+            db.table("external_calendar_events").delete().eq("id", event["id"]).execute()
+            
+            # Also unblock any time_slots that were blocked by this event
+            db.table("time_slots").update({
+                "is_blocked": False,
+                "google_event_id": None,
+                "blocked_reason": None
+            }).eq("google_event_id", event["google_event_id"]).execute()
+            
+            deleted_count += 1
+    
+    return {
+        "success": True,
+        "staff_id": staff_id,
+        "deleted_count": deleted_count,
+        "active_events": len(active_event_ids),
+        "stored_events": len(stored_events)
+    }
+
+
