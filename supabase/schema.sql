@@ -38,6 +38,33 @@ CREATE TABLE users (
 );
 
 -- ============================================================================
+-- BUSINESS HOURS & CLOSURES
+-- ============================================================================
+
+-- Business operating hours (weekly schedule)
+CREATE TABLE business_hours (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL, -- 0=Sunday, 1=Monday, ..., 6=Saturday
+    is_open BOOLEAN DEFAULT TRUE,
+    open_time TIME, -- NULL if closed
+    close_time TIME, -- NULL if closed
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(business_id, day_of_week)
+);
+
+-- Business closures (holidays, special closures)
+CREATE TABLE business_closures (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    closure_date DATE NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(business_id, closure_date)
+);
+
+-- ============================================================================
 -- STAFF & AVAILABILITY
 -- ============================================================================
 
@@ -648,23 +675,6 @@ INSERT INTO subscription_plans (plan_name, plan_code, monthly_price, included_mi
 -- ============================================================================
 -- VIEWS FOR COMMON QUERIES
 -- ============================================================================
-
--- View: Available slots per staff
-CREATE VIEW available_slots_view AS
-SELECT 
-    ts.id,
-    ts.staff_id,
-    s.name AS staff_name,
-    s.business_id,
-    ts.date,
-    ts.time,
-    ts.duration_minutes,
-    ts.is_booked
-FROM time_slots ts
-JOIN staff s ON ts.staff_id = s.id
-WHERE ts.is_booked = FALSE 
-AND ts.is_blocked = FALSE
-AND ts.date >= CURRENT_DATE;
 
 -- View: Today's appointments
 CREATE VIEW todays_appointments_view AS

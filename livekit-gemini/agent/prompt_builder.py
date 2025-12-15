@@ -383,7 +383,7 @@ Style: Friendly, professional, helpful."""
         # Instructions
         lines.append("")
         lines.append("IMPORTANT:")
-        lines.append(f"→ Address them by first name ({first_name or 'their name'})")
+        lines.append(f"→ Address them as Mr. or Mrs. {last_name}")
         lines.append("→ Do NOT ask for: name, phone number, email, or address - you already have it.")
         lines.append("→ If they want to update contact info, use the update tool.")
         
@@ -391,13 +391,19 @@ Style: Friendly, professional, helpful."""
     
     def _build_new_customer(self) -> str:
         """Build new customer context - compact"""
-        return """CALLER: New customer
+        return """CALLER: New customer (first time calling)
 
-Collect: First name, Last name
-Optional: Email (if booking)
+REQUIRED - Collect ALL before anything else:
+1. First name
+2. Last name
+3. Date of birth
+4. Address
+5. City
+6. Email address
 
-→ Get name naturally, not as interrogation
-→ Use create_new_customer tool before booking
+→ Be conversational, not interrogating
+→ IMMEDIATELY use create_new_customer tool after collecting info
+→ Do NOT proceed with booking until customer is saved
 → Phone captured from caller ID"""
     
     def _build_rules_compact(self) -> str:
@@ -462,14 +468,18 @@ def build_greeting(business_config: Dict, customer: Optional[Dict], ai_config: O
     business = business_config.get("business", {})
     biz_name = business.get("business_name", "our office")
     
-    # Use custom greeting if provided
+    # For existing customers - greet with Mr./Mrs. Last Name
+    if customer and customer.get("last_name"):
+        last_name = customer["last_name"]
+        # Use custom greeting if provided
+        if ai_config and ai_config.get("greeting_message"):
+            greeting = ai_config["greeting_message"]
+            return greeting.replace("{business_name}", biz_name).replace("{customer_name}", f"Mr. or Mrs. {last_name}")
+        return f"Hello Mr. or Mrs. {last_name}! Thank you for calling {biz_name}. How may I help you today?"
+    
+    # For new customers - generic greeting
     if ai_config and ai_config.get("greeting_message"):
         greeting = ai_config["greeting_message"]
-        cust_name = customer.get("first_name", "there") if customer else "there"
-        return greeting.replace("{business_name}", biz_name).replace("{customer_name}", cust_name)
+        return greeting.replace("{business_name}", biz_name).replace("{customer_name}", "")
     
-    # Default greetings - concise
-    if customer and customer.get("first_name"):
-        return f"Hi {customer['first_name']}! Thanks for calling {biz_name}. How can I help?"
-    
-    return f"Hello! Thanks for calling {biz_name}. How can I help?"
+    return f"Thank you for calling {biz_name}. How may I help you today?"

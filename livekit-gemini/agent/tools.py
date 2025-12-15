@@ -182,27 +182,36 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         context: RunContext,
         first_name: str,
         last_name: str,
-        email: str = None,
+        date_of_birth: str,
+        address: str,
+        city: str,
+        email: str,
     ) -> dict:
-        """Save a new customer's information.
+        """Save a new customer's information. MUST be called for all new customers.
         
         Args:
             first_name: Customer's first name
             last_name: Customer's last name
-            email: Customer's email address (optional)
+            date_of_birth: Date of birth (YYYY-MM-DD format)
+            address: Street address
+            city: City name
+            email: Email address
         """
         customer = await backend.create_customer(
             business_id=session_data.business_id,
             phone=session_data.caller_phone,
             first_name=first_name,
             last_name=last_name,
-            email=email
+            email=email,
+            date_of_birth=date_of_birth,
+            address=address,
+            city=city
         )
         
         if customer:
             session_data.customer = customer
-            return {"success": True, "message": f"Got it, {first_name}!"}
-        return {"success": False, "message": "Could you repeat your name?"}
+            return {"success": True, "message": f"Thank you {first_name}, I've saved your information. How can I help you today?"}
+        return {"success": False, "message": "I'm having trouble saving your information. Could you repeat that?"}
 
     # =========================================================================
     # AVAILABILITY TOOLS
