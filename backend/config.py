@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     
     # n8n
     N8N_WEBHOOK_BASE_URL: str = "http://localhost:5678/webhook"
+    
+    # Google OAuth (for Calendar API)
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
     
     class Config:
         env_file = ".env"
