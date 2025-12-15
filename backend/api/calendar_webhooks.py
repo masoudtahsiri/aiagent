@@ -1,227 +1,226 @@
-from fastapi import APIRouter, Request, HTTPException, Header
+"""
+Google Calendar Watch API - Webhook Handlers
+Handles real-time push notifications from Google Calendar
+"""
+
+from fastapi import APIRouter, Request, HTTPException, Header, BackgroundTasks
 from datetime import datetime, timedelta
 from typing import Optional
 import httpx
 import uuid
+import logging
 
 from backend.database.supabase_client import get_db
 
 router = APIRouter(prefix="/api/calendar/webhooks", tags=["Calendar Webhooks"])
+logger = logging.getLogger(__name__)
 
 
-@router.post("/receive")
-async def receive_google_webhook(
+# =============================================================================
+# WEBHOOK RECEIVER - Called by Google when calendar changes
+# =============================================================================
+
+@router.post("/google-push")
+async def receive_google_push_notification(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_goog_channel_id: Optional[str] = Header(None),
     x_goog_resource_id: Optional[str] = Header(None),
     x_goog_resource_state: Optional[str] = Header(None),
-    x_goog_message_number: Optional[str] = Header(None)
+    x_goog_channel_token: Optional[str] = Header(None),  # Contains staff_id
+    x_goog_message_number: Optional[str] = Header(None),
 ):
     """
     Receive push notifications from Google Calendar.
-    Google sends a POST request here whenever a calendar changes.
+    
+    Google sends headers only (no body):
+    - X-Goog-Channel-ID: Our channel UUID
+    - X-Goog-Resource-ID: Google's resource identifier  
+    - X-Goog-Resource-State: 'sync' (initial) or 'exists' (changes)
+    - X-Goog-Channel-Token: Our custom token (staff_id)
+    - X-Goog-Message-Number: Sequence number
     """
+    logger.info(f"[Google Push] channel={x_goog_channel_id}, state={x_goog_resource_state}, token={x_goog_channel_token}")
+    
+    # Acknowledge sync messages immediately (sent when watch is first created)
+    if x_goog_resource_state == "sync":
+        logger.info("[Google Push] Sync acknowledgment received")
+        return {"status": "sync_acknowledged"}
+    
+    # Validate we have the required headers
+    if not x_goog_channel_id:
+        logger.warning("[Google Push] Missing channel ID")
+        return {"status": "ignored", "reason": "no_channel_id"}
+    
     db = get_db()
     
-    # Log the webhook for debugging
-    print(f"[Webhook] Received: channel={x_goog_channel_id}, state={x_goog_resource_state}")
-    
-    # Ignore sync messages (sent when watch is first created)
-    if x_goog_resource_state == "sync":
-        return {"status": "sync acknowledged"}
-    
     # Find the channel in our database
-    if not x_goog_channel_id:
-        return {"status": "no channel id"}
-    
     channel_result = db.table("calendar_webhook_channels").select(
-        "*, calendar_connections(*)"
+        "*, calendar_connections(staff_id, calendar_id)"
     ).eq("channel_id", x_goog_channel_id).execute()
     
     if not channel_result.data:
-        print(f"[Webhook] Unknown channel: {x_goog_channel_id}")
-        return {"status": "unknown channel"}
+        logger.warning(f"[Google Push] Unknown channel: {x_goog_channel_id}")
+        return {"status": "unknown_channel"}
     
     channel = channel_result.data[0]
-    staff_id = channel["staff_id"]
+    staff_id = x_goog_channel_token or channel.get("staff_id")
     
-    # Trigger a sync for this staff member
-    # In production, you might want to queue this instead of processing inline
-    await process_calendar_changes(staff_id, channel)
+    if not staff_id:
+        logger.error("[Google Push] Could not determine staff_id")
+        return {"status": "error", "reason": "no_staff_id"}
     
-    return {"status": "processed"}
+    # Return response indicating sync is needed
+    # n8n will poll this or we trigger n8n webhook
+    return {
+        "status": "notification_received",
+        "staff_id": staff_id,
+        "channel_id": x_goog_channel_id,
+        "resource_state": x_goog_resource_state,
+        "needs_sync": True
+    }
 
 
-async def process_calendar_changes(staff_id: str, channel: dict):
-    """
-    Process calendar changes for a specific staff member.
-    This is called when we receive a webhook notification.
-    """
-    db = get_db()
-    
-    # Get the calendar connection
-    connection = channel.get("calendar_connections", {})
-    calendar_id = connection.get("calendar_id", "primary")
-    
-    # Get staff's Google OAuth token
-    # NOTE: You need to implement token storage and refresh
-    # This is a placeholder - in production, get the actual token
-    
-    print(f"[Webhook] Processing changes for staff {staff_id}, calendar {calendar_id}")
-    
-    # For now, we'll trigger the n8n workflow via webhook
-    # You can replace this with direct API calls if you store OAuth tokens
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            # Trigger n8n workflow for this specific staff
-            # You'll need to create a webhook trigger in n8n for this
-            await client.post(
-                f"https://n8n.algorityai.com/webhook/calendar-sync",
-                json={"staff_id": staff_id},
-                timeout=10
-            )
-    except Exception as e:
-        print(f"[Webhook] Failed to trigger n8n: {e}")
+# =============================================================================
+# CHANNEL MANAGEMENT - Called by n8n
+# =============================================================================
 
-
-@router.post("/register")
-async def register_webhook_for_staff(request: dict):
+@router.post("/setup-watch")
+async def setup_watch_for_staff(request: dict):
     """
     Register a Google Calendar watch for a staff member.
-    This needs to be called with a valid Google OAuth token.
     
-    Called by n8n or admin to set up real-time sync.
+    Called by n8n with Google OAuth credentials.
+    
+    Request body:
+    {
+        "staff_id": "uuid",
+        "calendar_id": "primary" or "email@gmail.com",
+        "webhook_url": "https://your-domain.com/api/calendar/webhooks/google-push"
+    }
+    
+    n8n handles the actual Google API call and passes us the result.
     """
     db = get_db()
     
     staff_id = request.get("staff_id")
-    access_token = request.get("access_token")  # Google OAuth token
     calendar_id = request.get("calendar_id", "primary")
-    webhook_url = request.get("webhook_url")  # Your public webhook URL
+    channel_id = request.get("channel_id")  # Generated by n8n
+    resource_id = request.get("resource_id")  # From Google response
+    expiration = request.get("expiration")  # Unix timestamp ms from Google
     
-    if not all([staff_id, access_token, webhook_url]):
-        raise HTTPException(status_code=400, detail="staff_id, access_token, and webhook_url are required")
+    if not all([staff_id, channel_id, resource_id, expiration]):
+        raise HTTPException(status_code=400, detail="Missing required fields")
     
-    # Generate unique channel ID
-    channel_id = str(uuid.uuid4())
-    
-    # Calculate expiration (max 7 days for Google)
-    expiration = datetime.utcnow() + timedelta(days=7)
-    expiration_ms = int(expiration.timestamp() * 1000)
-    
-    # Register watch with Google Calendar API
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/watch",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "id": channel_id,
-                "type": "web_hook",
-                "address": webhook_url,
-                "expiration": expiration_ms
-            }
-        )
-        
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Failed to register webhook: {response.text}"
-            )
-        
-        google_response = response.json()
+    # Convert expiration from milliseconds to timestamp
+    expiration_dt = datetime.fromtimestamp(int(expiration) / 1000)
     
     # Get calendar connection ID
     conn_result = db.table("calendar_connections").select("id").eq(
         "staff_id", staff_id
-    ).eq("calendar_id", calendar_id).execute()
+    ).eq("provider", "google").execute()
     
     calendar_connection_id = conn_result.data[0]["id"] if conn_result.data else None
     
-    # Store channel info in database
-    db.table("calendar_webhook_channels").upsert({
+    # Upsert channel info (replace existing for this staff)
+    existing = db.table("calendar_webhook_channels").select("id").eq(
+        "staff_id", staff_id
+    ).execute()
+    
+    channel_data = {
         "calendar_connection_id": calendar_connection_id,
         "staff_id": staff_id,
         "channel_id": channel_id,
-        "resource_id": google_response.get("resourceId"),
-        "expiration": expiration.isoformat()
-    }, on_conflict="calendar_connection_id").execute()
+        "resource_id": resource_id,
+        "expiration": expiration_dt.isoformat(),
+    }
+    
+    if existing.data:
+        db.table("calendar_webhook_channels").update(channel_data).eq(
+            "staff_id", staff_id
+        ).execute()
+        logger.info(f"[Watch] Updated watch for staff {staff_id}")
+    else:
+        db.table("calendar_webhook_channels").insert(channel_data).execute()
+        logger.info(f"[Watch] Created watch for staff {staff_id}")
     
     return {
         "success": True,
+        "staff_id": staff_id,
         "channel_id": channel_id,
-        "resource_id": google_response.get("resourceId"),
-        "expiration": expiration.isoformat()
+        "expiration": expiration_dt.isoformat()
     }
 
 
-@router.post("/renew-all")
-async def renew_expiring_webhooks():
+@router.get("/expiring-channels")
+async def get_expiring_channels(hours_ahead: int = 24):
     """
-    Renew webhook channels that are about to expire.
-    Should be called daily by a cron job.
+    Get channels that will expire within the specified hours.
+    Called by n8n daily renewal workflow.
     """
     db = get_db()
     
-    # Find channels expiring in the next 24 hours
-    tomorrow = (datetime.utcnow() + timedelta(days=1)).isoformat()
+    # Find channels expiring in the next N hours
+    expiration_threshold = (datetime.utcnow() + timedelta(hours=hours_ahead)).isoformat()
     
-    expiring = db.table("calendar_webhook_channels").select(
-        "*, calendar_connections(*)"
-    ).lt("expiration", tomorrow).execute()
+    result = db.table("calendar_webhook_channels").select(
+        "*, calendar_connections(staff_id, calendar_id)"
+    ).lt("expiration", expiration_threshold).execute()
     
-    renewed = []
-    failed = []
-    
-    for channel in expiring.data or []:
-        # TODO: Get OAuth token for this staff member and call register_webhook_for_staff
-        # For now, just log it
-        print(f"[Webhook] Channel {channel['channel_id']} needs renewal")
-        failed.append(channel["channel_id"])
+    channels = []
+    for channel in (result.data or []):
+        channels.append({
+            "staff_id": channel["staff_id"],
+            "channel_id": channel["channel_id"],
+            "resource_id": channel["resource_id"],
+            "expiration": channel["expiration"],
+            "calendar_id": channel.get("calendar_connections", {}).get("calendar_id", "primary")
+        })
     
     return {
-        "renewed": len(renewed),
-        "failed": len(failed),
-        "failed_channels": failed
+        "expiring_count": len(channels),
+        "channels": channels
     }
 
 
-@router.delete("/stop/{channel_id}")
-async def stop_webhook(channel_id: str, access_token: str = None):
+@router.post("/stop-watch")
+async def stop_watch(request: dict):
     """
-    Stop a webhook channel.
+    Stop watching a calendar and remove from database.
+    Called by n8n after stopping the watch with Google.
     """
     db = get_db()
     
-    # Get channel info
-    channel_result = db.table("calendar_webhook_channels").select("*").eq(
-        "channel_id", channel_id
-    ).execute()
+    channel_id = request.get("channel_id")
+    staff_id = request.get("staff_id")
     
-    if not channel_result.data:
-        raise HTTPException(status_code=404, detail="Channel not found")
+    if channel_id:
+        db.table("calendar_webhook_channels").delete().eq(
+            "channel_id", channel_id
+        ).execute()
+    elif staff_id:
+        db.table("calendar_webhook_channels").delete().eq(
+            "staff_id", staff_id
+        ).execute()
+    else:
+        raise HTTPException(status_code=400, detail="channel_id or staff_id required")
     
-    channel = channel_result.data[0]
+    return {"success": True}
+
+
+@router.get("/active-watches")
+async def get_active_watches():
+    """
+    Get all active watch channels.
+    Useful for debugging and monitoring.
+    """
+    db = get_db()
     
-    # Stop the watch with Google (if we have token)
-    if access_token:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                "https://www.googleapis.com/calendar/v3/channels/stop",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "id": channel_id,
-                    "resourceId": channel["resource_id"]
-                }
-            )
+    result = db.table("calendar_webhook_channels").select(
+        "*, staff(name, email)"
+    ).gt("expiration", datetime.utcnow().isoformat()).execute()
     
-    # Delete from our database
-    db.table("calendar_webhook_channels").delete().eq("channel_id", channel_id).execute()
-    
-    return {"success": True, "channel_id": channel_id}
+    return {
+        "active_count": len(result.data or []),
+        "watches": result.data or []
+    }
