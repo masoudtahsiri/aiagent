@@ -50,22 +50,21 @@ jobs:
             cd backend
             
             # Update Google OAuth credentials in .env if provided
-            if [ -n "${{ secrets.GOOGLE_CLIENT_ID }}" ]; then
+            GOOGLE_CLIENT_ID_VALUE=$(echo "${{ secrets.GOOGLE_CLIENT_ID }}" | tr -d '\n\r')
+            GOOGLE_CLIENT_SECRET_VALUE=$(echo "${{ secrets.GOOGLE_CLIENT_SECRET }}" | tr -d '\n\r')
+            
+            if [ -n "$GOOGLE_CLIENT_ID_VALUE" ]; then
               echo "Updating GOOGLE_CLIENT_ID in .env..."
-              if grep -q "GOOGLE_CLIENT_ID=" .env; then
-                sed -i "s|GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}|" .env
-              else
-                echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
-              fi
+              grep -v "^GOOGLE_CLIENT_ID=" .env > .env.tmp || true
+              echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID_VALUE" >> .env.tmp
+              mv .env.tmp .env
             fi
             
-            if [ -n "${{ secrets.GOOGLE_CLIENT_SECRET }}" ]; then
+            if [ -n "$GOOGLE_CLIENT_SECRET_VALUE" ]; then
               echo "Updating GOOGLE_CLIENT_SECRET in .env..."
-              if grep -q "GOOGLE_CLIENT_SECRET=" .env; then
-                sed -i "s|GOOGLE_CLIENT_SECRET=.*|GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}|" .env
-              else
-                echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
-              fi
+              grep -v "^GOOGLE_CLIENT_SECRET=" .env > .env.tmp || true
+              echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET_VALUE" >> .env.tmp
+              mv .env.tmp .env
             fi
             
             # Update virtual environment
