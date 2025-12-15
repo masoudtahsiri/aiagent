@@ -410,12 +410,14 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         appointment_date: str = None,
         reason: str = None,
     ) -> dict:
-        """Cancel an appointment.
-        
+        """Cancel an appointment. MUST be called when customer wants to cancel.
+
         Args:
             appointment_date: Date to cancel YYYY-MM-DD (optional, cancels next)
             reason: Cancellation reason (optional)
         """
+        logger.info(f"❌ cancel_appointment called: date={appointment_date}, reason={reason}")
+        
         if not session_data.customer:
             return {"success": False, "message": "What's your name?"}
         

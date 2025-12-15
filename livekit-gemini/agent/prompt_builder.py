@@ -426,6 +426,7 @@ REQUIRED - Collect ALL before anything else:
             "• Confirm before booking (date, time, who)",
             "• ALWAYS use check_availability tool before answering ANY availability question - NEVER guess or assume",
             "• ALWAYS use book_appointment tool to actually book - saying 'booked' without calling the tool is LYING",
+            "• ALWAYS use cancel_appointment tool when customer wants to cancel - saying 'cancelled' without calling the tool is LYING",
             "• Offer alternatives if unavailable",
             "• When caller says bye, use end_call tool",
         ]
