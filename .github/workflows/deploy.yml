@@ -49,6 +49,25 @@ jobs:
             
             cd backend
             
+            # Update Google OAuth credentials in .env if provided
+            if [ -n "${{ secrets.GOOGLE_CLIENT_ID }}" ]; then
+              echo "Updating GOOGLE_CLIENT_ID in .env..."
+              if grep -q "GOOGLE_CLIENT_ID=" .env; then
+                sed -i "s|GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}|" .env
+              else
+                echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
+              fi
+            fi
+            
+            if [ -n "${{ secrets.GOOGLE_CLIENT_SECRET }}" ]; then
+              echo "Updating GOOGLE_CLIENT_SECRET in .env..."
+              if grep -q "GOOGLE_CLIENT_SECRET=" .env; then
+                sed -i "s|GOOGLE_CLIENT_SECRET=.*|GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}|" .env
+              else
+                echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
+              fi
+            fi
+            
             # Update virtual environment
             echo "Updating dependencies..."
             if [ ! -d venv ]; then
