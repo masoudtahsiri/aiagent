@@ -126,22 +126,36 @@ def format_appointments_for_speech(appointments: List[Dict], max_count: int = 3)
 
 
 def resolve_staff(staff_name: str, staff_list: List[Dict]) -> tuple:
-    """Resolve staff name to (staff_id, staff_name) tuple"""
+    """Resolve staff name to (staff_id, staff_name) tuple with smart matching"""
     if not staff_name or not staff_list:
         return None, None
     
-    search = staff_name.lower().replace(".", "").replace("dr ", "doctor ").strip()
+    search = staff_name.lower().strip()
+    # Normalize common prefixes
+    search_normalized = search.replace("dr.", "").replace("dr ", "").replace("doctor ", "").strip()
     
-    # Exact match first
-    for staff in staff_list:
-        if search == staff.get("name", "").lower():
-            return staff["id"], staff["name"]
-    
-    # Partial match (first name, last name, or contains)
+    # Priority 1: Exact full name match
     for staff in staff_list:
         name = staff.get("name", "").lower()
-        if search in name or any(search == part for part in name.split()):
+        if search == name or search_normalized == name:
             return staff["id"], staff["name"]
+    
+    # Priority 2: Exact first name or last name match (word boundary)
+    for staff in staff_list:
+        name = staff.get("name", "").lower()
+        name_parts = name.split()
+        if search_normalized in name_parts:  # Exact word match
+            return staff["id"], staff["name"]
+    
+    # Priority 3: Starts with (for partial input like "Joh" for "John")
+    # Only if search is at least 3 chars to avoid false positives
+    if len(search_normalized) >= 3:
+        for staff in staff_list:
+            name = staff.get("name", "").lower()
+            name_parts = name.split()
+            for part in name_parts:
+                if part.startswith(search_normalized):
+                    return staff["id"], staff["name"]
     
     return None, None
 
@@ -378,17 +392,34 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         if time_preference:
             pref = time_preference.lower()
             filtered = []
-            for slot in slots:
-                try:
-                    hour = int(slot["time"].split(":")[0])
-                    if pref in ["morning", "am"] and hour < 12:
-                        filtered.append(slot)
-                    elif pref in ["afternoon", "pm"] and 12 <= hour < 17:
-                        filtered.append(slot)
-                    elif pref in ["evening", "late"] and hour >= 17:
-                        filtered.append(slot)
-                except:
-                    pass
+            
+            # Time range definitions (could be made configurable per business)
+            # Using inclusive ranges that overlap slightly for flexibility
+            TIME_RANGES = {
+                "early": (6, 10),      # 6am - 10am
+                "morning": (6, 12),    # 6am - 12pm
+                "am": (6, 12),         # 6am - 12pm
+                "midday": (11, 14),    # 11am - 2pm
+                "afternoon": (12, 17), # 12pm - 5pm
+                "pm": (12, 21),        # 12pm - 9pm (general "pm" is flexible)
+                "evening": (17, 21),   # 5pm - 9pm
+                "late": (16, 21),      # 4pm - 9pm
+            }
+            
+            time_range = TIME_RANGES.get(pref)
+            
+            if time_range:
+                start_hour, end_hour = time_range
+                for slot in slots:
+                    try:
+                        hour = int(slot["time"].split(":")[0])
+                        if start_hour <= hour < end_hour:
+                            filtered.append(slot)
+                    except:
+                        pass
+            else:
+                # Unknown preference - try to match anyway
+                filtered = slots
             
             if filtered:
                 slots = filtered
