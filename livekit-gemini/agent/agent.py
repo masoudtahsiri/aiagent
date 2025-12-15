@@ -206,6 +206,14 @@ async def entrypoint(ctx: JobContext):
     # Build the greeting
     greeting = build_greeting(business_config, session_data.customer, ai_config)
     
+    # Add greeting instruction to system prompt
+    system_prompt = f"""{system_prompt}
+
+IMPORTANT - START THE CALL:
+You must speak FIRST. Immediately say this greeting when the call connects:
+"{greeting}"
+Then wait for the caller to respond and continue naturally."""
+    
     logger.info(f"📝 System prompt built ({len(system_prompt)} chars)")
     logger.info(f"💬 Greeting: {greeting[:50]}...")
     
@@ -275,16 +283,16 @@ async def entrypoint(ctx: JobContext):
     
     # =========================================================================
     # INITIATE GREETING
-    # The greeting is personalized based on customer context loaded above.
-    # We send it immediately as the AI's first utterance.
+    # AI speaks FIRST when call connects - don't wait for caller
     # =========================================================================
     
-    logger.info("💬 Sending personalized greeting...")
+    logger.info("💬 Triggering greeting...")
     
-    # Use generate_reply with greeting text to ensure AI speaks first
-    await session.generate_reply(user_input=f"[Call connected. Start with this greeting: {greeting}]")
+    # Trigger AI to speak immediately - no user input needed
+    # The greeting instruction is in the system prompt
+    await session.generate_reply()
     
-    logger.info("✅ Greeting sent - conversation active")
+    logger.info("✅ Conversation active")
 
 
 if __name__ == "__main__":

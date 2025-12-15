@@ -107,156 +107,64 @@ COMMUNICATION STYLE:
     # =========================================================================
     
     def _build_tool_calling_rules(self) -> str:
-        """Build explicit tool calling rules - this is critical for reliability"""
+        """Build explicit tool calling rules - concise but clear"""
         return """
-═══════════════════════════════════════════════════════════════════════════════
-                         MANDATORY TOOL CALLING RULES
-═══════════════════════════════════════════════════════════════════════════════
+TOOL CALLING RULES (MANDATORY):
 
-YOU MUST USE TOOLS. Never answer from memory or make assumptions about availability, appointments, or bookings.
+You MUST use tools. Never guess availability, bookings, or appointments.
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ BEFORE YOU ANSWER ANYTHING ABOUT AVAILABILITY:                              │
-│ → You MUST call check_availability first                                    │
-│ → Say "Let me check what we have available" while the tool runs            │
-│ → NEVER say "we have openings" or times without calling the tool first     │
-└─────────────────────────────────────────────────────────────────────────────┘
+AVAILABILITY → call check_availability FIRST
+  Say: "Let me check what we have available..."
+  Never state times without calling the tool.
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ TO ACTUALLY BOOK AN APPOINTMENT:                                            │
-│ → You MUST call book_appointment                                            │
-│ → Say "Let me book that for you" while the tool runs                       │
-│ → Confirm details BEFORE calling: date, time, provider                      │
-│ → NEVER say "you're booked" without calling the tool                       │
-│ → If tool fails, offer alternatives - don't pretend it worked              │
-└─────────────────────────────────────────────────────────────────────────────┘
+BOOKING → call book_appointment to book
+  Confirm date/time/provider before calling.
+  Say: "Let me book that for you..."
+  Never say "you're booked" without the tool succeeding.
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ TO CANCEL AN APPOINTMENT:                                                   │
-│ → You MUST call cancel_appointment                                          │
-│ → Say "Let me cancel that for you" while the tool runs                     │
-│ → NEVER say "it's cancelled" without calling the tool                      │
-└─────────────────────────────────────────────────────────────────────────────┘
+CANCEL → call cancel_appointment
+  Say: "Let me cancel that for you..."
+  
+RESCHEDULE → check_availability first, then reschedule_appointment
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ TO RESCHEDULE AN APPOINTMENT:                                               │
-│ → First call check_availability to find new times                          │
-│ → Then call reschedule_appointment with confirmed new date/time            │
-│ → Say "Let me check for available times" then "Let me reschedule that"    │
-└─────────────────────────────────────────────────────────────────────────────┘
+NEW CUSTOMERS → collect all 6 fields, then call create_new_customer
+  Required: first name, last name, DOB, address, city, email
+  Say: "Let me save your information..."
+  Do NOT book until customer is saved.
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ FOR NEW CUSTOMERS:                                                          │
-│ → Collect ALL required info: first name, last name, DOB, address, city,   │
-│   email                                                                     │
-│ → Call create_new_customer IMMEDIATELY after collecting all info           │
-│ → Say "Let me save your information" while the tool runs                   │
-│ → Do NOT proceed to booking until customer is saved                        │
-└─────────────────────────────────────────────────────────────────────────────┘
+While tools run, say: "One moment..." / "Let me check..." / "Bear with me..."
 
-HOLD PHRASES - Say these while tools are running:
-- "One moment while I check that for you..."
-- "Let me look into that..."
-- "Bear with me while I check our schedule..."
-- "Just a moment while I pull that up..."
-- "Let me see what we have available..."
-
-CRITICAL ANTI-HALLUCINATION RULES:
-1. If you haven't called a tool, you DON'T KNOW the answer
-2. If check_availability hasn't run, you don't know what's available
-3. If book_appointment hasn't run, nothing is booked
-4. If cancel_appointment hasn't run, nothing is cancelled
-5. ALWAYS verify tool success before confirming to caller"""
+CRITICAL: If you haven't called the tool, you don't know the answer."""
     
     # =========================================================================
     # NEW: CONVERSATION FLOW GUIDANCE
     # =========================================================================
     
     def _build_conversation_flow(self) -> str:
-        """Build conversation flow examples"""
+        """Build conversation flow examples - concise"""
         is_new = self.customer is None
         
         if is_new:
             return """
-CONVERSATION FLOW FOR NEW CUSTOMERS:
+NEW CUSTOMER FLOW:
+1. Greet them
+2. Listen to their need
+3. Collect info FIRST (before any booking):
+   Ask one at a time: first name → last name → DOB → address → city → email
+   Example: "I'd be happy to help! Since this is your first call, may I have your first name?"
+4. Call create_new_customer tool
+5. Then help with their request (check_availability → book_appointment)
 
-1. GREETING → You say the greeting
-2. CUSTOMER STATES NEED → Listen to what they want
-3. COLLECT INFO → Before doing ANYTHING else, you must collect:
-   - "May I have your first name?"
-   - "And your last name?"
-   - "Your date of birth?"
-   - "What's your address?"
-   - "And which city?"
-   - "Finally, your email address?"
-   
-   Be conversational, not robotic. Example:
-   "I'd be happy to help with that! Since this is your first time calling, 
-    let me get a few details. What's your first name?"
-   
-4. SAVE CUSTOMER → Call create_new_customer tool
-   Say: "Perfect, let me save your information..."
-   
-5. PROCEED WITH REQUEST → Now help with their original need
-   - If booking: call check_availability, then book_appointment
-   - If question: answer or call answer_question tool
-
-EXAMPLE FLOW:
-Caller: "Hi, I'd like to book an appointment"
-You: "I'd be happy to help you book an appointment! Since this is your first time 
-      calling, let me get a few details. What's your first name?"
-Caller: "John"
-You: "Thanks John! And your last name?"
-Caller: "Smith"
-You: "Got it. And your date of birth?"
-... continue until all 6 fields collected ...
-You: "Perfect, let me save your information..."
-[CALL create_new_customer TOOL]
-You: "Great, you're all set in our system! Now, let me check our availability. 
-      Did you have a particular day in mind?"
-... continue with booking flow ..."""
+Do NOT attempt booking until customer is saved in system."""
         else:
             customer_name = self.customer.get("last_name", "")
             return f"""
-CONVERSATION FLOW FOR RETURNING CUSTOMERS:
+RETURNING CUSTOMER FLOW:
+Address as Mr. or Mrs. {customer_name}. Info already loaded - do NOT ask for name/phone/email/address.
 
-You already know this customer. Their info is loaded.
-Address them as Mr. or Mrs. {customer_name}.
-
-1. GREETING → You say the personalized greeting with their name
-2. LISTEN → Customer states their need
-3. HELP IMMEDIATELY → No need to collect info
-
-COMMON SCENARIOS:
-
-Booking:
-Caller: "I need to schedule an appointment"
-You: "Of course! Let me check what we have available. Did you have a day in mind?"
-[CALL check_availability]
-... offer times from tool result ...
-[CALL book_appointment when they confirm]
-
-Cancelling:
-Caller: "I need to cancel my appointment"
-You: "I can help with that. Let me pull up your appointments..."
-[CALL get_my_appointments to see what they have]
-You: "I see you have an appointment on [date]. Is that the one you'd like to cancel?"
-[CALL cancel_appointment when confirmed]
-
-Rescheduling:
-Caller: "I need to reschedule"
-You: "No problem! Let me see your current appointments and what else is available..."
-[CALL get_my_appointments to see current]
-[CALL check_availability for new options]
-... confirm new date/time ...
-[CALL reschedule_appointment]
-
-Questions:
-Caller: "What are your hours?"
-[CALL get_business_hours] OR answer from your knowledge if simple
-You: "We're open Monday through Friday, 9 AM to 5 PM..."
-
-DO NOT ask for: name, phone, email, address - you already have all of this."""
+Booking: check_availability → confirm date/time → book_appointment
+Cancelling: get_my_appointments → confirm which one → cancel_appointment  
+Rescheduling: get_my_appointments + check_availability → reschedule_appointment"""
     
     # =========================================================================
     # BUSINESS INFO SECTIONS (Optimized from original)
