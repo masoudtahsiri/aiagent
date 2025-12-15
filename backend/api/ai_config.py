@@ -253,18 +253,18 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
         # Build staff list
         for staff in (staff_result.data or []):
             staff_id = staff["id"]
-        staff_list.append({
-            "id": staff_id,
-            "name": staff["name"],
-            "title": staff["title"],
-            "specialty": staff.get("specialty"),
-            "bio": staff.get("bio"),
-            "email": staff.get("email"),
-            "phone": staff.get("phone"),
+            staff_list.append({
+                "id": staff_id,
+                "name": staff["name"],
+                "title": staff["title"],
+                "specialty": staff.get("specialty"),
+                "bio": staff.get("bio"),
+                "email": staff.get("email"),
+                "phone": staff.get("phone"),
                 "service_ids": staff_services_map.get(staff_id, []),
                 "availability_schedule": availability_map.get(staff_id, []),
                 "availability_exceptions": exceptions_map.get(staff_id, [])
-        })
+            })
     
     # Process business hours
     business_hours = []
