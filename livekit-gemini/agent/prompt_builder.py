@@ -425,6 +425,7 @@ REQUIRED - Collect ALL before anything else:
             "• Keep responses SHORT - phone call",
             "• Confirm before booking (date, time, who)",
             "• ALWAYS use check_availability tool before answering ANY availability question - NEVER guess or assume",
+            "• ALWAYS use book_appointment tool to actually book - saying 'booked' without calling the tool is LYING",
             "• Offer alternatives if unavailable",
             "• When caller says bye, use end_call tool",
         ]

@@ -334,8 +334,8 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         service_name: str = None,
         notes: str = None,
     ) -> dict:
-        """Book an appointment.
-        
+        """Book an appointment. MUST be called to actually create the booking.
+
         Args:
             appointment_date: Date YYYY-MM-DD
             appointment_time: Time HH:MM (24-hour)
@@ -343,6 +343,8 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             service_name: Service name (optional)
             notes: Appointment notes (optional)
         """
+        logger.info(f"📅 book_appointment called: date={appointment_date}, time={appointment_time}, staff={staff_name}")
+        
         if not session_data.customer:
             return {"success": False, "message": "What's your name?"}
         
@@ -367,6 +369,7 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
                     break
         
         # Book
+        logger.info(f"📅 Calling backend API to book appointment...")
         result = await backend.book_appointment(
             business_id=session_data.business_id,
             customer_id=session_data.customer["id"],
@@ -376,7 +379,8 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
             service_id=service_id,
             notes=notes
         )
-        
+        logger.info(f"📅 Backend response: {result}")
+
         if result and result.get("success"):
             session_data.call_outcome = "appointment_booked"
             date_fmt = format_date(appointment_date)
