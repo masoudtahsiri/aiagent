@@ -224,13 +224,15 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         start_date: str = None,
         time_preference: str = None,
     ) -> dict:
-        """Check available appointment times.
-        
+        """Check available appointment times. MUST be called before answering any availability questions.
+
         Args:
             staff_name: Staff member name (optional)
             start_date: Start date YYYY-MM-DD (optional, defaults to today)
             time_preference: 'morning', 'afternoon', or 'evening' (optional)
         """
+        logger.info(f"🔍 check_availability called: staff={staff_name}, date={start_date}, pref={time_preference}")
+        
         # Resolve staff
         staff_id, resolved_name = None, None
         if staff_name:
@@ -258,8 +260,10 @@ def get_tools_for_agent(session_data, backend, is_existing_customer: bool = Fals
         end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=14)).strftime("%Y-%m-%d")
         
         # Fetch slots
+        logger.info(f"🔍 Fetching slots: staff_id={staff_id}, range={start_date} to {end_date}")
         slots = await backend.get_available_slots(staff_id, start_date, end_date)
-        
+        logger.info(f"🔍 API returned {len(slots) if slots else 0} slots")
+
         if not slots:
             # Check for availability exceptions in the date range
             staff_info = next((s for s in _staff_list if s["id"] == staff_id), None)
