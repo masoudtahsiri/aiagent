@@ -1,0 +1,1325 @@
+{
+  "name": "Google Calendar Push Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "google-calendar-push",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "2000bda8-3e2d-4de6-87ee-eb36b6a34920",
+      "name": "Google Push Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -816,
+        2656
+      ],
+      "typeVersion": 2,
+      "webhookId": "google-calendar-push"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "ea8e7c8e-f881-42e0-b54a-3bf0a0d342e0",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        -640,
+        2656
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Google Push notification headers\nconst headers = $input.first().json.headers;\n\nconst channelId = headers['x-goog-channel-id'];\nconst resourceState = headers['x-goog-resource-state'];\nconst staffId = headers['x-goog-channel-token']; // We put staff_id here when creating watch\nconst expiration = headers['x-goog-channel-expiration'];\nconst resourceId = headers['x-goog-resource-id'];\n\n// Parse expiration to check if renewal needed\nlet expirationMs = null;\nlet needsRenewal = false;\nlet hoursUntilExpiry = null;\n\nif (expiration) {\n  // Format: \"Tue, 17 Dec 2025 10:30:00 GMT\"\n  expirationMs = new Date(expiration).getTime();\n  const now = Date.now();\n  hoursUntilExpiry = (expirationMs - now) / (1000 * 60 * 60);\n  \n  // Renew if expiring within 48 hours\n  needsRenewal = hoursUntilExpiry < 48;\n}\n\nconst isSyncMessage = resourceState === 'sync';\n\nconsole.log('Google Push:', { channelId, resourceState, staffId, needsRenewal, hoursUntilExpiry });\n\nreturn [{\n  json: {\n    channelId,\n    resourceId,\n    resourceState,\n    staffId,\n    expiration,\n    expirationMs,\n    needsRenewal,\n    hoursUntilExpiry,\n    isSyncMessage,\n    isGooglePush: true\n  }\n}];"
+      },
+      "id": "a7b3a09a-8951-4878-961d-c0e79256d3ef",
+      "name": "Parse Google Headers",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -416,
+        2656
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "check-renewal",
+              "leftValue": "={{ $json.needsRenewal }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60b403d1-ded6-4b84-8a10-ac07da0d62d0",
+      "name": "Needs Renewal?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        32,
+        2656
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/webhooks/renew-watch",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "staff_id",
+              "value": "={{ $('Parse Google Headers').item.json.staffId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "27f22954-73d5-4fc6-8015-130ef78a8859",
+      "name": "Renew Watch",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        256,
+        2560
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "staff-from-push",
+              "name": "staff_id",
+              "value": "={{ $('Parse Google Headers').item.json.staffId }}",
+              "type": "string"
+            },
+            {
+              "id": "is-google-push",
+              "name": "isGooglePush",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1093f7da-4753-4b4f-a0b2-1fba6d821bb2",
+      "name": "Set Push Context",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        480,
+        2656
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "content": "## Google Push Flow\nGoogle sends notification → Parse headers → Check renewal → Process sync",
+        "height": 128,
+        "width": 500,
+        "color": 5
+      },
+      "id": "05339f79-a8c5-4f9d-8e35-910c34b1d012",
+      "name": "Note Google Push",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1088,
+        2496
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/sync-status",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "staff_id",
+              "value": "={{ $json.staff_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cf42d995-c17f-45a1-a03c-aca20e2f52fe",
+      "name": "Get Staff Info (Push)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        704,
+        2656
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {},
+      "id": "f4351c27-3c28-47cc-bc39-a612f892d171",
+      "name": "Merge to Loop",
+      "type": "n8n-nodes-base.merge",
+      "position": [
+        112,
+        3008
+      ],
+      "typeVersion": 2.1
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "e62219cc-56af-46d1-8db1-e945b95948af",
+      "name": "Every 5 Minutes (Backup)1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -816,
+        3312
+      ],
+      "typeVersion": 1.2,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-staff-from-webhook",
+              "leftValue": "={{ $json.body.record.staff_id || $json.staff_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f2d1077b-5c65-4cdc-ba43-05a74b18e3bc",
+      "name": "Has Staff ID from Webhook?1",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -336,
+        3104
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/sync-status",
+        "options": {}
+      },
+      "id": "41081ab0-e374-4351-a602-4c8e27c4d248",
+      "name": "Get All Staff1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -80,
+        3312
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/sync-status",
+        "options": {}
+      },
+      "id": "883c256e-f340-422d-bb3c-cefa5fcf7c65",
+      "name": "Get Single Staff1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -80,
+        3088
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "76289d20-a4ce-4545-8e98-397f56b6c2fb",
+      "name": "Loop Each Staff1",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        304,
+        3008
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "store-staff-id",
+              "name": "current_staff_id",
+              "value": "={{ $json.staff_id }}",
+              "type": "string"
+            },
+            {
+              "id": "store-calendar-id",
+              "name": "current_calendar_id",
+              "value": "={{ $json.calendar_id || 'primary' }}",
+              "type": "string"
+            },
+            {
+              "id": "store-business-id",
+              "name": "current_business_id",
+              "value": "={{ $json.business_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2a11378b-5687-4806-be0d-63e122cd8869",
+      "name": "Store Staff Context1",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        784,
+        3024
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.current_calendar_id }}"
+        },
+        "limit": 100,
+        "options": {
+          "timeMin": "={{ $now.toISO() }}",
+          "timeMax": "={{ $now.plus({days: 30}).toISO() }}",
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "id": "62dc9336-601e-4e35-af21-c1417e382a54",
+      "name": "Get Google Events1",
+      "type": "n8n-nodes-base.googleCalendar",
+      "position": [
+        1008,
+        2656
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "MOqRlGlXF5hwiNEV",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Calendar events\n// 1. Filter external events (to block slots)\n// 2. Collect all event IDs (to cleanup deleted events)\n\nconst events = $input.all();\nconst context = $('Store Staff Context1').first().json;\nconst staffId = context.current_staff_id;\n\nconst externalEvents = [];\nconst allEventIds = [];\n\nfor (const item of events) {\n  const event = item.json;\n  \n  if (!event.id) continue;\n  \n  // Collect all event IDs for cleanup\n  allEventIds.push(event.id);\n  \n  // Check if this is OUR event\n  const description = event.description || '';\n  const isOurEvent = description.includes('appointment_id:') || \n                     description.includes('source:ai_receptionist') ||\n                     (event.extendedProperties?.private?.source === 'ai_receptionist');\n  \n  // Skip our events and cancelled events\n  if (isOurEvent || event.status === 'cancelled') {\n    continue;\n  }\n  \n  // Extract times\n  let startTime, endTime, isAllDay;\n  \n  if (event.start?.dateTime) {\n    startTime = event.start.dateTime;\n    endTime = event.end?.dateTime || event.start.dateTime;\n    isAllDay = false;\n  } else if (event.start?.date) {\n    startTime = event.start.date;\n    endTime = event.end?.date || event.start.date;\n    isAllDay = true;\n  } else {\n    continue;\n  }\n  \n  externalEvents.push({\n    staff_id: staffId,\n    google_event_id: event.id,\n    summary: event.summary || 'Busy',\n    start: startTime,\n    end: endTime,\n    is_all_day: isAllDay\n  });\n}\n\nreturn [{\n  json: {\n    staff_id: staffId,\n    external_events: externalEvents,\n    all_event_ids: allEventIds,\n    has_external_events: externalEvents.length > 0\n  }\n}];"
+      },
+      "id": "2f530edb-5cd5-43cd-927b-17ec244d5ee9",
+      "name": "Process Google Events1",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1200,
+        2656
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/watch/cleanup-deleted-events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=   {\n     \"staff_id\": \"{{ $json.staff_id }}\",\n     \"current_event_ids\": {{ JSON.stringify($json.all_event_ids) }}\n   }",
+        "options": {}
+      },
+      "id": "c7acace5-082b-4953-b304-b53d0e0d2f89",
+      "name": "Cleanup Deleted Events1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1440,
+        2416
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-external",
+              "leftValue": "={{ $json.has_external_events }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "479d1278-e6d4-43f6-a6b1-b91b5cb63686",
+      "name": "Has External Events?1",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        1424,
+        2656
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split external events into individual items for processing\nconst data = $input.first().json;\nreturn data.external_events.map(event => ({ json: event }));"
+      },
+      "id": "8034e92e-13c6-4f5e-858c-9e294734b692",
+      "name": "Split External Events1",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1664,
+        2640
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/block-from-calendar",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"staff_id\": \"{{ $json.staff_id }}\",\n  \"google_event_id\": \"{{ $json.google_event_id }}\",\n  \"start\": \"{{ $json.start }}\",\n  \"end\": \"{{ $json.end }}\",\n  \"summary\": \"{{ $json.summary }}\",\n  \"is_all_day\": {{ $json.is_all_day }}\n}",
+        "options": {}
+      },
+      "id": "e754fb49-95b5-40cf-ac15-3232f9f6c6cc",
+      "name": "Block Time Slots1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1952,
+        2640
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/sync-data",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "staff_id",
+              "value": "={{ $json.current_staff_id }}"
+            },
+            {
+              "name": "start_date",
+              "value": "={{ $now.toISO().split('T')[0] }}"
+            },
+            {
+              "name": "end_date",
+              "value": "={{ $now.plus({days: 30}).toISO().split('T')[0] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7bbf8e35-ee0e-4cf8-903f-ca3302b9bbb6",
+      "name": "Get New Appointments1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        992,
+        3024
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter appointments that need to be created in Google Calendar\nconst data = $input.first().json;\nconst appointments = data.appointments || [];\nconst context = $('Store Staff Context1').first().json;\n\nconst toCreate = appointments.filter(apt => \n  !apt.google_event_id && \n  apt.status !== 'cancelled' &&\n  (apt.sync_status === 'pending' || !apt.sync_status)\n);\n\nif (toCreate.length === 0) {\n  return [{ json: { no_new_appointments: true } }];\n}\n\nreturn toCreate.map(apt => {\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  \n  const customerName = apt.customers \n    ? `${apt.customers.first_name || ''} ${apt.customers.last_name || ''}`.trim() \n    : 'Customer';\n  const serviceName = apt.services?.name || 'Appointment';\n  \n  return {\n    json: {\n      appointment_id: apt.id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customers?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start_datetime: startDateTime,\n      end_datetime: endDate.toISOString(),\n      calendar_id: context.current_calendar_id\n    }\n  };\n});"
+      },
+      "id": "619c8fbf-fe3e-43f1-ab05-d7ac39ac7cb5",
+      "name": "Filter New Appointments1",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1200,
+        3024
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-new",
+              "leftValue": "={{ $json.no_new_appointments }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "79ffa253-b17f-40a9-b7d0-4d59c406c670",
+      "name": "Has New?1",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        1424,
+        3024
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.calendar_id }}"
+        },
+        "start": "={{ $json.start_datetime }}",
+        "end": "={{ $json.end_datetime }}",
+        "additionalFields": {
+          "description": "={{ $json.description }}",
+          "summary": "={{ $json.summary }}"
+        }
+      },
+      "id": "d081c0aa-3b48-4286-b21c-e3544b7e01a8",
+      "name": "Create Google Event1",
+      "type": "n8n-nodes-base.googleCalendar",
+      "position": [
+        1664,
+        3008
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "MOqRlGlXF5hwiNEV",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/mark-appointment-synced",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"appointment_id\": \"{{ $('Filter New Appointments1').item.json.appointment_id }}\",\n  \"google_event_id\": \"{{ $json.id }}\"\n}",
+        "options": {}
+      },
+      "id": "70d9c12a-e1e9-4696-841c-fe32484d4dd1",
+      "name": "Mark as Synced1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1952,
+        3008
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/rescheduled-appointments",
+        "options": {}
+      },
+      "id": "a9a80c61-bccf-499b-8e70-64740464b205",
+      "name": "Get Rescheduled1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        976,
+        3376
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process rescheduled appointments\nconst data = $input.first().json;\nconst context = $('Store Staff Context1').first().json;\n\nlet appointments = Array.isArray(data) ? data : (data ? [data] : []);\nappointments = appointments.filter(apt => apt && apt.id && apt.google_event_id);\n\nif (appointments.length === 0) {\n  return [{ json: { no_rescheduled: true } }];\n}\n\nreturn appointments.map(apt => {\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  \n  const customerName = apt.customer \n    ? `${apt.customer.first_name || ''} ${apt.customer.last_name || ''}`.trim() \n    : 'Customer';\n  const serviceName = apt.service?.name || 'Appointment';\n  \n  return {\n    json: {\n      appointment_id: apt.id,\n      google_event_id: apt.google_event_id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customer?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start_datetime: startDateTime,\n      end_datetime: endDate.toISOString(),\n      calendar_id: context.current_calendar_id\n    }\n  };\n});"
+      },
+      "id": "47e9e9b9-936a-4287-bea4-549176ad4069",
+      "name": "Filter Rescheduled1",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1200,
+        3376
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-rescheduled",
+              "leftValue": "={{ $json.no_rescheduled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7628b10a-b7c2-453a-a9ce-e068183f6c93",
+      "name": "Has Rescheduled?1",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        1424,
+        3376
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.calendar_id }}"
+        },
+        "eventId": "={{ $json.google_event_id }}",
+        "updateFields": {
+          "description": "={{ $json.description }}",
+          "end": "={{ $json.end_datetime }}",
+          "start": "={{ $json.start_datetime }}",
+          "summary": "={{ $json.summary }}"
+        }
+      },
+      "id": "36a321f8-c789-46df-acfd-c7bd67b9c549",
+      "name": "Update Google Event1",
+      "type": "n8n-nodes-base.googleCalendar",
+      "position": [
+        1664,
+        3360
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "MOqRlGlXF5hwiNEV",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/mark-appointment-updated",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"appointment_id\": \"{{ $('Filter Rescheduled1').item.json.appointment_id }}\"\n}",
+        "options": {}
+      },
+      "id": "351f1174-686b-4653-a61f-acf252d81932",
+      "name": "Mark as Updated1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1936,
+        3360
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/cancelled-appointments",
+        "options": {}
+      },
+      "id": "c368f524-0192-4cc0-a94f-0b1dce8ccfc4",
+      "name": "Get Cancelled1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        976,
+        3696
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process cancelled appointments\nconst data = $input.first().json;\nconst context = $('Store Staff Context1').first().json;\n\nlet appointments = Array.isArray(data) ? data : (data && data.id ? [data] : []);\nappointments = appointments.filter(apt => apt && apt.id && apt.google_event_id);\n\nif (appointments.length === 0) {\n  return [{ json: { no_cancelled: true } }];\n}\n\nreturn appointments.map(apt => ({\n  json: {\n    appointment_id: apt.id,\n    google_event_id: apt.google_event_id,\n    calendar_id: context.current_calendar_id\n  }\n}));"
+      },
+      "id": "f976f89f-7e5c-428c-b321-89fb32532c1e",
+      "name": "Filter Cancelled1",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1248,
+        3696
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-cancelled",
+              "leftValue": "={{ $json.no_cancelled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26bf999d-be86-429d-aff6-29e825d79a5d",
+      "name": "Has Cancelled?1",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        1440,
+        3696
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.calendar_id }}"
+        },
+        "eventId": "={{ $json.google_event_id }}",
+        "options": {}
+      },
+      "id": "a348727e-40e0-4aac-836c-dd0c4966a494",
+      "name": "Delete Google Event1",
+      "type": "n8n-nodes-base.googleCalendar",
+      "position": [
+        1664,
+        3680
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "MOqRlGlXF5hwiNEV",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/mark-appointment-deleted",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"appointment_id\": \"{{ $('Filter Cancelled1').item.json.appointment_id }}\"\n}",
+        "options": {}
+      },
+      "id": "aeb6d54e-ab2a-4bb7-be36-4367c0abb332",
+      "name": "Mark as Deleted1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1872,
+        3680
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "content": "## Google Calendar Real-Time Sync\n\n**Triggers:**\n1. **Google Push Webhook** (instant) - Google notifies us of changes\n2. Internal Webhook (from Supabase)\n3. Backup schedule (disabled)\n\n**Auto-Renewal:**\nWatch channels expire in ~7 days. When Google Push comes in, we check the expiration header. If expiring within 48 hours, we auto-renew.\n\n**Operations:**\n1. PULL: Block slots for external Google events\n2. CLEANUP: Unblock slots for deleted Google events  \n3. PUSH NEW: Create Google events for new appointments\n4. PUSH UPDATE: Update Google events for rescheduled\n5. PUSH DELETE: Delete Google events for cancelled\n\n**Webhook URLs:**\n- Google Push: `/webhook/google-calendar-push`\n- Internal: `/webhook/calendar-sync`",
+        "height": 928,
+        "width": 812
+      },
+      "id": "9bf4633e-1f2f-4ccb-8905-b3ef5ca630fc",
+      "name": "Instructions1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1920,
+        2704
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## PULL: Google → Database",
+        "height": 60,
+        "width": 300,
+        "color": 4
+      },
+      "id": "6a18efbe-76fc-4076-93cd-e4bd4d02bdd4",
+      "name": "Note Pull1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2192,
+        2640
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## PUSH: New Appointments",
+        "height": 60,
+        "width": 300,
+        "color": 6
+      },
+      "id": "22a0aa11-4791-4f07-93c6-ca1e123de19b",
+      "name": "Note Push New1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2208,
+        3024
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## PUSH: Rescheduled Appointments",
+        "height": 60,
+        "width": 300,
+        "color": 3
+      },
+      "id": "9bc3815c-28b2-4e19-bfab-2a0e437b6588",
+      "name": "Note Push Update1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2192,
+        3376
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## PUSH: Cancelled Appointments",
+        "height": 60,
+        "width": 300,
+        "color": 2
+      },
+      "id": "d2fc3fa9-0c00-4692-9173-843e2f16cd68",
+      "name": "Note Push Delete1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2192,
+        3696
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "calendar-sync",
+        "options": {}
+      },
+      "id": "b0e82766-1190-4f1d-891f-18ec20ee3906",
+      "name": "Webhook Trigger1",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -816,
+        3104
+      ],
+      "typeVersion": 2,
+      "webhookId": "calendar-sync-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valid Staff? - Code version\n// Replaces the IF node that checks for valid staff_id\n\nconst item = $input.first().json;\n\n// Check if staff_id exists and is not empty/null/undefined\nconst staffId = item.staff_id || item.id || item.staffId;\n\nif (!staffId || staffId === '' || staffId === 'null' || staffId === 'undefined') {\n  return []; // Empty = skip this item, no output\n}\n\n// Pass through with normalized staff_id\nreturn [{\n  json: {\n    ...item,\n    staff_id: staffId,\n    calendar_id: item.calendar_id || item.calendarId || 'primary',\n    business_id: item.business_id || item.businessId || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        3024
+      ],
+      "id": "d8ab579b-828c-44a2-9855-6dc8dc9f38f4",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "console.log('Webhook payload:', JSON.stringify($json, null, 2));\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        3104
+      ],
+      "id": "b30871f0-f07f-4b68-b73c-328ff2f77d77",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Should Process Push? - Code Node Replacement\n// This replaces the IF node that was failing due to unsupported operator\n\nconst input = $input.first().json;\n\n// Extract values\nconst isSyncMessage = input.isSyncMessage || false;\nconst staffId = input.staffId || '';\nconst resourceState = input.resourceState || '';\n\n// Log for debugging (visible in n8n execution logs)\nconsole.log('📨 Push notification received:', {\n  isSyncMessage,\n  staffId,\n  resourceState,\n  needsRenewal: input.needsRenewal\n});\n\n// Decision logic:\n// Process if it's NOT a sync message AND we have a valid staff ID\nconst shouldProcess = !isSyncMessage && staffId.trim().length > 0;\n\nif (shouldProcess) {\n  console.log('✅ Processing push notification for staff:', staffId);\n  // Continue execution - pass data to next node\n  return $input.all();\n} else {\n  console.log('⏭️ Skipping execution:', {\n    reason: isSyncMessage ? 'Sync message' : 'No staff ID'\n  });\n  // Stop execution - return empty array\n  return [];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        2656
+      ],
+      "id": "e0d70bc8-0168-4823-a068-4ca3a4c5a9e3",
+      "name": "Should Process Push?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Push Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Parse Google Headers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Google Headers": {
+      "main": [
+        [
+          {
+            "node": "Should Process Push?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Renewal?": {
+      "main": [
+        [
+          {
+            "node": "Renew Watch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Push Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renew Watch": {
+      "main": [
+        [
+          {
+            "node": "Set Push Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Push Context": {
+      "main": [
+        [
+          {
+            "node": "Get Staff Info (Push)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Staff Info (Push)": {
+      "main": [
+        [
+          {
+            "node": "Merge to Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge to Loop": {
+      "main": [
+        [
+          {
+            "node": "Loop Each Staff1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 5 Minutes (Backup)1": {
+      "main": [
+        [
+          {
+            "node": "Get All Staff1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Staff ID from Webhook?1": {
+      "main": [
+        [
+          {
+            "node": "Get Single Staff1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get All Staff1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Staff1": {
+      "main": [
+        [
+          {
+            "node": "Merge to Loop",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Single Staff1": {
+      "main": [
+        [
+          {
+            "node": "Merge to Loop",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Loop Each Staff1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Staff Context1": {
+      "main": [
+        [
+          {
+            "node": "Get Google Events1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get New Appointments1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Rescheduled1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Cancelled1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Google Events1": {
+      "main": [
+        [
+          {
+            "node": "Process Google Events1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Google Events1": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Deleted Events1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has External Events?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has External Events?1": {
+      "main": [
+        [
+          {
+            "node": "Split External Events1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split External Events1": {
+      "main": [
+        [
+          {
+            "node": "Block Time Slots1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get New Appointments1": {
+      "main": [
+        [
+          {
+            "node": "Filter New Appointments1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Appointments1": {
+      "main": [
+        [
+          {
+            "node": "Has New?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New?1": {
+      "main": [
+        [
+          {
+            "node": "Create Google Event1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Event1": {
+      "main": [
+        [
+          {
+            "node": "Mark as Synced1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Rescheduled1": {
+      "main": [
+        [
+          {
+            "node": "Filter Rescheduled1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Rescheduled1": {
+      "main": [
+        [
+          {
+            "node": "Has Rescheduled?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Rescheduled?1": {
+      "main": [
+        [
+          {
+            "node": "Update Google Event1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Google Event1": {
+      "main": [
+        [
+          {
+            "node": "Mark as Updated1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Cancelled1": {
+      "main": [
+        [
+          {
+            "node": "Filter Cancelled1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Cancelled1": {
+      "main": [
+        [
+          {
+            "node": "Has Cancelled?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Cancelled?1": {
+      "main": [
+        [
+          {
+            "node": "Delete Google Event1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Google Event1": {
+      "main": [
+        [
+          {
+            "node": "Mark as Deleted1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Store Staff Context1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Has Staff ID from Webhook?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Process Push?": {
+      "main": [
+        [
+          {
+            "node": "Needs Renewal?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "versionId": "49d6e885-d5c1-44c4-85d6-3ca5a06036f5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"
+  },
+  "id": "ZkQplwjtccGdKYZd",
+  "tags": []
+}
