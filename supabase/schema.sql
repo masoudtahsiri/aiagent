@@ -184,7 +184,12 @@ CREATE TABLE appointments (
     reminder_sent_sms BOOLEAN DEFAULT FALSE,
     created_via VARCHAR(50) DEFAULT 'ai_phone', -- 'ai_phone', 'web', 'manual', 'api'
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    -- Google Calendar sync fields
+    google_event_id VARCHAR(255),
+    sync_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'synced', 'pending_update', 'pending_delete', 'deleted', 'error'
+    last_synced_at TIMESTAMP,
+    last_modified_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Appointment history/changes
@@ -232,6 +237,35 @@ CREATE TABLE calendar_sync_log (
     errors_count INTEGER DEFAULT 0,
     error_details TEXT,
     sync_status VARCHAR(50), -- 'success', 'partial', 'failed'
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- External calendar events (from Google Calendar, not appointments)
+CREATE TABLE external_calendar_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    staff_id UUID REFERENCES staff(id) ON DELETE CASCADE,
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    google_event_id VARCHAR(255) NOT NULL,
+    summary VARCHAR(500),
+    description TEXT,
+    start_datetime TIMESTAMP NOT NULL,
+    end_datetime TIMESTAMP NOT NULL,
+    is_all_day BOOLEAN DEFAULT FALSE,
+    event_status VARCHAR(50) DEFAULT 'confirmed', -- 'confirmed', 'tentative', 'cancelled'
+    last_synced_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(staff_id, google_event_id)
+);
+
+-- Calendar webhook channels (for Google Calendar push notifications)
+CREATE TABLE calendar_webhook_channels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    calendar_connection_id UUID REFERENCES calendar_connections(id) ON DELETE CASCADE,
+    staff_id UUID REFERENCES staff(id) ON DELETE CASCADE,
+    channel_id VARCHAR(255) NOT NULL UNIQUE,
+    resource_id VARCHAR(255) NOT NULL,
+    expiration TIMESTAMP NOT NULL,
+    sync_token TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
