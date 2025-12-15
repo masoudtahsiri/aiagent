@@ -1,5 +1,5 @@
 {
-  "name": "Google Calendar Push Handler",
+  "name": "Google Calendar workflow",
   "nodes": [
     {
       "parameters": {
@@ -312,44 +312,75 @@
     },
     {
       "parameters": {
-        "operation": "getAll",
-        "calendar": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.current_calendar_id }}"
-        },
-        "limit": 100,
-        "options": {
-          "timeMin": "={{ $now.toISO() }}",
-          "timeMax": "={{ $now.plus({days: 30}).toISO() }}",
-          "singleEvents": true,
-          "orderBy": "startTime"
-        }
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/calendar/tokens/{{ $json.current_staff_id }}",
+        "options": {}
       },
-      "id": "62dc9336-601e-4e35-af21-c1417e382a54",
-      "name": "Get Google Events1",
-      "type": "n8n-nodes-base.googleCalendar",
+      "id": "get-staff-token-shared",
+      "name": "Get Staff Token",
+      "type": "n8n-nodes-base.httpRequest",
       "position": [
         1008,
-        2656
+        3024
       ],
-      "typeVersion": 1,
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "MOqRlGlXF5hwiNEV",
-          "name": "Google Calendar account"
-        }
-      }
+      "typeVersion": 4.1
     },
     {
       "parameters": {
-        "jsCode": "// Process Google Calendar events\n// 1. Filter external events (to block slots)\n// 2. Collect all event IDs (to cleanup deleted events)\n\nconst events = $input.all();\nconst context = $('Store Staff Context1').first().json;\nconst staffId = context.current_staff_id;\n\nconst externalEvents = [];\nconst allEventIds = [];\n\nfor (const item of events) {\n  const event = item.json;\n  \n  if (!event.id) continue;\n  \n  // Collect all event IDs for cleanup\n  allEventIds.push(event.id);\n  \n  // Check if this is OUR event\n  const description = event.description || '';\n  const isOurEvent = description.includes('appointment_id:') || \n                     description.includes('source:ai_receptionist') ||\n                     (event.extendedProperties?.private?.source === 'ai_receptionist');\n  \n  // Skip our events and cancelled events\n  if (isOurEvent || event.status === 'cancelled') {\n    continue;\n  }\n  \n  // Extract times\n  let startTime, endTime, isAllDay;\n  \n  if (event.start?.dateTime) {\n    startTime = event.start.dateTime;\n    endTime = event.end?.dateTime || event.start.dateTime;\n    isAllDay = false;\n  } else if (event.start?.date) {\n    startTime = event.start.date;\n    endTime = event.end?.date || event.start.date;\n    isAllDay = true;\n  } else {\n    continue;\n  }\n  \n  externalEvents.push({\n    staff_id: staffId,\n    google_event_id: event.id,\n    summary: event.summary || 'Busy',\n    start: startTime,\n    end: endTime,\n    is_all_day: isAllDay\n  });\n}\n\nreturn [{\n  json: {\n    staff_id: staffId,\n    external_events: externalEvents,\n    all_event_ids: allEventIds,\n    has_external_events: externalEvents.length > 0\n  }\n}];"
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ $('Get Staff Token').item.json.calendar_id }}/events",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeMin",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "timeMax",
+              "value": "={{ $now.plus({days: 30}).toISO() }}"
+            },
+            {
+              "name": "singleEvents",
+              "value": "true"
+            },
+            {
+              "name": "orderBy",
+              "value": "startTime"
+            },
+            {
+              "name": "maxResults",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Get Staff Token').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "62dc9336-601e-4e35-af21-c1417e382a54",
+      "name": "Get Google Events1",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1232,
+        2656
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Calendar events (HTTP response format)\n// 1. Filter external events (to block slots)\n// 2. Collect all event IDs (to cleanup deleted events)\n\n// Get the HTTP response - Google returns {items: [...]}\nconst input = $input.first().json;\nconst items = input.items || [];\nconst context = $('Store Staff Context1').first().json;\nconst staffId = context.current_staff_id;\n\nconsole.log('Processing', items.length, 'events for staff', staffId);\n\nconst externalEvents = [];\nconst allEventIds = [];\n\nfor (const event of items) {\n  if (!event.id) continue;\n  \n  // Collect all event IDs for cleanup\n  allEventIds.push(event.id);\n  \n  // Check if this is OUR event\n  const description = event.description || '';\n  const isOurEvent = description.includes('appointment_id:') || \n                     description.includes('source:ai_receptionist') ||\n                     (event.extendedProperties?.private?.source === 'ai_receptionist');\n  \n  // Skip our events and cancelled events\n  if (isOurEvent || event.status === 'cancelled') {\n    continue;\n  }\n  \n  // Extract times\n  let startTime, endTime, isAllDay;\n  \n  if (event.start?.dateTime) {\n    startTime = event.start.dateTime;\n    endTime = event.end?.dateTime || event.start.dateTime;\n    isAllDay = false;\n  } else if (event.start?.date) {\n    startTime = event.start.date;\n    endTime = event.end?.date || event.start.date;\n    isAllDay = true;\n  } else {\n    continue;\n  }\n  \n  externalEvents.push({\n    staff_id: staffId,\n    google_event_id: event.id,\n    summary: event.summary || 'Busy',\n    start: startTime,\n    end: endTime,\n    is_all_day: isAllDay\n  });\n}\n\nconsole.log('Found', externalEvents.length, 'external events');\n\nreturn [{\n  json: {\n    staff_id: staffId,\n    external_events: externalEvents,\n    all_event_ids: allEventIds,\n    has_external_events: externalEvents.length > 0\n  }\n}];"
       },
       "id": "2f530edb-5cd5-43cd-927b-17ec244d5ee9",
       "name": "Process Google Events1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1200,
+        1456,
         2656
       ],
       "typeVersion": 2
@@ -367,7 +398,7 @@
       "name": "Cleanup Deleted Events1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1440,
+        1680,
         2416
       ],
       "typeVersion": 4.1
@@ -398,7 +429,7 @@
       "name": "Has External Events?1",
       "type": "n8n-nodes-base.if",
       "position": [
-        1424,
+        1680,
         2656
       ],
       "typeVersion": 2
@@ -411,7 +442,7 @@
       "name": "Split External Events1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1664,
+        1904,
         2640
       ],
       "typeVersion": 2
@@ -429,7 +460,7 @@
       "name": "Block Time Slots1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1952,
+        2128,
         2640
       ],
       "typeVersion": 4.1
@@ -442,7 +473,7 @@
           "parameters": [
             {
               "name": "staff_id",
-              "value": "={{ $json.current_staff_id }}"
+              "value": "={{ $('Store Staff Context1').item.json.current_staff_id }}"
             },
             {
               "name": "start_date",
@@ -460,20 +491,20 @@
       "name": "Get New Appointments1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        992,
+        1232,
         3024
       ],
       "typeVersion": 4.1
     },
     {
       "parameters": {
-        "jsCode": "// Filter appointments that need to be created in Google Calendar\nconst data = $input.first().json;\nconst appointments = data.appointments || [];\nconst context = $('Store Staff Context1').first().json;\n\nconst toCreate = appointments.filter(apt => \n  !apt.google_event_id && \n  apt.status !== 'cancelled' &&\n  (apt.sync_status === 'pending' || !apt.sync_status)\n);\n\nif (toCreate.length === 0) {\n  return [{ json: { no_new_appointments: true } }];\n}\n\nreturn toCreate.map(apt => {\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  \n  const customerName = apt.customers \n    ? `${apt.customers.first_name || ''} ${apt.customers.last_name || ''}`.trim() \n    : 'Customer';\n  const serviceName = apt.services?.name || 'Appointment';\n  \n  return {\n    json: {\n      appointment_id: apt.id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customers?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start_datetime: startDateTime,\n      end_datetime: endDate.toISOString(),\n      calendar_id: context.current_calendar_id\n    }\n  };\n});"
+        "jsCode": "// Filter appointments that need to be created in Google Calendar\nconst data = $input.first().json;\nconst appointments = data.appointments || [];\nconst context = $('Store Staff Context1').first().json;\nconst tokenData = $('Get Staff Token').first().json;\n\nconst toCreate = appointments.filter(apt => \n  !apt.google_event_id && \n  apt.status !== 'cancelled' &&\n  (apt.sync_status === 'pending' || !apt.sync_status)\n);\n\nif (toCreate.length === 0) {\n  return [{ json: { no_new_appointments: true } }];\n}\n\nreturn toCreate.map(apt => {\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  \n  const customerName = apt.customers \n    ? `${apt.customers.first_name || ''} ${apt.customers.last_name || ''}`.trim() \n    : 'Customer';\n  const serviceName = apt.services?.name || 'Appointment';\n  \n  return {\n    json: {\n      appointment_id: apt.id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customers?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start_datetime: startDateTime,\n      end_datetime: endDate.toISOString(),\n      calendar_id: tokenData.calendar_id,\n      access_token: tokenData.access_token\n    }\n  };\n});"
       },
       "id": "619c8fbf-fe3e-43f1-ab05-d7ac39ac7cb5",
       "name": "Filter New Appointments1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1200,
+        1456,
         3024
       ],
       "typeVersion": 2
@@ -506,39 +537,41 @@
       "name": "Has New?1",
       "type": "n8n-nodes-base.if",
       "position": [
-        1424,
+        1680,
         3024
       ],
       "typeVersion": 2
     },
     {
       "parameters": {
-        "calendar": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.calendar_id }}"
+        "method": "POST",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ $json.calendar_id }}/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
-        "start": "={{ $json.start_datetime }}",
-        "end": "={{ $json.end_datetime }}",
-        "additionalFields": {
-          "description": "={{ $json.description }}",
-          "summary": "={{ $json.summary }}"
-        }
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"summary\": \"{{ $json.summary }}\",\n  \"description\": \"{{ $json.description }}\",\n  \"start\": {\n    \"dateTime\": \"{{ $json.start_datetime }}\",\n    \"timeZone\": \"UTC\"\n  },\n  \"end\": {\n    \"dateTime\": \"{{ $json.end_datetime }}\",\n    \"timeZone\": \"UTC\"\n  }\n}",
+        "options": {}
       },
       "id": "d081c0aa-3b48-4286-b21c-e3544b7e01a8",
       "name": "Create Google Event1",
-      "type": "n8n-nodes-base.googleCalendar",
+      "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1664,
+        1904,
         3008
       ],
-      "typeVersion": 1,
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "MOqRlGlXF5hwiNEV",
-          "name": "Google Calendar account"
-        }
-      }
+      "typeVersion": 4.1
     },
     {
       "parameters": {
@@ -553,7 +586,7 @@
       "name": "Mark as Synced1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1952,
+        2128,
         3008
       ],
       "typeVersion": 4.1
@@ -567,20 +600,20 @@
       "name": "Get Rescheduled1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        976,
+        1232,
         3376
       ],
       "typeVersion": 4.1
     },
     {
       "parameters": {
-        "jsCode": "// Process rescheduled appointments\nconst data = $input.first().json;\nconst context = $('Store Staff Context1').first().json;\n\nlet appointments = Array.isArray(data) ? data : (data ? [data] : []);\nappointments = appointments.filter(apt => apt && apt.id && apt.google_event_id);\n\nif (appointments.length === 0) {\n  return [{ json: { no_rescheduled: true } }];\n}\n\nreturn appointments.map(apt => {\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  \n  const customerName = apt.customer \n    ? `${apt.customer.first_name || ''} ${apt.customer.last_name || ''}`.trim() \n    : 'Customer';\n  const serviceName = apt.service?.name || 'Appointment';\n  \n  return {\n    json: {\n      appointment_id: apt.id,\n      google_event_id: apt.google_event_id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customer?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start_datetime: startDateTime,\n      end_datetime: endDate.toISOString(),\n      calendar_id: context.current_calendar_id\n    }\n  };\n});"
+        "jsCode": "// Process rescheduled appointments\nconst data = $input.first().json;\nconst context = $('Store Staff Context1').first().json;\nconst tokenData = $('Get Staff Token').first().json;\n\nlet appointments = Array.isArray(data) ? data : (data ? [data] : []);\nappointments = appointments.filter(apt => apt && apt.id && apt.google_event_id);\n\nif (appointments.length === 0) {\n  return [{ json: { no_rescheduled: true } }];\n}\n\nreturn appointments.map(apt => {\n  const startDateTime = `${apt.appointment_date}T${apt.appointment_time}`;\n  const durationMinutes = apt.duration_minutes || 30;\n  const startDate = new Date(startDateTime);\n  const endDate = new Date(startDate.getTime() + durationMinutes * 60000);\n  \n  const customerName = apt.customer \n    ? `${apt.customer.first_name || ''} ${apt.customer.last_name || ''}`.trim() \n    : 'Customer';\n  const serviceName = apt.service?.name || 'Appointment';\n  \n  return {\n    json: {\n      appointment_id: apt.id,\n      google_event_id: apt.google_event_id,\n      summary: `${serviceName}: ${customerName}`,\n      description: `appointment_id:${apt.id}\\nsource:ai_receptionist\\nService: ${serviceName}\\nPhone: ${apt.customer?.phone || 'N/A'}\\nNotes: ${apt.notes || ''}`,\n      start_datetime: startDateTime,\n      end_datetime: endDate.toISOString(),\n      calendar_id: tokenData.calendar_id,\n      access_token: tokenData.access_token\n    }\n  };\n});"
       },
       "id": "47e9e9b9-936a-4287-bea4-549176ad4069",
       "name": "Filter Rescheduled1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1200,
+        1456,
         3376
       ],
       "typeVersion": 2
@@ -611,41 +644,41 @@
       "name": "Has Rescheduled?1",
       "type": "n8n-nodes-base.if",
       "position": [
-        1424,
+        1680,
         3376
       ],
       "typeVersion": 2
     },
     {
       "parameters": {
-        "operation": "update",
-        "calendar": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.calendar_id }}"
+        "method": "PUT",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ $json.calendar_id }}/events/{{ $json.google_event_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
-        "eventId": "={{ $json.google_event_id }}",
-        "updateFields": {
-          "description": "={{ $json.description }}",
-          "end": "={{ $json.end_datetime }}",
-          "start": "={{ $json.start_datetime }}",
-          "summary": "={{ $json.summary }}"
-        }
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"summary\": \"{{ $json.summary }}\",\n  \"description\": \"{{ $json.description }}\",\n  \"start\": {\n    \"dateTime\": \"{{ $json.start_datetime }}\",\n    \"timeZone\": \"UTC\"\n  },\n  \"end\": {\n    \"dateTime\": \"{{ $json.end_datetime }}\",\n    \"timeZone\": \"UTC\"\n  }\n}",
+        "options": {}
       },
       "id": "36a321f8-c789-46df-acfd-c7bd67b9c549",
       "name": "Update Google Event1",
-      "type": "n8n-nodes-base.googleCalendar",
+      "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1664,
+        1904,
         3360
       ],
-      "typeVersion": 1,
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "MOqRlGlXF5hwiNEV",
-          "name": "Google Calendar account"
-        }
-      }
+      "typeVersion": 4.1
     },
     {
       "parameters": {
@@ -660,7 +693,7 @@
       "name": "Mark as Updated1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1936,
+        2128,
         3360
       ],
       "typeVersion": 4.1
@@ -674,20 +707,20 @@
       "name": "Get Cancelled1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        976,
+        1232,
         3696
       ],
       "typeVersion": 4.1
     },
     {
       "parameters": {
-        "jsCode": "// Process cancelled appointments\nconst data = $input.first().json;\nconst context = $('Store Staff Context1').first().json;\n\nlet appointments = Array.isArray(data) ? data : (data && data.id ? [data] : []);\nappointments = appointments.filter(apt => apt && apt.id && apt.google_event_id);\n\nif (appointments.length === 0) {\n  return [{ json: { no_cancelled: true } }];\n}\n\nreturn appointments.map(apt => ({\n  json: {\n    appointment_id: apt.id,\n    google_event_id: apt.google_event_id,\n    calendar_id: context.current_calendar_id\n  }\n}));"
+        "jsCode": "// Process cancelled appointments\nconst data = $input.first().json;\nconst context = $('Store Staff Context1').first().json;\nconst tokenData = $('Get Staff Token').first().json;\n\nlet appointments = Array.isArray(data) ? data : (data && data.id ? [data] : []);\nappointments = appointments.filter(apt => apt && apt.id && apt.google_event_id);\n\nif (appointments.length === 0) {\n  return [{ json: { no_cancelled: true } }];\n}\n\nreturn appointments.map(apt => ({\n  json: {\n    appointment_id: apt.id,\n    google_event_id: apt.google_event_id,\n    calendar_id: tokenData.calendar_id,\n    access_token: tokenData.access_token\n  }\n}));"
       },
       "id": "f976f89f-7e5c-428c-b321-89fb32532c1e",
       "name": "Filter Cancelled1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1248,
+        1456,
         3696
       ],
       "typeVersion": 2
@@ -718,36 +751,34 @@
       "name": "Has Cancelled?1",
       "type": "n8n-nodes-base.if",
       "position": [
-        1440,
+        1680,
         3696
       ],
       "typeVersion": 2
     },
     {
       "parameters": {
-        "operation": "delete",
-        "calendar": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.calendar_id }}"
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ $json.calendar_id }}/events/{{ $json.google_event_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
         },
-        "eventId": "={{ $json.google_event_id }}",
         "options": {}
       },
       "id": "a348727e-40e0-4aac-836c-dd0c4966a494",
       "name": "Delete Google Event1",
-      "type": "n8n-nodes-base.googleCalendar",
+      "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1664,
+        1904,
         3680
       ],
-      "typeVersion": 1,
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "MOqRlGlXF5hwiNEV",
-          "name": "Google Calendar account"
-        }
-      }
+      "typeVersion": 4.1
     },
     {
       "parameters": {
@@ -762,15 +793,15 @@
       "name": "Mark as Deleted1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1872,
+        2128,
         3680
       ],
       "typeVersion": 4.1
     },
     {
       "parameters": {
-        "content": "## Google Calendar Real-Time Sync\n\n**Triggers:**\n1. **Google Push Webhook** (instant) - Google notifies us of changes\n2. Internal Webhook (from Supabase)\n3. Backup schedule (disabled)\n\n**Auto-Renewal:**\nWatch channels expire in ~7 days. When Google Push comes in, we check the expiration header. If expiring within 48 hours, we auto-renew.\n\n**Operations:**\n1. PULL: Block slots for external Google events\n2. CLEANUP: Unblock slots for deleted Google events  \n3. PUSH NEW: Create Google events for new appointments\n4. PUSH UPDATE: Update Google events for rescheduled\n5. PUSH DELETE: Delete Google events for cancelled\n\n**Webhook URLs:**\n- Google Push: `/webhook/google-calendar-push`\n- Internal: `/webhook/calendar-sync`",
-        "height": 928,
+        "content": "## Google Calendar Real-Time Sync\n\n**Triggers:**\n1. **Google Push Webhook** (instant) - Google notifies us of changes\n2. Internal Webhook (from Supabase)\n3. Backup schedule (disabled)\n\n**Auto-Renewal:**\nWatch channels expire in ~7 days. When Google Push comes in, we check the expiration header. If expiring within 48 hours, we auto-renew.\n\n**Operations:**\n1. PULL: Block slots for external Google events\n2. CLEANUP: Unblock slots for deleted Google events  \n3. PUSH NEW: Create Google events for new appointments\n4. PUSH UPDATE: Update Google events for rescheduled\n5. PUSH DELETE: Delete Google events for cancelled\n\n**Multi-tenant:**\nEach staff member uses their OWN Google OAuth tokens from the database.\nNo n8n Google Calendar credentials needed!\n\n**Webhook URLs:**\n- Google Push: `/webhook/google-calendar-push`\n- Internal: `/webhook/calendar-sync`",
+        "height": 1000,
         "width": 812
       },
       "id": "9bf4633e-1f2f-4ccb-8905-b3ef5ca630fc",
@@ -793,7 +824,7 @@
       "name": "Note Pull1",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        2192,
+        2368,
         2640
       ],
       "typeVersion": 1
@@ -809,7 +840,7 @@
       "name": "Note Push New1",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        2208,
+        2368,
         3024
       ],
       "typeVersion": 1
@@ -825,7 +856,7 @@
       "name": "Note Push Update1",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        2192,
+        2368,
         3376
       ],
       "typeVersion": 1
@@ -841,7 +872,7 @@
       "name": "Note Push Delete1",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        2192,
+        2368,
         3696
       ],
       "typeVersion": 1
@@ -1057,6 +1088,17 @@
       ]
     },
     "Store Staff Context1": {
+      "main": [
+        [
+          {
+            "node": "Get Staff Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Staff Token": {
       "main": [
         [
           {
@@ -1315,7 +1357,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": true
   },
-  "versionId": "49d6e885-d5c1-44c4-85d6-3ca5a06036f5",
+  "versionId": "61403dfd-1f4f-4c4c-9c2b-688c8a5315b2",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"

@@ -17,8 +17,13 @@ from pydantic import BaseModel
 import uuid
 import os
 import logging
+import httpx
 
 from backend.database.supabase_client import get_db
+
+# Google OAuth settings (must be set via environment variables)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
 router = APIRouter(prefix="/api/calendar", tags=["Calendar Sync"])
 logger = logging.getLogger(__name__)
@@ -431,18 +436,25 @@ async def sync_from_calendar(request: dict):
 
 
 @router.get("/sync-status")
-async def get_all_sync_status():
+async def get_all_sync_status(staff_id: str = Query(None)):
     """
-    Get all staff members with active Google Calendar connections.
+    Get staff members with active Google Calendar connections.
     
     Called by n8n workflow to get list of staff that need syncing.
+    If staff_id is provided, returns only that staff member.
     """
     db = get_db()
     
-    # Get all active Google Calendar connections
-    conn_result = db.table("calendar_connections").select(
+    # Get active Google Calendar connections
+    query = db.table("calendar_connections").select(
         "*, staff(id, name, business_id)"
-    ).eq("provider", "google").eq("sync_enabled", True).execute()
+    ).eq("provider", "google").eq("sync_enabled", True)
+    
+    # Filter by staff_id if provided
+    if staff_id:
+        query = query.eq("staff_id", staff_id)
+    
+    conn_result = query.execute()
     
     if not conn_result.data:
         return []
@@ -452,7 +464,7 @@ async def get_all_sync_status():
     for connection in conn_result.data:
         staff_list.append({
             "staff_id": connection["staff_id"],
-            "calendar_id": connection.get("calendar_id"),
+            "calendar_id": connection.get("calendar_id") or "primary",
             "last_sync_at": connection.get("last_sync_at"),
             "sync_direction": connection.get("sync_direction", "bidirectional"),
             "staff_name": connection.get("staff", {}).get("name") if connection.get("staff") else None,
@@ -910,6 +922,98 @@ async def renew_watch(request: dict):
     """
     # Same as create - upsert logic handles renewal
     return await create_calendar_watch(request)
+
+
+@router.get("/tokens/{staff_id}")
+async def get_staff_google_token(staff_id: str):
+    """
+    Get a valid Google OAuth access token for a staff member.
+    
+    Auto-refreshes the token if expired or expiring within 5 minutes.
+    Used by n8n to make Google Calendar API calls on behalf of staff.
+    
+    Returns:
+    {
+        "access_token": "ya29...",
+        "calendar_id": "primary",
+        "staff_id": "uuid"
+    }
+    """
+    db = get_db()
+    
+    # Get calendar connection with tokens
+    conn_result = db.table("calendar_connections").select(
+        "id, staff_id, calendar_id, access_token, refresh_token, token_expires_at"
+    ).eq("staff_id", staff_id).eq("provider", "google").eq("sync_enabled", True).execute()
+    
+    if not conn_result.data:
+        raise HTTPException(status_code=404, detail=f"No Google Calendar connection found for staff {staff_id}")
+    
+    connection = conn_result.data[0]
+    access_token = connection.get("access_token")
+    refresh_token = connection.get("refresh_token")
+    token_expires_at = connection.get("token_expires_at")
+    
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="No refresh token available - staff needs to reconnect Google Calendar")
+    
+    # Check if token needs refresh (expired or expiring within 5 minutes)
+    needs_refresh = False
+    if not access_token:
+        needs_refresh = True
+    elif token_expires_at:
+        try:
+            expires_dt = datetime.fromisoformat(token_expires_at.replace("Z", "+00:00"))
+            # Refresh if expiring within 5 minutes
+            if expires_dt <= datetime.now(expires_dt.tzinfo) + timedelta(minutes=5):
+                needs_refresh = True
+        except:
+            needs_refresh = True
+    else:
+        needs_refresh = True
+    
+    # Refresh token if needed
+    if needs_refresh:
+        logger.info(f"[Tokens] Refreshing token for staff {staff_id}")
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "client_id": GOOGLE_CLIENT_ID,
+                        "client_secret": GOOGLE_CLIENT_SECRET,
+                        "refresh_token": refresh_token,
+                        "grant_type": "refresh_token"
+                    },
+                    timeout=30
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"[Tokens] Failed to refresh: {response.text}")
+                    raise HTTPException(status_code=401, detail="Failed to refresh Google token - staff may need to reconnect")
+                
+                token_data = response.json()
+                access_token = token_data["access_token"]
+                expires_in = token_data.get("expires_in", 3600)
+                new_expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+                
+                # Update token in database
+                db.table("calendar_connections").update({
+                    "access_token": access_token,
+                    "token_expires_at": new_expires_at
+                }).eq("id", connection["id"]).execute()
+                
+                logger.info(f"[Tokens] Token refreshed for staff {staff_id}")
+                
+        except httpx.RequestError as e:
+            logger.error(f"[Tokens] Network error refreshing token: {e}")
+            raise HTTPException(status_code=503, detail="Failed to connect to Google OAuth service")
+    
+    return {
+        "access_token": access_token,
+        "calendar_id": connection.get("calendar_id") or "primary",
+        "staff_id": staff_id
+    }
 
 
 @router.get("/watch/channel-info/{staff_id}")
