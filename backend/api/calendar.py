@@ -516,8 +516,14 @@ async def block_slots_from_calendar_event(request: dict):
     # Parse datetimes
     try:
         if 'T' in start_datetime:
-            start_dt = datetime.fromisoformat(start_datetime.replace('Z', '+00:00').replace('+00:00', ''))
-            end_dt = datetime.fromisoformat(end_datetime.replace('Z', '+00:00').replace('+00:00', ''))
+            # Parse with timezone, then convert to naive UTC
+            start_dt = datetime.fromisoformat(start_datetime.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_datetime.replace('Z', '+00:00'))
+            # Convert to naive UTC for comparison
+            if start_dt.tzinfo is not None:
+                start_dt = start_dt.replace(tzinfo=None)
+            if end_dt.tzinfo is not None:
+                end_dt = end_dt.replace(tzinfo=None)
         else:
             # All-day event (date only)
             start_dt = datetime.strptime(start_datetime, "%Y-%m-%d")
@@ -750,6 +756,63 @@ async def mark_appointment_deleted_from_calendar(request: dict):
     return {
         "success": True,
         "appointment_id": appointment_id
+    }
+
+
+@router.get("/rescheduled-appointments")
+async def get_rescheduled_appointments_for_sync(
+    staff_id: str = Query(None),
+    business_id: str = Query(None)
+):
+    """
+    Get appointments that were rescheduled and need to be updated in Google Calendar.
+    Called by n8n to sync rescheduled appointments.
+    
+    Returns appointments that:
+    - Have a google_event_id (already synced)
+    - Have sync_status = 'pending_update'
+    - Are not cancelled
+    """
+    db = get_db()
+    
+    query = db.table("appointments").select(
+        "*, customers(first_name, last_name, phone), services(name)"
+    ).eq("sync_status", "pending_update").neq("status", "cancelled").not_.is_("google_event_id", "null")
+    
+    if staff_id:
+        query = query.eq("staff_id", staff_id)
+    if business_id:
+        query = query.eq("business_id", business_id)
+    
+    result = query.limit(50).execute()
+    
+    return result.data or []
+
+
+@router.post("/mark-appointment-updated")
+async def mark_appointment_updated_in_calendar(request: dict):
+    """
+    Mark an appointment as updated in Google Calendar.
+    Called by n8n after updating the event in Google Calendar.
+    """
+    db = get_db()
+    
+    appointment_id = request.get("appointment_id")
+    if not appointment_id:
+        raise HTTPException(status_code=400, detail="appointment_id is required")
+    
+    result = db.table("appointments").update({
+        "sync_status": "synced",
+        "last_synced_at": datetime.utcnow().isoformat()
+    }).eq("id", appointment_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    
+    return {
+        "success": True,
+        "appointment_id": appointment_id,
+        "message": "Appointment marked as updated in Google Calendar"
     }
 
 
