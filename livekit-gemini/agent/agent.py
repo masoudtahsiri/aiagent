@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 
 """
-Multi-tenant AI Receptionist Agent
+Multi-tenant AI Receptionist Agent - Optimized Version
 
-Updated to LiveKit Agents v1.3.x patterns:
-
-- AgentServer with @server.rtc_session() decorator
-
-- Stable google.realtime import (not beta)
-
-- Fixed greeting via generate_reply() after session.start()
-
+Key Improvements:
+1. Cleaner greeting flow without redundant instructions
+2. Better error handling and logging
+3. Optimized session initialization
+4. Proper call lifecycle management
 """
 
 import asyncio
@@ -86,7 +83,7 @@ def extract_caller_phone(identity: str) -> str:
             identity = identity.split("@")[0]
         phone = identity.strip()
     
-    logger.info(f"Extracted caller phone: {phone}")
+    logger.info(f"📞 Extracted caller phone: {phone}")
     return phone
 
 
@@ -99,30 +96,29 @@ def extract_called_number(ctx: JobContext) -> str:
             called = attrs['sip.trunkPhoneNumber']
             if not called.startswith('+'):
                 called = '+' + called
-            logger.info(f"Called number: {called}")
+            logger.info(f"📞 Called number: {called}")
             return called
     
     raise ValueError("Could not extract called number from participant attributes")
 
 
-# Define prewarm function (NOT a decorator)
 def prewarm(proc: JobProcess):
     """Preload VAD model for faster call handling"""
-    logger.info("Loading VAD model...")
+    logger.info("🔄 Loading VAD model...")
     proc.userdata["vad"] = silero.VAD.load()
-    logger.info("VAD ready")
+    logger.info("✅ VAD ready")
 
 
-# Assign prewarm via property - this is the key change
 server.setup_fnc = prewarm
 
 
 @server.rtc_session(agent_name="ai-receptionist")
 async def entrypoint(ctx: JobContext):
     """Main entry point for each incoming call"""
-    logger.info("=" * 50)
-    logger.info(f"NEW CALL - Room: {ctx.room.name}")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
+    logger.info("🔔 NEW INCOMING CALL")
+    logger.info(f"   Room: {ctx.room.name}")
+    logger.info("=" * 60)
     
     call_start = datetime.utcnow()
     
@@ -134,7 +130,7 @@ async def entrypoint(ctx: JobContext):
     caller_phone = extract_caller_phone(participant.identity)
     called_number = extract_called_number(ctx)
     
-    logger.info(f"Caller: {caller_phone} → Called: {called_number}")
+    logger.info(f"📞 Call: {caller_phone} → {called_number}")
     
     # =========================================================================
     # LOAD BUSINESS CONFIG
@@ -143,14 +139,14 @@ async def entrypoint(ctx: JobContext):
     try:
         business_config = await backend.lookup_business_by_phone(called_number)
     except Exception as e:
-        logger.error(f"Failed to load business config: {e}")
+        logger.error(f"❌ Failed to load business config: {e}")
         return
     
     business = business_config["business"]
     business_id = business["id"]
     business_name = business["business_name"]
     
-    logger.info(f"Business: {business_name} ({business_id})")
+    logger.info(f"🏢 Business: {business_name} ({business_id})")
     
     # Create session data
     session_data = SessionData(business_id, business_config)
@@ -159,22 +155,24 @@ async def entrypoint(ctx: JobContext):
     session_data.room = ctx.room
     
     # =========================================================================
-    # LOOKUP CUSTOMER
+    # LOOKUP CUSTOMER (with context if exists)
     # =========================================================================
     
-    lookup = await backend.lookup_customer(caller_phone, business_id)
+    lookup, customer_context = await backend.lookup_customer_with_context(
+        caller_phone, business_id
+    )
     is_existing = lookup.get("exists", False)
-    customer_context = None
     
     if is_existing:
         session_data.customer = lookup["customer"]
-        logger.info(f"Existing customer: {session_data.customer.get('first_name', 'Unknown')}")
-        
-        customer_context = await backend.get_customer_context(session_data.customer["id"])
+        customer_name = session_data.customer.get("first_name", "Unknown")
+        logger.info(f"👤 Returning customer: {customer_name}")
         if customer_context:
-            logger.info(f"Customer context loaded: {len(customer_context.get('recent_appointments', []))} recent appointments")
+            apt_count = len(customer_context.get("recent_appointments", []))
+            logger.info(f"   Context loaded: {apt_count} recent appointments")
     else:
-        logger.info("New customer")
+        customer_context = None
+        logger.info("👤 New customer (not in system)")
     
     # =========================================================================
     # GET AI CONFIG
@@ -194,11 +192,8 @@ async def entrypoint(ctx: JobContext):
     voice = ai_config.get("voice_style", "Kore") if ai_config else "Kore"
     
     # =========================================================================
-    # BUILD PROMPT
+    # BUILD SYSTEM PROMPT (Optimized - no redundant greeting instructions)
     # =========================================================================
-    
-    # Build greeting first (needed for system prompt)
-    greeting = build_greeting(business_config, session_data.customer, ai_config)
     
     prompt_builder = PromptBuilder(
         business_config=business_config,
@@ -208,16 +203,11 @@ async def entrypoint(ctx: JobContext):
     )
     system_prompt = prompt_builder.build()
     
-    # Add greeting instruction to system prompt so AI says it verbatim
-    system_prompt = f"""{system_prompt}
-
-IMPORTANT - FIRST GREETING:
-When the caller says "Hello" or starts the conversation, you MUST say this EXACT greeting word-for-word, do not paraphrase or change it:
-"{greeting}"
-
-After saying this exact greeting, continue the conversation naturally."""
+    # Build the greeting
+    greeting = build_greeting(business_config, session_data.customer, ai_config)
     
-    logger.info(f"System prompt built ({len(system_prompt)} chars)")
+    logger.info(f"📝 System prompt built ({len(system_prompt)} chars)")
+    logger.info(f"💬 Greeting: {greeting[:50]}...")
     
     # =========================================================================
     # LOG CALL START
@@ -232,8 +222,9 @@ After saying this exact greeting, continue the conversation naturally."""
         )
         if call_log:
             session_data.call_log_id = call_log["id"]
+            logger.info(f"📊 Call log created: {call_log['id']}")
     except Exception as e:
-        logger.warning(f"Failed to log call start: {e}")
+        logger.warning(f"⚠️ Failed to log call start: {e}")
     
     # =========================================================================
     # CREATE AGENT WITH TOOLS
@@ -250,14 +241,16 @@ After saying this exact greeting, continue the conversation naturally."""
         tools=tools,
     )
     
+    logger.info(f"🤖 Agent created with {len(tools)} tools")
+    
     # =========================================================================
-    # CREATE MODEL (Stable google.realtime import - NOT beta)
+    # CREATE MODEL
     # =========================================================================
     
     model = google.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
         voice=voice,
-        temperature=0.8,
+        temperature=0.7,  # Slightly lower for more consistent tool calling
     )
     
     # =========================================================================
@@ -278,38 +271,28 @@ After saying this exact greeting, continue the conversation naturally."""
         room=ctx.room,
     )
     
-    logger.info(f"Agent session started - Voice: {voice}")
+    logger.info(f"✅ Session started - Voice: {voice}")
     
     # =========================================================================
-    # SEND GREETING - Using fixed version of livekit-plugins-google
-    # Repository: https://github.com/masoudtahsiri/Gemini-live
-    # Fixes:
-    # 1. Empty turns bug - generate_reply() now sends user turn even without instructions
-    # 2. Send immediately after session.start() - greeting is already personalized
-    # 3. Use the actual greeting text so AI says it verbatim (consistent greeting)
+    # INITIATE GREETING
+    # The greeting is personalized based on customer context loaded above.
+    # We send it immediately as the AI's first utterance.
     # =========================================================================
     
-    # Send greeting immediately - all context (customer name, business info) is already loaded
-    # The greeting is already in the system prompt, so AI will say it verbatim
-    logger.info(f"Sending personalized greeting: {greeting}")
-    await session.generate_reply(user_input="Hello")
+    logger.info("💬 Sending personalized greeting...")
     
-    logger.info("✓ Greeting sent")
+    # Use generate_reply with greeting text to ensure AI speaks first
+    await session.generate_reply(user_input=f"[Call connected. Start with this greeting: {greeting}]")
+    
+    logger.info("✅ Greeting sent - conversation active")
 
 
 if __name__ == "__main__":
-    logger.info("=" * 50)
-    logger.info("  AI RECEPTIONIST AGENT")
-    logger.info("=" * 50)
-    logger.info(f"Backend: {BACKEND_URL}")
-    logger.info("Waiting for calls...")
+    logger.info("=" * 60)
+    logger.info("  🤖 AI RECEPTIONIST AGENT")
+    logger.info("=" * 60)
+    logger.info(f"  Backend: {BACKEND_URL}")
+    logger.info("  Waiting for calls...")
+    logger.info("=" * 60)
     
-    # Using AgentServer pattern (v1.3.x)
     cli.run_app(server)
-    
-    # Legacy pattern (still works in v1.3.x but not used here)
-    # cli.run_app(WorkerOptions(
-    #     entrypoint_fnc=entrypoint,
-    #     prewarm_fnc=prewarm,
-    #     agent_name="ai-receptionist",
-    # ))

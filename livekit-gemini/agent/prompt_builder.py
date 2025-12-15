@@ -1,14 +1,12 @@
 """
-Prompt Builder - Optimized Version
+Prompt Builder - Optimized for Robust Tool Calling
 
-Key Optimizations:
-1. Token-efficient prompts (30-40% shorter)
-2. Lazy loading of sections - only include what's needed
-3. Compact formatting without sacrificing clarity
-4. Pre-computed common patterns
-5. Smart context truncation
-
-All prompts maintain quality and accuracy while reducing token count.
+Key Improvements:
+1. Explicit tool calling rules with examples
+2. "Hold on" phrases for async operations  
+3. Strong anti-hallucination constraints
+4. Chain-of-thought style tool selection guidance
+5. Clear data collection flows
 """
 
 from datetime import datetime, timedelta
@@ -21,7 +19,7 @@ _DAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 
 
 class PromptBuilder:
-    """Builds token-efficient system prompts from business data"""
+    """Builds highly-optimized system prompts for reliable tool calling"""
     
     def __init__(
         self, 
@@ -45,7 +43,7 @@ class PromptBuilder:
         self._staff_map = {s["id"]: s for s in self.staff}
     
     def build(self) -> str:
-        """Build the complete system prompt - optimized"""
+        """Build the complete system prompt with robust tool calling"""
         sections = [
             self._build_identity(),
             self._build_business_compact(),
@@ -53,12 +51,14 @@ class PromptBuilder:
             self._build_team_compact(),
             self._build_services_compact(),
             self._build_caller(),
-            self._build_rules_compact(),
+            self._build_tool_calling_rules(),  # NEW: Explicit tool calling section
+            self._build_conversation_flow(),   # NEW: Conversation flow guidance
+            self._build_critical_rules(),      # Enhanced rules
         ]
         
-        # Only add knowledge if it exists and is relevant
+        # Only add knowledge if it exists
         if self.knowledge:
-            sections.insert(-1, self._build_knowledge_compact())
+            sections.insert(-3, self._build_knowledge_compact())
         
         # Only add closures if upcoming
         closures = self._build_closures_compact()
@@ -68,59 +68,208 @@ class PromptBuilder:
         return "\n\n".join(s for s in sections if s)
     
     # =========================================================================
-    # OPTIMIZED SECTION BUILDERS
+    # IDENTITY SECTION
     # =========================================================================
     
     def _build_identity(self) -> str:
-        """Build AI identity - compact version"""
+        """Build AI identity with clear role definition"""
         name = self.ai_config.get("ai_name", "Assistant")
         biz_name = self.business.get("business_name", "the business")
         
-        # Add current date/time context
         now = datetime.now()
-        current_date = now.strftime("%A, %B %d, %Y")  # e.g., "Monday, December 15, 2025"
-        current_time = now.strftime("%I:%M %p")  # e.g., "01:30 PM"
+        current_date = now.strftime("%A, %B %d, %Y")
+        current_time = now.strftime("%I:%M %p")
         
-        # Use custom prompt if provided (non-template)
         custom = self.ai_config.get("system_prompt", "")
         if custom and "{" not in custom:
             return custom
         
-        role_type = self.ai_config.get("role_type", "receptionist")
+        return f"""You are {name}, the AI receptionist at {biz_name}.
+
+CURRENT DATE/TIME: {current_date}, {current_time}
+This is crucial for scheduling - always use this as "today".
+
+YOUR ROLE:
+- Answer phone calls professionally
+- Help callers book, reschedule, or cancel appointments
+- Answer questions about the business
+- Collect information from new customers
+
+COMMUNICATION STYLE:
+- Speak naturally as if on a phone call
+- Keep responses SHORT (1-2 sentences typically)
+- Be warm, professional, and efficient
+- Never use markdown, bullets, or formatting - this is VOICE
+- Speak dates and times naturally (e.g., "Tuesday at 2 PM" not "2025-01-15 at 14:00")"""
+    
+    # =========================================================================
+    # NEW: EXPLICIT TOOL CALLING RULES
+    # =========================================================================
+    
+    def _build_tool_calling_rules(self) -> str:
+        """Build explicit tool calling rules - this is critical for reliability"""
+        return """
+═══════════════════════════════════════════════════════════════════════════════
+                         MANDATORY TOOL CALLING RULES
+═══════════════════════════════════════════════════════════════════════════════
+
+YOU MUST USE TOOLS. Never answer from memory or make assumptions about availability, appointments, or bookings.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ BEFORE YOU ANSWER ANYTHING ABOUT AVAILABILITY:                              │
+│ → You MUST call check_availability first                                    │
+│ → Say "Let me check what we have available" while the tool runs            │
+│ → NEVER say "we have openings" or times without calling the tool first     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TO ACTUALLY BOOK AN APPOINTMENT:                                            │
+│ → You MUST call book_appointment                                            │
+│ → Say "Let me book that for you" while the tool runs                       │
+│ → Confirm details BEFORE calling: date, time, provider                      │
+│ → NEVER say "you're booked" without calling the tool                       │
+│ → If tool fails, offer alternatives - don't pretend it worked              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TO CANCEL AN APPOINTMENT:                                                   │
+│ → You MUST call cancel_appointment                                          │
+│ → Say "Let me cancel that for you" while the tool runs                     │
+│ → NEVER say "it's cancelled" without calling the tool                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TO RESCHEDULE AN APPOINTMENT:                                               │
+│ → First call check_availability to find new times                          │
+│ → Then call reschedule_appointment with confirmed new date/time            │
+│ → Say "Let me check for available times" then "Let me reschedule that"    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ FOR NEW CUSTOMERS:                                                          │
+│ → Collect ALL required info: first name, last name, DOB, address, city,   │
+│   email                                                                     │
+│ → Call create_new_customer IMMEDIATELY after collecting all info           │
+│ → Say "Let me save your information" while the tool runs                   │
+│ → Do NOT proceed to booking until customer is saved                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+HOLD PHRASES - Say these while tools are running:
+- "One moment while I check that for you..."
+- "Let me look into that..."
+- "Bear with me while I check our schedule..."
+- "Just a moment while I pull that up..."
+- "Let me see what we have available..."
+
+CRITICAL ANTI-HALLUCINATION RULES:
+1. If you haven't called a tool, you DON'T KNOW the answer
+2. If check_availability hasn't run, you don't know what's available
+3. If book_appointment hasn't run, nothing is booked
+4. If cancel_appointment hasn't run, nothing is cancelled
+5. ALWAYS verify tool success before confirming to caller"""
+    
+    # =========================================================================
+    # NEW: CONVERSATION FLOW GUIDANCE
+    # =========================================================================
+    
+    def _build_conversation_flow(self) -> str:
+        """Build conversation flow examples"""
+        is_new = self.customer is None
         
-        # Date context for all roles
-        date_context = f"Current date/time: {current_date}, {current_time}"
-        
-        if role_type == "receptionist":
-            return f"""You are {name}, receptionist at {biz_name}.
-{date_context}
-Job: Help with appointments, answer questions, provide info.
-Style: Friendly, professional, concise. This is a phone call."""
-        elif role_type == "sales":
-            return f"""You are {name}, handling sales at {biz_name}.
-{date_context}
-Job: Help customers understand services, answer questions, book consultations.
-Style: Helpful, informative, not pushy. Focus on customer needs."""
-        elif role_type == "support":
-            return f"""You are {name}, handling support at {biz_name}.
-{date_context}
-Job: Help customers with issues, answer questions, resolve concerns.
-Style: Patient, empathetic, solution-focused."""
+        if is_new:
+            return """
+CONVERSATION FLOW FOR NEW CUSTOMERS:
+
+1. GREETING → You say the greeting
+2. CUSTOMER STATES NEED → Listen to what they want
+3. COLLECT INFO → Before doing ANYTHING else, you must collect:
+   - "May I have your first name?"
+   - "And your last name?"
+   - "Your date of birth?"
+   - "What's your address?"
+   - "And which city?"
+   - "Finally, your email address?"
+   
+   Be conversational, not robotic. Example:
+   "I'd be happy to help with that! Since this is your first time calling, 
+    let me get a few details. What's your first name?"
+   
+4. SAVE CUSTOMER → Call create_new_customer tool
+   Say: "Perfect, let me save your information..."
+   
+5. PROCEED WITH REQUEST → Now help with their original need
+   - If booking: call check_availability, then book_appointment
+   - If question: answer or call answer_question tool
+
+EXAMPLE FLOW:
+Caller: "Hi, I'd like to book an appointment"
+You: "I'd be happy to help you book an appointment! Since this is your first time 
+      calling, let me get a few details. What's your first name?"
+Caller: "John"
+You: "Thanks John! And your last name?"
+Caller: "Smith"
+You: "Got it. And your date of birth?"
+... continue until all 6 fields collected ...
+You: "Perfect, let me save your information..."
+[CALL create_new_customer TOOL]
+You: "Great, you're all set in our system! Now, let me check our availability. 
+      Did you have a particular day in mind?"
+... continue with booking flow ..."""
         else:
-            return f"""You are {name} at {biz_name}.
-{date_context}
-Job: Assist callers with their needs.
-Style: Friendly, professional, helpful."""
+            customer_name = self.customer.get("last_name", "")
+            return f"""
+CONVERSATION FLOW FOR RETURNING CUSTOMERS:
+
+You already know this customer. Their info is loaded.
+Address them as Mr. or Mrs. {customer_name}.
+
+1. GREETING → You say the personalized greeting with their name
+2. LISTEN → Customer states their need
+3. HELP IMMEDIATELY → No need to collect info
+
+COMMON SCENARIOS:
+
+Booking:
+Caller: "I need to schedule an appointment"
+You: "Of course! Let me check what we have available. Did you have a day in mind?"
+[CALL check_availability]
+... offer times from tool result ...
+[CALL book_appointment when they confirm]
+
+Cancelling:
+Caller: "I need to cancel my appointment"
+You: "I can help with that. Let me pull up your appointments..."
+[CALL get_my_appointments to see what they have]
+You: "I see you have an appointment on [date]. Is that the one you'd like to cancel?"
+[CALL cancel_appointment when confirmed]
+
+Rescheduling:
+Caller: "I need to reschedule"
+You: "No problem! Let me see your current appointments and what else is available..."
+[CALL get_my_appointments to see current]
+[CALL check_availability for new options]
+... confirm new date/time ...
+[CALL reschedule_appointment]
+
+Questions:
+Caller: "What are your hours?"
+[CALL get_business_hours] OR answer from your knowledge if simple
+You: "We're open Monday through Friday, 9 AM to 5 PM..."
+
+DO NOT ask for: name, phone, email, address - you already have all of this."""
+    
+    # =========================================================================
+    # BUSINESS INFO SECTIONS (Optimized from original)
+    # =========================================================================
     
     def _build_business_compact(self) -> str:
-        """Build business info - compact"""
+        """Build business info"""
         b = self.business
-        parts = [f"# {b.get('business_name', '')}"]
+        parts = [f"BUSINESS: {b.get('business_name', '')}"]
         
         if b.get("industry"):
             parts.append(f"Industry: {b['industry']}")
         
-        # Compact address
         addr_parts = [b.get("address"), b.get("city"), b.get("state"), b.get("zip_code")]
         addr = ", ".join(p for p in addr_parts if p)
         if addr:
@@ -134,7 +283,7 @@ Style: Friendly, professional, helpful."""
         return "\n".join(parts)
     
     def _build_hours_compact(self) -> str:
-        """Build hours - single line format"""
+        """Build hours"""
         if not self.hours:
             return ""
         
@@ -142,17 +291,17 @@ Style: Friendly, professional, helpful."""
         closed_days = []
         
         for h in sorted(self.hours, key=lambda x: x.get("day_of_week", 0)):
-            day = _DAYS[h.get("day_of_week", 0)]
+            day = _DAYS_FULL[h.get("day_of_week", 0)]
             if h.get("is_open"):
-                t1 = self._fmt_time(h.get("open_time", ""))
-                t2 = self._fmt_time(h.get("close_time", ""))
-                open_days.append(f"{day} {t1}-{t2}")
+                t1 = self._fmt_time_speech(h.get("open_time", ""))
+                t2 = self._fmt_time_speech(h.get("close_time", ""))
+                open_days.append(f"{day}: {t1} to {t2}")
             else:
                 closed_days.append(day)
         
-        result = "Hours: " + ", ".join(open_days)
+        result = "BUSINESS HOURS:\n" + "\n".join(open_days)
         if closed_days:
-            result += f" | Closed: {', '.join(closed_days)}"
+            result += f"\nClosed: {', '.join(closed_days)}"
         
         return result
     
@@ -169,78 +318,73 @@ Style: Friendly, professional, helpful."""
             try:
                 d = datetime.strptime(c["date"], "%Y-%m-%d").date()
                 if today <= d <= max_date:
-                    upcoming.append(f"{self._format_date(c['date'])}: {c.get('reason', 'Closed')}")
+                    upcoming.append(f"{self._format_date_speech(c['date'])}: {c.get('reason', 'Closed')}")
             except (ValueError, KeyError):
                 continue
         
         if not upcoming:
             return ""
         
-        lines = ["Closures:"]
+        lines = ["UPCOMING CLOSURES:"]
         for c in upcoming[:5]:
-            lines.append(f"  {c}")
-        lines.append("→ When these dates requested, explain why unavailable.")
+            lines.append(f"- {c}")
+        lines.append("→ When these dates are requested, explain why unavailable and offer alternatives.")
         
         return "\n".join(lines)
     
     def _build_team_compact(self) -> str:
-        """Build staff - compact format"""
+        """Build staff info with availability"""
         if not self.staff:
             return ""
         
-        lines = ["Team:"]
+        lines = ["STAFF/PROVIDERS:"]
         
         for s in self.staff:
-            # Name and title
             line = f"• {s.get('name', '')}"
             if s.get("title"):
                 line += f" ({s['title']})"
             
-            # Services they offer
             service_ids = s.get("service_ids", [])
             if service_ids:
                 svc_names = [self._service_map[sid]["name"] 
                             for sid in service_ids if sid in self._service_map]
                 if svc_names:
-                    line += f" - {', '.join(svc_names[:3])}"
+                    line += f" - Services: {', '.join(svc_names[:3])}"
             elif s.get("specialty"):
                 line += f" - {s['specialty']}"
             
-            # Schedule with times
             schedule = s.get("availability_schedule", [])
             if schedule:
                 schedule_parts = []
                 for avail in schedule:
                     day_idx = avail.get("day_of_week", 0)
                     day = _DAYS[day_idx]
-                    start = self._fmt_time(avail.get("start_time", ""))
-                    end = self._fmt_time(avail.get("end_time", ""))
+                    start = self._fmt_time_speech(avail.get("start_time", ""))
+                    end = self._fmt_time_speech(avail.get("end_time", ""))
                     schedule_parts.append(f"{day} {start}-{end}")
                 if schedule_parts:
-                    line += f" [{', '.join(schedule_parts)}]"
+                    line += f" | Schedule: {', '.join(schedule_parts)}"
             
             lines.append(line)
             
-            # Exceptions (time off)
             exceptions = s.get("availability_exceptions", [])
             if exceptions:
                 exc_notes = []
                 for exc in exceptions:
                     if exc.get("type") == "closed":
-                        exc_date = self._format_date(exc.get("date", ""))
+                        exc_date = self._format_date_speech(exc.get("date", ""))
                         exc_reason = exc.get("reason", "Unavailable")
                         exc_notes.append(f"{exc_date}: {exc_reason}")
                 if exc_notes:
-                    lines.append(f"  Time off: {'; '.join(exc_notes)}")
+                    lines.append(f"  ⚠️ Time off: {'; '.join(exc_notes)}")
         
         return "\n".join(lines)
     
     def _build_services_compact(self) -> str:
-        """Build services - compact list with categories"""
+        """Build services list"""
         if not self.services:
             return ""
         
-        # Group by category if categories exist
         by_category = {}
         for svc in self.services:
             cat = svc.get("category", "General")
@@ -248,40 +392,44 @@ Style: Friendly, professional, helpful."""
                 by_category[cat] = []
             by_category[cat].append(svc)
         
-        lines = ["Services:"]
+        lines = ["SERVICES OFFERED:"]
         for category, services in by_category.items():
             if len(by_category) > 1:
-                lines.append(f"  [{category}]")
+                lines.append(f"  {category}:")
             
-            for svc in services[:8]:  # Max 8 per category
+            for svc in services[:8]:
                 name = svc.get("name", "")
                 dur = svc.get("duration_minutes", 30)
                 price = svc.get("price")
                 
                 if price:
-                    lines.append(f"  {name}: ${price:.0f}, {dur}min")
+                    lines.append(f"  - {name}: ${price:.0f}, {dur} minutes")
                 else:
-                    lines.append(f"  {name}: {dur}min")
+                    lines.append(f"  - {name}: {dur} minutes")
         
         return "\n".join(lines)
     
     def _build_knowledge_compact(self) -> str:
-        """Build FAQ - top 10 with longer answers"""
+        """Build FAQ section"""
         if not self.knowledge:
             return ""
         
-        lines = ["FAQs:"]
+        lines = ["FREQUENTLY ASKED QUESTIONS:"]
         for faq in self.knowledge[:10]:
             q = faq.get("question", "")
             a = faq.get("answer", "")
             if q and a:
-                # Keep answers concise but longer than before
-                if len(a) > 200:
-                    a = a[:197] + "..."
+                if len(a) > 250:
+                    a = a[:247] + "..."
                 lines.append(f"Q: {q}")
                 lines.append(f"A: {a}")
+                lines.append("")
         
         return "\n".join(lines)
+    
+    # =========================================================================
+    # CALLER CONTEXT
+    # =========================================================================
     
     def _build_caller(self) -> str:
         """Build caller context"""
@@ -290,7 +438,7 @@ Style: Friendly, professional, helpful."""
         return self._build_new_customer()
     
     def _build_existing_customer(self) -> str:
-        """Build returning customer context - compact but complete"""
+        """Build returning customer context"""
         c = self.customer
         ctx = self.customer_context or {}
         
@@ -298,54 +446,48 @@ Style: Friendly, professional, helpful."""
         last_name = c.get("last_name", "")
         full_name = f"{first_name} {last_name}".strip() or "Customer"
         
-        lines = [f"CALLER: {full_name} (returning)"]
+        lines = [
+            "═══════════════════════════════════════════════════════════════════════════════",
+            f"                    CALLER: {full_name.upper()} (RETURNING CUSTOMER)",
+            "═══════════════════════════════════════════════════════════════════════════════"
+        ]
         
-        # Contact information (AI has this - should NOT ask)
-        lines.append("Contact on file:")
+        lines.append("\nCONTACT INFORMATION ON FILE (DO NOT ASK FOR THESE):")
         if c.get("phone"):
-            lines.append(f"  Phone: {c['phone']}")
+            lines.append(f"  📞 Phone: {c['phone']}")
         if c.get("email"):
-            lines.append(f"  Email: {c['email']}")
+            lines.append(f"  ✉️ Email: {c['email']}")
         if c.get("address"):
             addr_parts = [c.get("address"), c.get("city"), c.get("state"), c.get("zip_code")]
             address = ", ".join(p for p in addr_parts if p)
             if address:
-                lines.append(f"  Address: {address}")
-        
-        # Personal details
+                lines.append(f"  🏠 Address: {address}")
         if c.get("date_of_birth"):
-            lines.append(f"  Date of birth: {c['date_of_birth']}")
+            lines.append(f"  🎂 Date of birth: {c['date_of_birth']}")
         
         # Preferences
-        preferences = []
         if c.get("preferred_contact_method") and c.get("preferred_contact_method") != "any":
-            preferences.append(f"prefers {c['preferred_contact_method']} contact")
-        if c.get("language"):
-            preferences.append(f"language: {c['language']}")
-        if preferences:
-            lines.append(f"  Preferences: {', '.join(preferences)}")
+            lines.append(f"  Prefers: {c['preferred_contact_method']} contact")
         
-        # Accommodations - IMPORTANT
+        # IMPORTANT: Accommodations
         if c.get("accommodations"):
             lines.append("")
-            lines.append(f"⚠️ ACCOMMODATIONS: {c['accommodations']}")
+            lines.append(f"⚠️ ACCOMMODATIONS NEEDED: {c['accommodations']}")
+            lines.append("  → Be mindful of this throughout the conversation")
         
         # Preferred staff
         if c.get("preferred_staff_id") and c["preferred_staff_id"] in self._staff_map:
             pref = self._staff_map[c["preferred_staff_id"]]
             lines.append(f"  Preferred provider: {pref.get('name', '')}")
         
-        # Customer tenure and value
-        lines.append("")
-        lines.append("History:")
+        # History summary
+        lines.append("\nCUSTOMER HISTORY:")
         if c.get("customer_since"):
             try:
                 since = datetime.fromisoformat(c["customer_since"].replace("Z", "+00:00"))
                 tenure = (datetime.now(since.tzinfo) - since).days // 365
                 if tenure >= 1:
                     lines.append(f"  Customer for {tenure} year(s)")
-                else:
-                    lines.append(f"  New customer this year")
             except:
                 pass
         
@@ -353,19 +495,16 @@ Style: Friendly, professional, helpful."""
             lines.append(f"  Total visits: {c['total_appointments']}")
         if c.get("last_visit_date"):
             lines.append(f"  Last visit: {c['last_visit_date']}")
-        if c.get("total_spent") and float(c.get("total_spent", 0)) > 0:
-            lines.append(f"  Total spent: ${float(c['total_spent']):.2f}")
         
         # Tags
         tags = ctx.get("tags", [])
         if tags:
             lines.append(f"  Tags: {', '.join(tags)}")
         
-        # Recent appointments (detailed)
+        # Recent appointments
         recent = ctx.get("recent_appointments", [])
         if recent:
-            lines.append("")
-            lines.append("Recent appointments:")
+            lines.append("\nRECENT APPOINTMENTS:")
             for apt in recent[:5]:
                 date = apt.get("date", "")
                 status = apt.get("status", "")
@@ -377,71 +516,114 @@ Style: Friendly, professional, helpful."""
                     apt_desc += f" - {service_name}"
                 if staff_name:
                     apt_desc += f" with {staff_name}"
-                if status == "cancelled" and apt.get("cancellation_reason"):
-                    apt_desc += f" (reason: {apt['cancellation_reason']})"
                 lines.append(apt_desc)
         
-        # Stats from context
+        # No-show warning
         stats = ctx.get("stats", {})
         if stats.get("recent_no_shows", 0) >= 2:
-            lines.append("")
-            lines.append(f"⚠️ Note: {stats['recent_no_shows']} recent no-shows")
+            lines.append(f"\n⚠️ NOTE: {stats['recent_no_shows']} recent no-shows")
         
         # Notes
         if c.get("notes"):
-            lines.append("")
-            lines.append(f"Notes: {c['notes']}")
+            lines.append(f"\nNOTES: {c['notes']}")
         
-        # Instructions
-        lines.append("")
-        lines.append("IMPORTANT:")
-        lines.append(f"→ Address them as Mr. or Mrs. {last_name}")
-        lines.append("→ Do NOT ask for: name, phone number, email, or address - you already have it.")
-        lines.append("→ If they want to update contact info, use the update tool.")
+        # Clear instructions
+        lines.append("\n" + "─" * 50)
+        lines.append(f"ADDRESS AS: Mr. or Mrs. {last_name}")
+        lines.append("DO NOT ASK FOR: name, phone, email, address, DOB")
+        lines.append("If they want to update info, use update_customer_info tool")
         
         return "\n".join(lines)
     
     def _build_new_customer(self) -> str:
-        """Build new customer context - compact"""
-        return """CALLER: New customer (first time calling)
+        """Build new customer context with clear data collection requirements"""
+        return """
+═══════════════════════════════════════════════════════════════════════════════
+                         CALLER: NEW CUSTOMER (FIRST TIME)
+═══════════════════════════════════════════════════════════════════════════════
 
-REQUIRED - Collect ALL before anything else:
-1. First name
-2. Last name
-3. Date of birth
-4. Address
-5. City
-6. Email address
+This caller is NOT in our system. You MUST collect their information.
 
-→ Be conversational, not interrogating
-→ IMMEDIATELY use create_new_customer tool after collecting info
-→ Do NOT proceed with booking until customer is saved
-→ Phone captured from caller ID"""
-    
-    def _build_rules_compact(self) -> str:
-        """Build behavior rules - compact"""
-        rules = [
-            "RULES:",
-            "• Keep responses SHORT - phone call",
-            "• Confirm before booking (date, time, who)",
-            "• ALWAYS use check_availability tool before answering ANY availability question - NEVER guess or assume",
-            "• ALWAYS use book_appointment tool to actually book - saying 'booked' without calling the tool is LYING",
-            "• ALWAYS use cancel_appointment tool when customer wants to cancel - saying 'cancelled' without calling the tool is LYING",
-            "• Offer alternatives if unavailable",
-            "• When caller says bye, use end_call tool",
-        ]
-        
-        if self.customer and self.customer.get("accommodations"):
-            rules.append("• Be mindful of customer accommodations")
-        
-        return "\n".join(rules)
+REQUIRED INFORMATION (collect ALL before proceeding):
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 1. First name        - "May I have your first name?"                      │
+│ 2. Last name         - "And your last name?"                              │
+│ 3. Date of birth     - "Your date of birth?" (need YYYY-MM-DD format)     │
+│ 4. Address           - "What's your street address?"                      │
+│ 5. City              - "And which city?"                                  │
+│ 6. Email             - "And your email address?"                          │
+└────────────────────────────────────────────────────────────────────────────┘
+
+Phone number is automatically captured from caller ID.
+
+COLLECTION APPROACH:
+- Be conversational, not interrogating
+- Ask one question at a time
+- Acknowledge each answer warmly before asking the next
+- If they seem impatient, briefly explain why you need the info:
+  "I just need a few quick details so I can set up your account"
+
+AFTER COLLECTING ALL 6 FIELDS:
+1. Say "Perfect, let me save your information..."
+2. IMMEDIATELY call create_new_customer tool with all collected data
+3. Wait for tool success confirmation
+4. ONLY THEN proceed to help with their original request
+
+⚠️ DO NOT attempt to book appointments until customer is saved in system!"""
     
     # =========================================================================
-    # HELPERS
+    # CRITICAL RULES
     # =========================================================================
     
-    def _fmt_time(self, time_str: str) -> str:
-        """Format time compactly: 09:00 -> 9a"""
+    def _build_critical_rules(self) -> str:
+        """Build critical behavior rules"""
+        return """
+═══════════════════════════════════════════════════════════════════════════════
+                              CRITICAL RULES
+═══════════════════════════════════════════════════════════════════════════════
+
+RESPONSE FORMAT:
+✓ Keep responses to 1-2 sentences (this is a phone call)
+✓ Speak naturally, no markdown or formatting
+✓ Say dates as "Tuesday, January 15th" not "2025-01-15"
+✓ Say times as "2 PM" or "2:30 PM" not "14:00"
+
+CONFIRMATION BEFORE BOOKING:
+Always confirm these details BEFORE calling book_appointment:
+- Date
+- Time  
+- Provider/staff member
+Example: "Just to confirm, that's Tuesday the 15th at 2 PM with Dr. Smith. Shall I book that?"
+
+WHEN TOOLS FAIL:
+- Never pretend a failed action succeeded
+- Apologize briefly and offer alternatives
+- Example: "I'm sorry, that time just got taken. Would 3 PM work instead?"
+
+ENDING CALLS:
+When the caller says goodbye, thanks you, or indicates they're done:
+1. Summarize any appointments booked/changed if applicable
+2. Say a warm goodbye
+3. Call end_call tool to disconnect
+
+WHAT TO DO IF UNSURE:
+- Availability question → call check_availability
+- Business info question → call answer_question
+- Can't help → offer to take a message or have someone call back
+
+NEVER:
+✗ Make up appointment times without checking availability
+✗ Say something is booked without calling book_appointment
+✗ Say something is cancelled without calling cancel_appointment
+✗ Ask returning customers for information you already have
+✗ Process booking requests from new customers before saving their info"""
+    
+    # =========================================================================
+    # HELPER METHODS
+    # =========================================================================
+    
+    def _fmt_time_speech(self, time_str: str) -> str:
+        """Format time for natural speech: 14:30 -> 2:30 PM"""
         if not time_str:
             return ""
         try:
@@ -449,49 +631,40 @@ REQUIRED - Collect ALL before anything else:
             hour = int(parts[0])
             minute = int(parts[1]) if len(parts) > 1 else 0
             
-            suffix = "a" if hour < 12 else "p"
+            suffix = "AM" if hour < 12 else "PM"
             display = hour % 12 or 12
             
             if minute == 0:
-                return f"{display}{suffix}"
-            return f"{display}:{minute:02d}{suffix}"
+                return f"{display} {suffix}"
+            return f"{display}:{minute:02d} {suffix}"
         except (ValueError, IndexError):
             return time_str
     
-    def _fmt_date_short(self, date_str: str) -> str:
-        """Format date short: 2025-01-15 -> Jan 15"""
-        try:
-            d = datetime.strptime(date_str, "%Y-%m-%d")
-            return d.strftime("%b %d")
-        except ValueError:
-            return date_str
-    
-    def _format_date(self, date_str: str) -> str:
-        """Format date for speech: 2025-01-15 -> Wednesday, January 15"""
+    def _format_date_speech(self, date_str: str) -> str:
+        """Format date for natural speech: 2025-01-15 -> Wednesday, January 15th"""
         if not date_str:
             return ""
         try:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            return date_obj.strftime("%A, %B %d")
+            day = date_obj.day
+            suffix = "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+            return date_obj.strftime(f"%A, %B {day}{suffix}")
         except ValueError:
             return date_str
 
 
 def build_greeting(business_config: Dict, customer: Optional[Dict], ai_config: Optional[Dict]) -> str:
-    """Build appropriate greeting - optimized"""
+    """Build personalized greeting"""
     business = business_config.get("business", {})
     biz_name = business.get("business_name", "our office")
     
-    # For existing customers - greet with Mr./Mrs. Last Name
     if customer and customer.get("last_name"):
         last_name = customer["last_name"]
-        # Use custom greeting if provided
         if ai_config and ai_config.get("greeting_message"):
             greeting = ai_config["greeting_message"]
             return greeting.replace("{business_name}", biz_name).replace("{customer_name}", f"Mr. or Mrs. {last_name}")
         return f"Hello Mr. or Mrs. {last_name}! Thank you for calling {biz_name}. How may I help you today?"
     
-    # For new customers - generic greeting
     if ai_config and ai_config.get("greeting_message"):
         greeting = ai_config["greeting_message"]
         return greeting.replace("{business_name}", biz_name).replace("{customer_name}", "")
