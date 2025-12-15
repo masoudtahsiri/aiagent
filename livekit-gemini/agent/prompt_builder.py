@@ -76,6 +76,11 @@ class PromptBuilder:
         name = self.ai_config.get("ai_name", "Assistant")
         biz_name = self.business.get("business_name", "the business")
         
+        # Add current date/time context
+        now = datetime.now()
+        current_date = now.strftime("%A, %B %d, %Y")  # e.g., "Monday, December 15, 2025"
+        current_time = now.strftime("%I:%M %p")  # e.g., "01:30 PM"
+        
         # Use custom prompt if provided (non-template)
         custom = self.ai_config.get("system_prompt", "")
         if custom and "{" not in custom:
@@ -83,20 +88,27 @@ class PromptBuilder:
         
         role_type = self.ai_config.get("role_type", "receptionist")
         
+        # Date context for all roles
+        date_context = f"Current date/time: {current_date}, {current_time}"
+        
         if role_type == "receptionist":
             return f"""You are {name}, receptionist at {biz_name}.
+{date_context}
 Job: Help with appointments, answer questions, provide info.
 Style: Friendly, professional, concise. This is a phone call."""
         elif role_type == "sales":
             return f"""You are {name}, handling sales at {biz_name}.
+{date_context}
 Job: Help customers understand services, answer questions, book consultations.
 Style: Helpful, informative, not pushy. Focus on customer needs."""
         elif role_type == "support":
             return f"""You are {name}, handling support at {biz_name}.
+{date_context}
 Job: Help customers with issues, answer questions, resolve concerns.
 Style: Patient, empathetic, solution-focused."""
         else:
             return f"""You are {name} at {biz_name}.
+{date_context}
 Job: Assist callers with their needs.
 Style: Friendly, professional, helpful."""
     
