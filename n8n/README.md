@@ -53,12 +53,31 @@ docker-compose logs -f n8n
 docker-compose restart n8n
 ```
 
+## MCP Integration
+
+n8n is configured to work with Cursor IDE via Model Context Protocol (MCP).
+
+### Quick Setup
+
+The MCP connection is already configured. Just **restart Cursor** to activate it.
+
+### Documentation
+
+See [CURSOR_MCP_SETUP.md](./CURSOR_MCP_SETUP.md) for detailed setup instructions.
+
+### Test Connection
+
+```bash
+./test-mcp.sh
+```
+
 ## Use Cases
 
 - Appointment reminder automation
 - Email/SMS notifications
 - Call logging and analytics
 - Integration with external services
+- Cursor IDE integration via MCP
 
 ## Security
 
