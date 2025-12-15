@@ -76,3 +76,5 @@ n8n/CURSOR_MCP_SETUP.md
 # n8n MCP config with tokens
 n8n/cursor-mcp-config.json
 n8n/CURSOR_MCP_SETUP.md
+n8n/setup-mcp.sh
+n8n/test-mcp.sh
