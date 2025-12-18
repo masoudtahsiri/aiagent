@@ -77,9 +77,9 @@ class BackendClient:
         """
         try:
             client = await self._get_client()
-            response = await client.get(
-                "/api/businesses/by-phone",
-                params={"phone": phone_number}
+            response = await client.post(
+                "/api/ai/lookup-by-phone",
+                json={"phone_number": phone_number}
             )
             response.raise_for_status()
             return response.json()
