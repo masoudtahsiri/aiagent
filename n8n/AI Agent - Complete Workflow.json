@@ -1308,14 +1308,51 @@
     },
     {
       "parameters": {
+        "content": "## 🧠 POST-CALL MEMORY PROCESSING\n\n**Triggered by:** Supabase Database Webhook\nWhen call_logs.transcript is updated:\n1. Analyzes transcript with Gemini\n2. Extracts memories & preferences\n3. Saves to customer profile\n4. Updates call log with summary\n\nWebhook: POST /call-ended\n\n**Setup in Supabase:**\n1. Go to Database → Webhooks\n2. Create webhook on call_logs UPDATE\n3. Filter: transcript IS NOT NULL\n4. URL: https://n8n.algorityai.com/webhook/call-ended",
+        "height": 608,
+        "width": 566,
+        "color": 6
+      },
+      "id": "5df418d5-cad8-43ab-834a-64927eef2ce4",
+      "name": "Note - Memory1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        8176,
+        -4320
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        9632,
+        -4080
+      ],
+      "id": "7fd1b0a2-864b-4ce4-8a8a-7e08b88a29dd",
+      "name": "Gemini for Memory Analysis",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "oW5387vYLjnaOk4e",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
         "jsCode": "// Parse Supabase webhook payload\n// Supabase sends: { type, table, record, old_record, schema }\nconst input = $input.first().json;\n\n// Handle both direct call and Supabase webhook format\nlet callData;\n\nif (input.body?.record) {\n  // Supabase webhook format\n  callData = input.body.record;\n} else if (input.body?.transcript) {\n  // Direct webhook format (backwards compatible)\n  callData = input.body;\n} else if (input.record) {\n  // Supabase without body wrapper\n  callData = input.record;\n} else {\n  // Assume it's the call data directly\n  callData = input.body || input;\n}\n\n// Extract required fields\nconst transcript = callData.transcript;\nconst customer_id = callData.customer_id;\nconst business_id = callData.business_id;\nconst call_log_id = callData.id || callData.call_log_id;\n\n// Validate\nif (!transcript || transcript.length < 50) {\n  return [{ json: { skip: true, reason: 'transcript_too_short' } }];\n}\n\nif (!customer_id) {\n  return [{ json: { skip: true, reason: 'no_customer_id' } }];\n}\n\nreturn [{\n  json: {\n    call_log_id,\n    customer_id,\n    business_id,\n    transcript,\n    language: callData.language_code || 'en',\n    is_outbound: callData.is_outbound || false,\n    call_outcome: callData.outcome || 'general_inquiry',\n    valid: true\n  }\n}];"
       },
-      "id": "3781de10-1910-490b-a7fb-404d1dd21c3f",
-      "name": "Parse Webhook Data",
+      "id": "74716576-6540-4a4c-81f9-ace382eaf1d9",
+      "name": "Parse Webhook Data1",
       "type": "n8n-nodes-base.code",
       "position": [
-        9120,
-        -4176
+        9152,
+        -4080
       ],
       "typeVersion": 2
     },
@@ -1342,30 +1379,14 @@
         },
         "options": {}
       },
-      "id": "72833787-a24c-4faa-a37f-e9f161d609a5",
-      "name": "Has Valid Data?",
+      "id": "b68c14db-d8b6-4b47-8528-c4cbad8d252f",
+      "name": "Has Valid Data?1",
       "type": "n8n-nodes-base.if",
       "position": [
-        9344,
-        -4176
+        9376,
+        -4080
       ],
       "typeVersion": 2
-    },
-    {
-      "parameters": {
-        "content": "## 🧠 POST-CALL MEMORY PROCESSING\n\n**Triggered by:** Supabase Database Webhook\nWhen call_logs.transcript is updated:\n1. Analyzes transcript with Gemini\n2. Extracts memories & preferences\n3. Saves to customer profile\n4. Updates call log with summary\n\nWebhook: POST /call-ended\n\n**Setup in Supabase:**\n1. Go to Database → Webhooks\n2. Create webhook on call_logs UPDATE\n3. Filter: transcript IS NOT NULL\n4. URL: https://n8n.algorityai.com/webhook/call-ended",
-        "height": 608,
-        "width": 566,
-        "color": 6
-      },
-      "id": "5df418d5-cad8-43ab-834a-64927eef2ce4",
-      "name": "Note - Memory1",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        8176,
-        -4320
-      ],
-      "typeVersion": 1
     },
     {
       "parameters": {
@@ -1374,12 +1395,12 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "93b738f3-8f33-4ba7-a04a-e8365ab3f238",
-      "name": "Call Ended Webhook1",
+      "id": "5ca851c1-adfc-42d6-95a9-59abafa36318",
+      "name": "Call Ended Webhook",
       "type": "n8n-nodes-base.webhook",
       "position": [
-        8896,
-        -4176
+        8928,
+        -4080
       ],
       "typeVersion": 1.1,
       "webhookId": "call-ended-webhook"
@@ -1392,43 +1413,25 @@
           "responseCode": 400
         }
       },
-      "id": "c9dd193d-d26d-4c86-9db4-7dc673c74aee",
-      "name": "Respond Validation Error1",
+      "id": "d72a644e-9062-4867-871f-38cdbe2c57ac",
+      "name": "Respond Validation Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
-        9568,
-        -3968
+        9600,
+        -3872
       ],
       "typeVersion": 1
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDPmSdsk5bc-GQNKvNflRB37yvu6JWv47E",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [{\"parts\": [{\"text\": \"Analyze this customer service call transcript and extract structured information.\\n\\nTRANSCRIPT:\\n{{ $('Parse Webhook Data').first().json.transcript }}\\n\\nExtract and return ONLY a JSON object with NO additional text:\\n{\\n  \\\"memories\\\": [{\\\"content\\\": \\\"...\\\", \\\"importance\\\": 1-10, \\\"type\\\": \\\"fact|preference|issue|positive|note\\\"}],\\n  \\\"preferences\\\": [{\\\"category\\\": \\\"scheduling|communication|service|staff|general\\\", \\\"key\\\": \\\"...\\\", \\\"value\\\": \\\"...\\\", \\\"confidence\\\": 0.0-1.0}],\\n  \\\"sentiment\\\": \\\"positive|neutral|negative\\\",\\n  \\\"call_summary\\\": \\\"One sentence summary\\\",\\n  \\\"follow_up_needed\\\": true|false\\n}\"}]}],\n  \"generationConfig\": {\"temperature\": 0.3, \"maxOutputTokens\": 2048}\n}",
-        "options": {}
+        "jsCode": "// LLM Chain returns { text: \"...\" } directly\nconst input = $input.first();\nconst geminiResponse = input.json;\nconst originalData = $('Parse Webhook Data1').first().json;\n\n// Get text from LLM Chain output (simpler format than raw API)\nlet analysisText = geminiResponse.text || geminiResponse.response || '';\n\nif (!analysisText) {\n  // Fallback: try raw API format in case HTTP request is used\n  try {\n    analysisText = geminiResponse.candidates[0].content.parts[0].text;\n  } catch (e) {\n    return [{ json: { error: 'Failed to extract response', originalData } }];\n  }\n}\n\nlet analysis;\ntry {\n  // Clean up markdown code blocks if present\n  analysisText = analysisText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  analysis = JSON.parse(analysisText);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse JSON', rawText: analysisText, originalData } }];\n}\n\nreturn [{\n  json: {\n    call_log_id: originalData.call_log_id,\n    customer_id: originalData.customer_id,\n    business_id: originalData.business_id,\n    analysis: analysis\n  }\n}];"
       },
-      "id": "4eda665c-585c-485e-b62b-14434f2af737",
-      "name": "Analyze with Gemini1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        9568,
-        -4272
-      ],
-      "typeVersion": 4.1
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $input.first();\nconst geminiResponse = input.json;\nconst originalData = $('Parse Webhook Data').first().json;\n\nlet analysisText = '';\ntry {\n  analysisText = geminiResponse.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'Failed to extract response', originalData } }];\n}\n\nlet analysis;\ntry {\n  analysisText = analysisText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  analysis = JSON.parse(analysisText);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse JSON', rawText: analysisText, originalData } }];\n}\n\nreturn [{\n  json: {\n    call_log_id: originalData.call_log_id,\n    customer_id: originalData.customer_id,\n    business_id: originalData.business_id,\n    analysis: analysis\n  }\n}];"
-      },
-      "id": "95bf0cbf-6ef9-42d3-ad29-f5de5f8f8bab",
-      "name": "Parse Gemini Response1",
+      "id": "e7fe1046-a186-4979-81b0-109575d1f143",
+      "name": "Parse Gemini Response",
       "type": "n8n-nodes-base.code",
       "position": [
-        9776,
-        -4272
+        9808,
+        -4176
       ],
       "typeVersion": 2
     },
@@ -1455,12 +1458,12 @@
         },
         "options": {}
       },
-      "id": "c74e664d-b034-4edc-a389-d7a177ef4138",
-      "name": "Analysis Valid?1",
+      "id": "79e2ccc5-c00f-493d-8ccb-ce4c0c66492b",
+      "name": "Analysis Valid?",
       "type": "n8n-nodes-base.if",
       "position": [
-        10000,
-        -4272
+        10032,
+        -4176
       ],
       "typeVersion": 2
     },
@@ -1468,12 +1471,12 @@
       "parameters": {
         "jsCode": "const input = $input.first().json;\nconst memories = input.analysis.memories || [];\nreturn memories.map(mem => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    memory_type: mem.type || 'note',\n    content: mem.content,\n    importance: mem.importance || 5,\n    source_type: 'call',\n    source_id: input.call_log_id\n  }\n}));"
       },
-      "id": "b5869336-f5d1-4f1b-8c6a-856ec1cd3fd6",
-      "name": "Prepare Memories1",
+      "id": "c555bd7e-09c9-4e60-a28a-952129694a7d",
+      "name": "Prepare Memories",
       "type": "n8n-nodes-base.code",
       "position": [
-        10224,
-        -4368
+        10256,
+        -4272
       ],
       "typeVersion": 2
     },
@@ -1486,25 +1489,25 @@
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
-      "id": "7496df26-9621-4d94-ab65-202eeb21a108",
-      "name": "Save Memories1",
+      "id": "86000e57-e2dc-447c-b2f5-0b54860550ed",
+      "name": "Save Memories",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        10448,
-        -4368
+        10480,
+        -4272
       ],
       "typeVersion": 4.1
     },
     {
       "parameters": {
-        "jsCode": "const input = $('Analysis Valid?1').first().json;\nconst preferences = input.analysis.preferences || [];\nreturn preferences.map(pref => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    category: pref.category || 'general',\n    preference_key: pref.key,\n    preference_value: pref.value,\n    confidence: pref.confidence || 0.7\n  }\n}));"
+        "jsCode": "const input = $('Analysis Valid?').first().json;\nconst preferences = input.analysis.preferences || [];\nreturn preferences.map(pref => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    category: pref.category || 'general',\n    preference_key: pref.key,\n    preference_value: pref.value,\n    confidence: pref.confidence || 0.7\n  }\n}));"
       },
-      "id": "bab70545-98ef-4e56-9ee0-2561d5552999",
-      "name": "Prepare Preferences1",
+      "id": "cccf8f58-4a36-4040-96d7-1934e3fd3ca1",
+      "name": "Prepare Preferences",
       "type": "n8n-nodes-base.code",
       "position": [
-        10224,
-        -4176
+        10256,
+        -4080
       ],
       "typeVersion": 2
     },
@@ -1519,12 +1522,12 @@
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
-      "id": "73fcc2a4-af03-464d-a735-ad4af3ac2011",
-      "name": "Save Preferences1",
+      "id": "9fde7a7d-e197-47b9-aa9c-fb788c0a43bd",
+      "name": "Save Preferences",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        10448,
-        -4176
+        10480,
+        -4080
       ],
       "typeVersion": 4.1,
       "credentials": {
@@ -1537,20 +1540,20 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://cwcjsgdbrqjljekxpgxz.supabase.co/rest/v1/customers?id=eq.{{ $('Analysis Valid?1').first().json.customer_id }}",
+        "url": "=https://cwcjsgdbrqjljekxpgxz.supabase.co/rest/v1/customers?id=eq.{{ $('Analysis Valid?').first().json.customer_id }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"last_call_summary\": \"{{ $('Analysis Valid?1').first().json.analysis.call_summary || '' }}\",\n  \"last_call_at\": \"{{ $now.toISO() }}\"\n}",
+        "jsonBody": "={\n  \"last_call_summary\": \"{{ $('Analysis Valid?').first().json.analysis.call_summary || '' }}\",\n  \"last_call_at\": \"{{ $now.toISO() }}\"\n}",
         "options": {}
       },
-      "id": "777b3755-bfb9-40f1-8619-616dc09e538e",
-      "name": "Update Customer Summary1",
+      "id": "e538402a-46a1-4ca2-92ba-b8eba5d1dfbf",
+      "name": "Update Customer Summary",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        10224,
-        -4640
+        10288,
+        -4544
       ],
       "typeVersion": 4.1,
       "credentials": {
@@ -1566,12 +1569,12 @@
         "responseBody": "={ \"success\": true, \"message\": \"Memory processing complete\" }",
         "options": {}
       },
-      "id": "c9145e62-5434-4315-a913-0bb0adda91bd",
-      "name": "Respond Memory Success1",
+      "id": "0655f271-e962-4048-b710-c9478e247b2e",
+      "name": "Respond Memory Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
-        10656,
-        -4176
+        10688,
+        -4080
       ],
       "typeVersion": 1
     },
@@ -1583,14 +1586,30 @@
           "responseCode": 400
         }
       },
-      "id": "fc47a0d9-e265-4f24-8274-fbebd499cc3b",
-      "name": "Respond Analysis Error1",
+      "id": "66810d85-f9d9-4646-a475-1f86688ba05b",
+      "name": "Respond Analysis Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
-        10000,
-        -3968
+        10032,
+        -3872
       ],
       "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        9520,
+        -4288
+      ],
+      "id": "e67dd163-28fc-4667-b21f-92e83dc48968",
+      "name": "Analyze with Gemini"
     }
   ],
   "pinData": {},
@@ -2170,123 +2189,134 @@
         ]
       ]
     },
-    "Parse Webhook Data": {
+    "Gemini for Memory Analysis": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyze with Gemini",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Webhook Data1": {
       "main": [
         [
           {
-            "node": "Has Valid Data?",
+            "node": "Has Valid Data?1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Has Valid Data?": {
+    "Has Valid Data?1": {
       "main": [
         [
           {
-            "node": "Analyze with Gemini1",
+            "node": "Analyze with Gemini",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond Validation Error1",
+            "node": "Respond Validation Error",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Call Ended Webhook1": {
+    "Call Ended Webhook": {
       "main": [
         [
           {
-            "node": "Parse Webhook Data",
+            "node": "Parse Webhook Data1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Analyze with Gemini1": {
+    "Parse Gemini Response": {
       "main": [
         [
           {
-            "node": "Parse Gemini Response1",
+            "node": "Analysis Valid?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse Gemini Response1": {
+    "Analysis Valid?": {
       "main": [
         [
           {
-            "node": "Analysis Valid?1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Analysis Valid?1": {
-      "main": [
-        [
-          {
-            "node": "Prepare Memories1",
+            "node": "Prepare Memories",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Prepare Preferences1",
+            "node": "Prepare Preferences",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Update Customer Summary1",
+            "node": "Update Customer Summary",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond Analysis Error1",
+            "node": "Respond Analysis Error",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Memories1": {
+    "Prepare Memories": {
       "main": [
         [
           {
-            "node": "Save Memories1",
+            "node": "Save Memories",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Save Memories1": {
+    "Save Memories": {
       "main": [
         [
           {
-            "node": "Respond Memory Success1",
+            "node": "Respond Memory Success",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Preferences1": {
+    "Prepare Preferences": {
       "main": [
         [
           {
-            "node": "Save Preferences1",
+            "node": "Save Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze with Gemini": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Response",
             "type": "main",
             "index": 0
           }
@@ -2303,7 +2333,7 @@
     "saveExecutionProgress": true,
     "errorWorkflow": "ZkQplwjtccGdKYZd"
   },
-  "versionId": "539a8ef0-7647-45ee-adc3-ee01306a1e8d",
+  "versionId": "c2b3f942-0cca-48e2-b0da-a15fe4a2b6d6",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"
