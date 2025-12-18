@@ -16,6 +16,7 @@ Usage:
 """
 
 import os
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, Tuple
@@ -658,40 +659,46 @@ Then wait for their response and continue naturally in {session_data.language_na
     # ─────────────────────────────────────────────────────────────────────────
     
     @ctx.room.on("disconnected")
-    async def on_room_disconnected():
+    def on_room_disconnected():
         """Handle call end - log and trigger post-call processing."""
-        logger.info("📞 Call ended - room disconnected")
+        async def _handle_disconnected():
+            logger.info("📞 Call ended - room disconnected")
+            
+            # Calculate call duration
+            call_duration = None
+            if session_data.call_start_time:
+                call_duration = int((datetime.now() - session_data.call_start_time).total_seconds())
+                logger.info(f"⏱️ Call duration: {call_duration} seconds")
+            
+            # Get transcript
+            transcript = session_data.get_transcript()
+            
+            # Log call end to backend (includes transcript)
+            try:
+                await backend.log_call_end(
+                    call_log_id=session_data.call_log_id,
+                    duration_seconds=call_duration,
+                    outcome=session_data.call_outcome,
+                    transcript=transcript,
+                    summary=None,  # Will be filled by n8n
+                    sentiment=None  # Will be filled by n8n
+                )
+                logger.info(f"✅ Call logged with transcript ({len(transcript)} chars)")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to log call end: {e}")
+            
+            logger.info("✅ Call cleanup complete")
         
-        # Calculate call duration
-        call_duration = None
-        if session_data.call_start_time:
-            call_duration = int((datetime.now() - session_data.call_start_time).total_seconds())
-            logger.info(f"⏱️ Call duration: {call_duration} seconds")
-        
-        # Get transcript
-        transcript = session_data.get_transcript()
-        
-        # Log call end to backend (includes transcript)
-        try:
-            await backend.log_call_end(
-                call_log_id=session_data.call_log_id,
-                duration_seconds=call_duration,
-                outcome=session_data.call_outcome,
-                transcript=transcript,
-                summary=None,  # Will be filled by n8n
-                sentiment=None  # Will be filled by n8n
-            )
-            logger.info(f"✅ Call logged with transcript ({len(transcript)} chars)")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to log call end: {e}")
-        
-        logger.info("✅ Call cleanup complete")
+        asyncio.create_task(_handle_disconnected())
     
     @ctx.room.on("participant_disconnected")
-    async def on_participant_left(participant):
+    def on_participant_left(participant):
         """Handle when customer hangs up."""
-        if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
-            logger.info(f"📱 Customer disconnected: {participant.identity}")
+        async def _handle_participant_left():
+            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                logger.info(f"📱 Customer disconnected: {participant.identity}")
+        
+        asyncio.create_task(_handle_participant_left())
     
     # ─────────────────────────────────────────────────────────────────────────
     # START SESSION

@@ -133,9 +133,9 @@ class BackendClient:
         """
         try:
             client = await self._get_client()
-            response = await client.get(
+            response = await client.post(
                 "/api/customers/lookup",
-                params={"phone": phone, "business_id": business_id}
+                json={"phone": phone, "business_id": business_id}
             )
             response.raise_for_status()
             return response.json()
@@ -805,16 +805,13 @@ class BackendClient:
         try:
             client = await self._get_client()
             response = await client.post(
-                "/api/calls/start",
+                "/api/calls/log",
                 json={
                     "business_id": business_id,
                     "caller_phone": caller_phone,
                     "customer_id": customer_id,
-                    "role_id": role_id,
-                    "is_outbound": is_outbound,
-                    "outbound_call_id": outbound_call_id,
-                    "language_code": language_code,
-                    "language_source": language_source
+                    "current_role_id": role_id,
+                    "call_direction": "outbound" if is_outbound else "inbound"
                 }
             )
             response.raise_for_status()
