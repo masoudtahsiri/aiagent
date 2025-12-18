@@ -1,5 +1,5 @@
 {
-  "name": "Google Calendar workflow",
+  "name": "AI Agent - Complete Workflow",
   "nodes": [
     {
       "parameters": {
@@ -127,19 +127,6 @@
       "position": [
         9712,
         -2784
-      ],
-      "typeVersion": 2
-    },
-    {
-      "parameters": {
-        "jsCode": "// Loop through staff items and output each one\n// Prevent infinite loops by detecting loop-backs\nconst items = $input.all();\n\nif (items.length === 0) {\n  return [{ json: { no_staff: true } }];\n}\n\n// Detect if this is a loop-back from processing (not initial input from Has Staff?)\n// Loop-backs will have different data structure:\n// - From Mark as Synced1: has appointment_id or success response\n// - From Has Appointments? (FALSE): has skip flag or no staff_id\n// - From initial: has staff_id, calendar_id, etc. (staff connection data)\nconst firstItem = items[0].json;\nconst isLoopBack = !firstItem.staff_id || \n                   firstItem.skip === true || \n                   firstItem.appointment_id || \n                   firstItem.success !== undefined ||\n                   firstItem.id !== undefined; // Google event ID or appointment ID\n\n// If this is a loop-back, stop the loop by returning empty\nif (isLoopBack) {\n  console.log('Loop-back detected, stopping to prevent infinite loop');\n  return [];\n}\n\n// This is initial input from Has Staff? - output all staff items\nconst staffItems = items.filter(item => item.json && item.json.staff_id && item.json.calendar_id);\n\nif (staffItems.length === 0) {\n  return [{ json: { no_staff: true } }];\n}\n\nconsole.log(`Processing ${staffItems.length} staff member(s)`);\n\n// Output each staff item individually\nreturn staffItems.map(item => ({ json: item.json }));"
-      },
-      "id": "ae35c81d-3a7d-446d-ade8-a1e8ef224483",
-      "name": "Loop Over Staff",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        9920,
-        -2800
       ],
       "typeVersion": 2
     },
@@ -964,95 +951,84 @@
     },
     {
       "parameters": {
-        "content": "## APPOINTMENT REMINDERS\nAutomated reminders via AI calls and SMS",
-        "height": 80,
-        "width": 400,
-        "color": 6
+        "jsCode": "// Loop through staff items and output each one\n// Prevent infinite loops by detecting loop-backs\nconst items = $input.all();\n\nif (items.length === 0) {\n  return [{ json: { no_staff: true } }];\n}\n\n// Detect if this is a loop-back from processing (not initial input from Has Staff?)\n// Loop-backs will have different data structure:\n// - From Mark as Synced1: has appointment_id or success response\n// - From Has Appointments? (FALSE): has skip flag or no staff_id\n// - From initial: has staff_id, calendar_id, etc. (staff connection data)\nconst firstItem = items[0].json;\nconst isLoopBack = !firstItem.staff_id || \n                   firstItem.skip === true || \n                   firstItem.appointment_id || \n                   firstItem.success !== undefined ||\n                   firstItem.id !== undefined; // Google event ID or appointment ID\n\n// If this is a loop-back, stop the loop by returning empty\nif (isLoopBack) {\n  console.log('Loop-back detected, stopping to prevent infinite loop');\n  return [];\n}\n\n// This is initial input from Has Staff? - output all staff items\nconst staffItems = items.filter(item => item.json && item.json.staff_id && item.json.calendar_id);\n\nif (staffItems.length === 0) {\n  return [{ json: { no_staff: true } }];\n}\n\nconsole.log(`Processing ${staffItems.length} staff member(s)`);\n\n// Output each staff item individually\nreturn staffItems.map(item => ({ json: item.json }));"
       },
-      "id": "reminder-note-001",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9920,
+        -2800
+      ],
+      "id": "1dc97492-e76a-4f2b-8e06-e2a179b42af0",
+      "name": "Loop Over Staff"
+    },
+    {
+      "parameters": {
+        "content": "## ⏰ APPOINTMENT REMINDERS\n\nAutomatically sends:\n- 24-hour SMS + AI call reminder\n- 1-hour SMS + AI call reminder\n\nRuns every hour to check upcoming appointments.",
+        "height": 200,
+        "width": 448,
+        "color": 4
+      },
+      "id": "a0c0ec2e-e7ff-40ec-8125-81d4015ffad6",
       "name": "Note - Reminders",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        12000,
-        -2000
+        13040,
+        -3232
       ],
-      "typeVersion": 1
+      "typeVersion": 1,
+      "disabled": true
     },
     {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 1
+              "field": "hours"
             }
           ]
         }
       },
-      "id": "reminder-schedule-trigger",
-      "name": "Reminder Every Hour",
+      "id": "b183f7a6-03ef-4019-a2bf-bf25b2d2cb42",
+      "name": "Every Hour (Reminders)",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.1,
       "position": [
-        12000,
-        -1800
-      ]
+        13584,
+        -3184
+      ],
+      "typeVersion": 1.1,
+      "disabled": true
     },
     {
       "parameters": {
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/appointments",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/appointments?select=*,customers(id,first_name,last_name,phone,email,language),businesses(id,business_name),services(name),staff(name)&status=eq.scheduled&appointment_date=gte.{{ $now.format('yyyy-MM-dd') }}&appointment_date=lte.{{ $now.plus({ days: 1 }).format('yyyy-MM-dd') }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "select",
-              "value": "*,customers(id,first_name,last_name,phone,email,language),businesses(id,business_name),services(name),staff(name)"
-            },
-            {
-              "name": "status",
-              "value": "eq.scheduled"
-            },
-            {
-              "name": "appointment_date",
-              "value": "gte.{{ $now.format('yyyy-MM-dd') }}"
-            },
-            {
-              "name": "appointment_date",
-              "value": "lte.{{ $now.plus({ days: 1 }).format('yyyy-MM-dd') }}"
-            }
-          ]
-        },
         "options": {}
       },
-      "id": "reminder-get-appointments",
-      "name": "Get Upcoming Appointments",
+      "id": "29ba98be-da90-44bb-816a-d1120c0a8068",
+      "name": "Get Upcoming Appointments (Reminders)",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
       "position": [
-        12200,
-        -1800
+        13808,
+        -3184
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase API Key"
-        }
-      }
+      "typeVersion": 4.1,
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "// Filter appointments that need reminders\nconst now = new Date();\nconst appointments = $input.all();\n\nconst remindersNeeded = [];\n\nfor (const item of appointments) {\n  const apt = item.json;\n  \n  // Parse appointment datetime\n  const aptDate = new Date(`${apt.appointment_date}T${apt.appointment_time}`);\n  const hoursUntil = (aptDate - now) / (1000 * 60 * 60);\n  \n  // Skip if no customer phone\n  if (!apt.customers?.phone) continue;\n  \n  // Check if 24-hour reminder needed (23-25 hours)\n  if (hoursUntil >= 23 && hoursUntil <= 25) {\n    remindersNeeded.push({\n      ...apt,\n      reminder_type: 'reminder_24h',\n      hours_until: Math.round(hoursUntil)\n    });\n  }\n  \n  // Check if 1-hour reminder needed (0.5-1.5 hours)\n  else if (hoursUntil >= 0.5 && hoursUntil <= 1.5) {\n    remindersNeeded.push({\n      ...apt,\n      reminder_type: 'reminder_1h',\n      hours_until: Math.round(hoursUntil * 10) / 10\n    });\n  }\n}\n\nreturn remindersNeeded.map(r => ({ json: r }));"
+        "jsCode": "const now = new Date();\nconst appointments = $input.all();\nconst remindersNeeded = [];\n\nfor (const item of appointments) {\n  const apt = item.json;\n  const aptDate = new Date(`${apt.appointment_date}T${apt.appointment_time}`);\n  const hoursUntil = (aptDate - now) / (1000 * 60 * 60);\n  \n  if (!apt.customers?.phone) continue;\n  \n  if (hoursUntil >= 23 && hoursUntil <= 25) {\n    remindersNeeded.push({...apt, reminder_type: 'reminder_24h', hours_until: Math.round(hoursUntil)});\n  } else if (hoursUntil >= 0.5 && hoursUntil <= 1.5) {\n    remindersNeeded.push({...apt, reminder_type: 'reminder_1h', hours_until: Math.round(hoursUntil * 10) / 10});\n  }\n}\n\nreturn remindersNeeded.map(r => ({ json: r }));"
       },
-      "id": "reminder-filter-reminders",
-      "name": "Filter Appointments Needing Reminders",
+      "id": "0971ef3a-e3eb-40b6-b08e-7181f108a815",
+      "name": "Filter Needing Reminders",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
       "position": [
-        12400,
-        -1800
-      ]
+        14016,
+        -3184
+      ],
+      "typeVersion": 2,
+      "disabled": true
     },
     {
       "parameters": {
@@ -1077,104 +1053,533 @@
         },
         "options": {}
       },
-      "id": "reminder-check-has-reminders",
+      "id": "ef28bc2d-dfc4-489b-a005-cfc8e3a0eabe",
       "name": "Has Reminders?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
       "position": [
-        12600,
-        -1800
-      ]
+        14224,
+        -3184
+      ],
+      "typeVersion": 2,
+      "disabled": true
     },
     {
       "parameters": {
-        "batchSize": 1,
         "options": {}
       },
-      "id": "reminder-loop-reminders",
+      "id": "3c331ae0-7740-40c1-af8d-003df2099346",
       "name": "Process Each Reminder",
       "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
       "position": [
-        12800,
-        -1900
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/outbound/schedule",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "method": "POST",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"business_id\": \"{{ $json.business_id }}\",\n  \"customer_id\": \"{{ $json.customers.id }}\",\n  \"phone_number\": \"{{ $json.customers.phone }}\",\n  \"call_type\": \"{{ $json.reminder_type === 'reminder_24h' ? 'appointment_reminder' : 'appointment_reminder_1h' }}\",\n  \"scheduled_for\": \"{{ $now.toISO() }}\",\n  \"priority\": {{ $json.reminder_type === 'reminder_1h' ? 8 : 6 }},\n  \"script_type\": \"appointment_reminder\",\n  \"context_data\": {\n    \"appointment_id\": \"{{ $json.id }}\",\n    \"appointment_date\": \"{{ $json.appointment_date }}\",\n    \"appointment_time\": \"{{ $json.appointment_time }}\",\n    \"service_name\": \"{{ $json.services?.name || '' }}\",\n    \"staff_name\": \"{{ $json.staff?.name || '' }}\",\n    \"customer_name\": \"{{ $json.customers.first_name }}\",\n    \"business_name\": \"{{ $json.businesses?.business_name || '' }}\",\n    \"hours_until\": {{ $json.hours_until }}\n  }\n}",
-        "options": {}
-      },
-      "id": "reminder-create-outbound-call",
-      "name": "Schedule Outbound Call",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        13000,
-        -1900
+        14432,
+        -3184
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "backend-auth",
-          "name": "Backend API Key"
-        }
-      }
+      "typeVersion": 3,
+      "disabled": true
     },
     {
       "parameters": {
-        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/messaging/send-sms",
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/outbound/schedule",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"business_id\": \"{{ $json.business_id }}\",\n  \"customer_id\": \"{{ $json.customers.id }}\",\n  \"to_phone\": \"{{ $json.customers.phone }}\",\n  \"message\": \"{{ $json.reminder_type === 'reminder_24h' ? 'Reminder: You have an appointment at ' + ($json.businesses?.business_name || 'our office') + ' tomorrow at ' + $json.appointment_time + '. Reply CONFIRM to confirm or call us to reschedule.' : 'Your appointment at ' + ($json.businesses?.business_name || 'our office') + ' is in 1 hour at ' + $json.appointment_time + '. See you soon!' }}\"\n}",
+        "jsonBody": "={\n  \"business_id\": \"{{ $json.business_id }}\",\n  \"customer_id\": \"{{ $json.customers.id }}\",\n  \"phone_number\": \"{{ $json.customers.phone }}\",\n  \"call_type\": \"{{ $json.reminder_type === 'reminder_24h' ? 'appointment_reminder' : 'appointment_reminder_1h' }}\",\n  \"scheduled_for\": \"{{ $now.toISO() }}\",\n  \"priority\": {{ $json.reminder_type === 'reminder_1h' ? 8 : 6 }},\n  \"script_type\": \"appointment_reminder\",\n  \"context_data\": {\n    \"appointment_id\": \"{{ $json.id }}\",\n    \"appointment_date\": \"{{ $json.appointment_date }}\",\n    \"appointment_time\": \"{{ $json.appointment_time }}\",\n    \"service_name\": \"{{ $json.services?.name || '' }}\",\n    \"customer_name\": \"{{ $json.customers.first_name }}\",\n    \"hours_until\": {{ $json.hours_until }}\n  }\n}",
         "options": {}
       },
-      "id": "reminder-send-sms",
+      "id": "98ae9840-2f07-43e6-a188-c6471c2f5916",
+      "name": "Schedule Reminder Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        14992,
+        -3088
+      ],
+      "typeVersion": 4.1,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/messaging/send-sms",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"business_id\": \"{{ $json.business_id }}\",\n  \"customer_id\": \"{{ $json.customers.id }}\",\n  \"to_phone\": \"{{ $json.customers.phone }}\",\n  \"message\": \"{{ $json.reminder_type === 'reminder_24h' ? 'Reminder: You have an appointment at ' + ($json.businesses?.business_name || 'our office') + ' tomorrow at ' + $json.appointment_time + '. Reply CONFIRM or call to reschedule.' : 'Your appointment at ' + ($json.businesses?.business_name || 'our office') + ' is in 1 hour at ' + $json.appointment_time + '. See you soon!' }}\"\n}",
+        "options": {}
+      },
+      "id": "fde6b813-822c-4e18-8ee8-bfbe64469915",
       "name": "Send SMS Reminder",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
       "position": [
-        13000,
-        -1700
+        14992,
+        -3408
       ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "backend-auth",
-          "name": "Backend API Key"
-        }
-      }
+      "typeVersion": 4.1,
+      "disabled": true
     },
     {
       "parameters": {},
-      "id": "reminder-no-op",
-      "name": "No Reminders Needed",
+      "id": "d302453d-4f05-4f6a-a40e-2d152c65a786",
+      "name": "No Reminders",
       "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
       "position": [
-        12800,
-        -1700
-      ]
+        14416,
+        -2832
+      ],
+      "typeVersion": 1,
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "// Log completion\nconst items = $input.all();\nconsole.log(`Processed ${items.length} appointment reminders`);\nreturn items;"
+        "content": "## 🧠 POST-CALL MEMORY PROCESSING\n\nAfter each call ends:\n1. Analyzes transcript with Gemini\n2. Extracts memories & preferences\n3. Saves to customer profile\n4. Updates call log with summary\n\nWebhook: POST /call-ended",
+        "height": 576,
+        "width": 432,
+        "color": 6
       },
-      "id": "reminder-log-completion",
-      "name": "Log Completion",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "bd2f7a03-a25f-4f88-86b1-63ef360eb435",
+      "name": "Note - Memory",
+      "type": "n8n-nodes-base.stickyNote",
       "position": [
-        13200,
-        -1800
-      ]
+        8400,
+        -4352
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "call-ended",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b1603b07-e704-43fc-a8cb-bd906e4a8b3f",
+      "name": "Call Ended Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        8928,
+        -4112
+      ],
+      "typeVersion": 1.1,
+      "webhookId": "call-ended-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-transcript",
+              "leftValue": "={{ $json.body.transcript }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "has-customer",
+              "leftValue": "={{ $json.body.customer_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0c2d9f5b-78ca-4cc2-ac7f-e403e88f1411",
+      "name": "Has Transcript & Customer?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        9152,
+        -4112
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"reason\": \"Missing transcript or customer_id\" }",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "0b0495ef-cecd-46d8-8988-a0df385c29f1",
+      "name": "Respond Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        9344,
+        -3920
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\"parts\": [{\"text\": \"Analyze this customer service call transcript and extract structured information.\\n\\nTRANSCRIPT:\\n{{ $json.body.transcript }}\\n\\nExtract and return ONLY a JSON object with NO additional text:\\n{\\n  \\\"memories\\\": [{\\\"content\\\": \\\"...\\\", \\\"importance\\\": 1-10, \\\"type\\\": \\\"fact|preference|issue|positive|note\\\"}],\\n  \\\"preferences\\\": [{\\\"category\\\": \\\"scheduling|communication|service|staff|general\\\", \\\"key\\\": \\\"...\\\", \\\"value\\\": \\\"...\\\", \\\"confidence\\\": 0.0-1.0}],\\n  \\\"sentiment\\\": \\\"positive|neutral|negative\\\",\\n  \\\"call_summary\\\": \\\"One sentence summary\\\",\\n  \\\"follow_up_needed\\\": true|false\\n}\"}]}],\n  \"generationConfig\": {\"temperature\": 0.3, \"maxOutputTokens\": 2048}\n}",
+        "options": {}
+      },
+      "id": "94a7fbd6-01f8-4ce4-a5a0-df9aabfd6363",
+      "name": "Analyze with Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        9344,
+        -4208
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first();\nconst geminiResponse = input.json;\nconst originalData = $('Call Ended Webhook').first().json.body;\n\nlet analysisText = '';\ntry {\n  analysisText = geminiResponse.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'Failed to extract response', originalData } }];\n}\n\nlet analysis;\ntry {\n  analysisText = analysisText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  analysis = JSON.parse(analysisText);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse JSON', rawText: analysisText, originalData } }];\n}\n\nreturn [{\n  json: {\n    call_log_id: originalData.call_log_id,\n    customer_id: originalData.customer_id,\n    business_id: originalData.business_id,\n    analysis: analysis\n  }\n}];"
+      },
+      "id": "76b267ec-bf9e-4014-9767-2644ff4cdf8c",
+      "name": "Parse Gemini Response",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        9552,
+        -4208
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-analysis",
+              "leftValue": "={{ $json.analysis }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5cdae23-7f5d-4565-97f8-d4facc1a6df0",
+      "name": "Analysis Valid?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        9744,
+        -4208
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst memories = input.analysis.memories || [];\nreturn memories.map(mem => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    memory_type: mem.type || 'note',\n    content: mem.content,\n    importance: mem.importance || 5,\n    source_type: 'call',\n    source_id: input.call_log_id\n  }\n}));"
+      },
+      "id": "bae1979c-cfea-4ecb-b392-dc23e0e60b0f",
+      "name": "Prepare Memories",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        10128,
+        -4432
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/memory/save",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "cedef142-7677-4a75-8820-72bc7d910ceb",
+      "name": "Save Memories",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        10320,
+        -4432
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Analysis Valid?').first().json;\nconst preferences = input.analysis.preferences || [];\nreturn preferences.map(pref => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    category: pref.category || 'general',\n    preference_key: pref.key,\n    preference_value: pref.value,\n    confidence: pref.confidence || 0.7\n  }\n}));"
+      },
+      "id": "401cbc59-0d34-46b0-85a2-6b3d919c27f3",
+      "name": "Prepare Preferences",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        10128,
+        -4224
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/memory/preference",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "e5ec5e83-19d5-44d5-9f00-71e8445b25c8",
+      "name": "Save Preferences",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        10320,
+        -4224
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/customers?id=eq.{{ $('Analysis Valid?').first().json.customer_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"last_call_summary\": \"{{ $('Analysis Valid?').first().json.analysis.call_summary || '' }}\",\n  \"last_call_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "4e10680e-e281-446b-8077-16c35e87e89b",
+      "name": "Update Customer Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        10320,
+        -4032
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true, \"message\": \"Memory processing complete\" }",
+        "options": {}
+      },
+      "id": "4b732897-a68d-4e2c-9e57-990ec0766e3b",
+      "name": "Respond Memory Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        10576,
+        -4224
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"reason\": \"Analysis failed\" }",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "6346ec70-f0d4-429b-a553-6ca21bedfb59",
+      "name": "Respond Analysis Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        9920,
+        -3904
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 📧 EMAIL SENDING\n\nWebhook endpoint for sending emails via SMTP.\nLogs all sent messages to database.\n\nWebhook: POST /send-email",
+        "width": 400,
+        "color": 2
+      },
+      "id": "b9084355-3e82-421b-9c98-166297ec5679",
+      "name": "Note - Email",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        13024,
+        -2368
+      ],
+      "typeVersion": 1,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-email",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "53bbf099-4c68-409a-8f03-244bf88f3a5c",
+      "name": "Send Email Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        13568,
+        -2320
+      ],
+      "typeVersion": 1.1,
+      "webhookId": "send-email-webhook",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-to",
+              "leftValue": "={{ $json.body.to_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "has-subject",
+              "leftValue": "={{ $json.body.subject }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "has-body",
+              "leftValue": "={{ $json.body.message }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e85dcd3b-7bc3-42fd-a761-36b1dd2ee513",
+      "name": "Validate Email Data",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        13808,
+        -2320
+      ],
+      "typeVersion": 2,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"Missing required fields\" }",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "de63d7d7-52fe-4530-b0f7-c3400bd7c0dc",
+      "name": "Respond Email Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        14016,
+        -2160
+      ],
+      "typeVersion": 1,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json.body;\nconst plainMessage = input.message;\nconst htmlMessage = plainMessage.split('\\n\\n').map(para => `<p>${para.replace(/\\n/g, '<br>')}</p>`).join('');\nconst businessName = input.business_name || 'Our Team';\nconst primaryColor = input.brand_color || '#4F46E5';\n\nconst htmlBody = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background:${primaryColor};color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0}.content{background:#f9fafb;padding:30px;border:1px solid #e5e7eb}.footer{background:#f3f4f6;padding:20px;text-align:center;font-size:12px;color:#6b7280;border-radius:0 0 8px 8px}p{margin:0 0 16px}</style></head><body><div class=\"container\"><div class=\"header\"><h1 style=\"margin:0;font-size:24px\">${businessName}</h1></div><div class=\"content\">${htmlMessage}</div><div class=\"footer\"><p>This email was sent by ${businessName}</p></div></div></body></html>`;\n\nreturn [{\n  json: {\n    to: input.to_email,\n    subject: input.subject,\n    text: plainMessage,\n    html: htmlBody,\n    business_id: input.business_id,\n    customer_id: input.customer_id\n  }\n}];"
+      },
+      "id": "2da3aff2-4692-48f3-b894-cf63fbbd156b",
+      "name": "Prepare Email Content",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        14016,
+        -2432
+      ],
+      "typeVersion": 2,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMAIL_FROM || 'noreply@example.com' }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "both",
+        "text": "={{ $json.text }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "fb6c469a-c78b-4eb6-a266-0f3a13898aba",
+      "name": "Send via SMTP",
+      "type": "n8n-nodes-base.emailSend",
+      "position": [
+        14208,
+        -2432
+      ],
+      "typeVersion": 2.1,
+      "webhookId": "682c0d6a-3a9c-448a-9616-bf84f0abe82d",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/message_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"business_id\": \"{{ $('Prepare Email Content').first().json.business_id }}\",\n  \"customer_id\": \"{{ $('Prepare Email Content').first().json.customer_id || null }}\",\n  \"channel\": \"email\",\n  \"direction\": \"outbound\",\n  \"to_address\": \"{{ $('Prepare Email Content').first().json.to }}\",\n  \"subject\": \"{{ $('Prepare Email Content').first().json.subject }}\",\n  \"body\": \"{{ $('Prepare Email Content').first().json.text }}\",\n  \"status\": \"sent\",\n  \"sent_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "46dc6ee7-4d57-47b5-ac0d-1c057ec3c5ac",
+      "name": "Log Email to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        14416,
+        -2432
+      ],
+      "typeVersion": 4.1,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"to\": \"{{ $('Prepare Email Content').first().json.to }}\"\n}",
+        "options": {}
+      },
+      "id": "9affc7d3-1b87-464d-9885-06b713411c33",
+      "name": "Respond Email Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        14640,
+        -2432
+      ],
+      "typeVersion": 1,
+      "disabled": true
     }
   ],
   "pinData": {},
@@ -1243,17 +1648,6 @@
         [
           {
             "node": "Loop Over Staff",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Staff": {
-      "main": [
-        [
-          {
-            "node": "Get Staff Token1",
             "type": "main",
             "index": 0
           }
@@ -1603,29 +1997,40 @@
         ]
       ]
     },
-    "Reminder Every Hour": {
+    "Loop Over Staff": {
       "main": [
         [
           {
-            "node": "Get Upcoming Appointments",
+            "node": "Get Staff Token1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Upcoming Appointments": {
+    "Every Hour (Reminders)": {
       "main": [
         [
           {
-            "node": "Filter Appointments Needing Reminders",
+            "node": "Get Upcoming Appointments (Reminders)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter Appointments Needing Reminders": {
+    "Get Upcoming Appointments (Reminders)": {
+      "main": [
+        [
+          {
+            "node": "Filter Needing Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Needing Reminders": {
       "main": [
         [
           {
@@ -1647,7 +2052,7 @@
         ],
         [
           {
-            "node": "No Reminders Needed",
+            "node": "No Reminders",
             "type": "main",
             "index": 0
           }
@@ -1658,7 +2063,7 @@
       "main": [
         [
           {
-            "node": "Schedule Outbound Call",
+            "node": "Schedule Reminder Call",
             "type": "main",
             "index": 0
           },
@@ -1667,17 +2072,10 @@
             "type": "main",
             "index": 0
           }
-        ],
-        [
-          {
-            "node": "Log Completion",
-            "type": "main",
-            "index": 0
-          }
         ]
       ]
     },
-    "Schedule Outbound Call": {
+    "Schedule Reminder Call": {
       "main": [
         [
           {
@@ -1698,6 +2096,180 @@
           }
         ]
       ]
+    },
+    "Call Ended Webhook": {
+      "main": [
+        [
+          {
+            "node": "Has Transcript & Customer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Transcript & Customer?": {
+      "main": [
+        [
+          {
+            "node": "Analyze with Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze with Gemini": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Gemini Response": {
+      "main": [
+        [
+          {
+            "node": "Analysis Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Valid?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Memories",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Preferences",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Customer Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Analysis Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Memories": {
+      "main": [
+        [
+          {
+            "node": "Save Memories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Memories": {
+      "main": [
+        [
+          {
+            "node": "Respond Memory Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Preferences": {
+      "main": [
+        [
+          {
+            "node": "Save Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Email Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Email Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Content": {
+      "main": [
+        [
+          {
+            "node": "Send via SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via SMTP": {
+      "main": [
+        [
+          {
+            "node": "Log Email to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Email to Database": {
+      "main": [
+        [
+          {
+            "node": "Respond Email Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -1705,13 +2277,46 @@
     "executionOrder": "v1",
     "timeSavedMode": "fixed",
     "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": true
+    "availableInMCP": true,
+    "saveExecutionProgress": true,
+    "errorWorkflow": "ZkQplwjtccGdKYZd"
   },
-  "versionId": "973c9915-d2ee-43fd-bfd0-0cb246a38d96",
+  "versionId": "996b1d89-ec95-4b0d-a861-3e4967c69f7e",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"
   },
   "id": "ZkQplwjtccGdKYZd",
-  "tags": []
+  "tags": [
+    {
+      "updatedAt": "2025-12-18T11:38:28.569Z",
+      "createdAt": "2025-12-18T11:38:28.569Z",
+      "id": "bdKkVWQtJxMCbe3h",
+      "name": "AI Agent"
+    },
+    {
+      "updatedAt": "2025-12-18T11:38:28.653Z",
+      "createdAt": "2025-12-18T11:38:28.653Z",
+      "id": "wRObD0zfKZT3ZUuR",
+      "name": "Calendar"
+    },
+    {
+      "updatedAt": "2025-12-18T11:38:28.656Z",
+      "createdAt": "2025-12-18T11:38:28.656Z",
+      "id": "XkRe8BEHggbfwdmF",
+      "name": "Reminders"
+    },
+    {
+      "updatedAt": "2025-12-18T11:38:28.672Z",
+      "createdAt": "2025-12-18T11:38:28.672Z",
+      "id": "yRsCORpwIx2LNm3T",
+      "name": "Memory"
+    },
+    {
+      "updatedAt": "2025-12-18T11:38:28.671Z",
+      "createdAt": "2025-12-18T11:38:28.671Z",
+      "id": "cKRTTwp0PvGVoC3i",
+      "name": "Messaging"
+    }
+  ]
 }

@@ -716,6 +716,778 @@ LEFT JOIN call_logs cl ON b.id = cl.business_id
 GROUP BY b.id, b.business_name;
 
 
+-- ============================================================================
+-- UNIVERSAL AI AGENT - DATABASE MIGRATION
+-- Version: 1.0.0
+-- Date: 2024-12-18
+-- Description: Adds memory system, outbound calls, messaging, and enhanced
+--              customer tracking for the Universal AI Agent system
+-- ============================================================================
+
+-- ============================================================================
+-- SECTION 1: ENHANCED CUSTOMER FIELDS
+-- ============================================================================
+
+-- Add language preference to customers
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS 
+    language VARCHAR(10) DEFAULT NULL;
+
+COMMENT ON COLUMN customers.language IS 'Preferred language code (e.g., tr, en, es)';
+
+-- Add preferred contact method
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS 
+    preferred_contact_method VARCHAR(20) DEFAULT 'any';
+
+COMMENT ON COLUMN customers.preferred_contact_method IS 'How customer prefers to be contacted: phone, sms, whatsapp, email, any';
+
+-- Add accommodations/special needs field
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS 
+    accommodations TEXT DEFAULT NULL;
+
+COMMENT ON COLUMN customers.accommodations IS 'Special needs or accommodations (wheelchair, anxiety, hearing impaired, etc.)';
+
+-- Add scheduling preferences
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS 
+    scheduling_preferences JSONB DEFAULT NULL;
+
+COMMENT ON COLUMN customers.scheduling_preferences IS 'JSON object with preferred times, days, staff, etc.';
+
+-- Add last call summary for quick context
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS 
+    last_call_summary TEXT DEFAULT NULL;
+
+COMMENT ON COLUMN customers.last_call_summary IS 'Brief summary of the most recent call';
+
+-- Add last call date
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS 
+    last_call_at TIMESTAMP DEFAULT NULL;
+
+COMMENT ON COLUMN customers.last_call_at IS 'Timestamp of most recent call';
+
+
+-- ============================================================================
+-- SECTION 2: ENHANCED BUSINESS FIELDS
+-- ============================================================================
+
+-- Add AI phone number (dedicated line for AI)
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS 
+    ai_phone_number VARCHAR(20) DEFAULT NULL;
+
+COMMENT ON COLUMN businesses.ai_phone_number IS 'Dedicated phone number for AI receptionist';
+
+-- Add default language for the business
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS 
+    default_language VARCHAR(10) DEFAULT 'en';
+
+COMMENT ON COLUMN businesses.default_language IS 'Default language for this business (fallback)';
+
+-- Add timezone
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS 
+    timezone VARCHAR(50) DEFAULT 'UTC';
+
+COMMENT ON COLUMN businesses.timezone IS 'Business timezone for scheduling';
+
+
+-- ============================================================================
+-- SECTION 3: CUSTOMER MEMORY SYSTEM
+-- ============================================================================
+
+-- Customer memories (facts, observations, notes)
+CREATE TABLE IF NOT EXISTS customer_memory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- Memory classification
+    memory_type VARCHAR(50) NOT NULL CHECK (memory_type IN (
+        'fact',           -- Factual information (birthday, job, etc.)
+        'preference',     -- Expressed preferences
+        'note',           -- General observations
+        'issue',          -- Problems or complaints
+        'positive',       -- Positive feedback
+        'conversation',   -- Call summary
+        'relationship'    -- Family/relationship info
+    )),
+    
+    -- The actual memory content
+    content TEXT NOT NULL,
+    
+    -- Optional structured data
+    structured_data JSONB DEFAULT NULL,
+    
+    -- Importance score (1-10, higher = more important)
+    importance INTEGER DEFAULT 5 CHECK (importance >= 1 AND importance <= 10),
+    
+    -- Source tracking
+    source_type VARCHAR(50) DEFAULT 'call' CHECK (source_type IN (
+        'call', 'appointment', 'feedback', 'manual', 'system', 'message'
+    )),
+    source_id UUID DEFAULT NULL,
+    
+    -- Expiration (for temporary memories)
+    expires_at TIMESTAMP DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_customer_memory_customer 
+    ON customer_memory(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_memory_business 
+    ON customer_memory(business_id);
+CREATE INDEX IF NOT EXISTS idx_customer_memory_type 
+    ON customer_memory(memory_type);
+CREATE INDEX IF NOT EXISTS idx_customer_memory_importance 
+    ON customer_memory(importance DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_memory_created 
+    ON customer_memory(created_at DESC);
+
+COMMENT ON TABLE customer_memory IS 'Stores persistent memories about customers for AI context';
+
+
+-- ============================================================================
+-- SECTION 4: CUSTOMER PREFERENCES (Structured & Queryable)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS customer_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- Preference categorization
+    category VARCHAR(100) NOT NULL CHECK (category IN (
+        'scheduling',     -- Time preferences
+        'communication',  -- Contact preferences
+        'service',        -- Service preferences
+        'staff',          -- Staff preferences
+        'general'         -- Other preferences
+    )),
+    
+    -- Key-value pair
+    preference_key VARCHAR(100) NOT NULL,
+    preference_value TEXT NOT NULL,
+    
+    -- Confidence score (0.0 to 1.0)
+    confidence DECIMAL(3,2) DEFAULT 0.50 CHECK (confidence >= 0 AND confidence <= 1),
+    
+    -- How many times this preference was observed
+    observation_count INTEGER DEFAULT 1,
+    
+    -- Last time customer confirmed this preference
+    last_confirmed_at TIMESTAMP DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Unique constraint per customer/category/key
+    UNIQUE(customer_id, category, preference_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_preferences_customer 
+    ON customer_preferences(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_preferences_category 
+    ON customer_preferences(category);
+
+COMMENT ON TABLE customer_preferences IS 'Structured customer preferences learned over time';
+
+
+-- ============================================================================
+-- SECTION 5: CUSTOMER RELATIONSHIPS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS customer_relationships (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- Related customer (if they're also in the system)
+    related_customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+    
+    -- Relationship details
+    relationship_type VARCHAR(100) NOT NULL CHECK (relationship_type IN (
+        'spouse', 'partner', 'child', 'parent', 'sibling',
+        'friend', 'colleague', 'referral', 'assistant', 'other'
+    )),
+    related_name VARCHAR(200) NOT NULL,
+    
+    -- Additional notes
+    notes TEXT DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_relationships_customer 
+    ON customer_relationships(customer_id);
+
+COMMENT ON TABLE customer_relationships IS 'Tracks relationships between customers and their contacts';
+
+
+-- ============================================================================
+-- SECTION 6: CUSTOMER SPECIAL DATES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS customer_special_dates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- Date details
+    date_type VARCHAR(100) NOT NULL CHECK (date_type IN (
+        'birthday', 'anniversary', 'membership_start', 'first_visit', 'other'
+    )),
+    date_value DATE NOT NULL,
+    year_known BOOLEAN DEFAULT TRUE,
+    
+    -- Reminder settings
+    send_reminder BOOLEAN DEFAULT FALSE,
+    reminder_days_before INTEGER DEFAULT 7,
+    
+    -- Description for 'other' types
+    description TEXT DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_special_dates_customer 
+    ON customer_special_dates(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_special_dates_date 
+    ON customer_special_dates(date_value);
+
+COMMENT ON TABLE customer_special_dates IS 'Tracks important dates for customers (birthdays, anniversaries)';
+
+
+-- ============================================================================
+-- SECTION 7: BUSINESS INSIGHTS (Learning from Patterns)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS business_insights (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- Insight classification
+    insight_type VARCHAR(100) NOT NULL CHECK (insight_type IN (
+        'faq',            -- Frequently asked questions
+        'peak_time',      -- Busy times
+        'service_trend',  -- Popular services
+        'issue_pattern',  -- Common problems
+        'success_pattern' -- What works well
+    )),
+    
+    -- Key-value storage
+    insight_key VARCHAR(200) NOT NULL,
+    insight_value TEXT NOT NULL,
+    structured_data JSONB DEFAULT NULL,
+    
+    -- Confidence and observation tracking
+    observation_count INTEGER DEFAULT 1,
+    confidence DECIMAL(3,2) DEFAULT 0.50,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    UNIQUE(business_id, insight_type, insight_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_business_insights_business 
+    ON business_insights(business_id);
+CREATE INDEX IF NOT EXISTS idx_business_insights_type 
+    ON business_insights(insight_type);
+
+COMMENT ON TABLE business_insights IS 'Aggregated learning and insights for each business';
+
+
+-- ============================================================================
+-- SECTION 8: OUTBOUND CALL SYSTEM
+-- ============================================================================
+
+-- Outbound call queue
+CREATE TABLE IF NOT EXISTS outbound_calls (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+    
+    -- Call details
+    phone_number VARCHAR(20) NOT NULL,
+    call_type VARCHAR(50) NOT NULL CHECK (call_type IN (
+        'appointment_reminder',
+        'appointment_reminder_1h',
+        'waitlist_notification',
+        'no_show_followup',
+        'callback',
+        'payment_reminder',
+        'birthday_greeting',
+        'reengagement',
+        'custom'
+    )),
+    
+    -- Scheduling
+    scheduled_for TIMESTAMP NOT NULL,
+    priority INTEGER DEFAULT 5 CHECK (priority >= 1 AND priority <= 10),
+    
+    -- Script/context for the AI
+    script_type VARCHAR(50) DEFAULT NULL,
+    context_data JSONB DEFAULT NULL,
+    
+    -- Status tracking
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN (
+        'pending', 'in_progress', 'completed', 'failed', 
+        'no_answer', 'busy', 'cancelled', 'max_attempts'
+    )),
+    
+    -- Retry logic
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    last_attempt_at TIMESTAMP DEFAULT NULL,
+    next_retry_at TIMESTAMP DEFAULT NULL,
+    
+    -- Results
+    outcome VARCHAR(100) DEFAULT NULL,
+    call_duration INTEGER DEFAULT NULL,
+    call_log_id UUID REFERENCES call_logs(id) ON DELETE SET NULL,
+    notes TEXT DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbound_calls_status 
+    ON outbound_calls(status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_outbound_calls_business 
+    ON outbound_calls(business_id);
+CREATE INDEX IF NOT EXISTS idx_outbound_calls_customer 
+    ON outbound_calls(customer_id);
+CREATE INDEX IF NOT EXISTS idx_outbound_calls_scheduled 
+    ON outbound_calls(scheduled_for);
+
+COMMENT ON TABLE outbound_calls IS 'Queue for AI-initiated outbound calls';
+
+
+-- ============================================================================
+-- SECTION 9: APPOINTMENT WAITLIST
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS appointment_waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    
+    -- Preferences
+    preferred_date DATE DEFAULT NULL,
+    preferred_time_of_day VARCHAR(20) DEFAULT NULL CHECK (
+        preferred_time_of_day IS NULL OR 
+        preferred_time_of_day IN ('morning', 'afternoon', 'evening', 'any')
+    ),
+    preferred_staff_id UUID REFERENCES staff(id) ON DELETE SET NULL,
+    service_id UUID REFERENCES services(id) ON DELETE SET NULL,
+    
+    -- Status
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN (
+        'active', 'notified', 'booked', 'expired', 'cancelled'
+    )),
+    position INTEGER DEFAULT NULL,
+    
+    -- Notification tracking
+    notified_at TIMESTAMP DEFAULT NULL,
+    notification_expires_at TIMESTAMP DEFAULT NULL,
+    
+    -- Notes
+    notes TEXT DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_business 
+    ON appointment_waitlist(business_id, status);
+CREATE INDEX IF NOT EXISTS idx_waitlist_customer 
+    ON appointment_waitlist(customer_id);
+
+COMMENT ON TABLE appointment_waitlist IS 'Customers waiting for appointment openings';
+
+
+-- ============================================================================
+-- SECTION 10: SCHEDULED CALLBACKS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS scheduled_callbacks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    
+    -- Contact details
+    phone_number VARCHAR(20) NOT NULL,
+    
+    -- Schedule
+    callback_date DATE NOT NULL,
+    callback_time TIME NOT NULL,
+    
+    -- Context
+    reason TEXT DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    original_call_log_id UUID REFERENCES call_logs(id) ON DELETE SET NULL,
+    
+    -- Status
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN (
+        'pending', 'completed', 'cancelled', 'failed'
+    )),
+    outbound_call_id UUID REFERENCES outbound_calls(id) ON DELETE SET NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_callbacks_date 
+    ON scheduled_callbacks(callback_date, status);
+CREATE INDEX IF NOT EXISTS idx_callbacks_customer 
+    ON scheduled_callbacks(customer_id);
+
+COMMENT ON TABLE scheduled_callbacks IS 'Scheduled callbacks requested by customers or AI';
+
+
+-- ============================================================================
+-- SECTION 11: MESSAGE TEMPLATES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS message_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- Template identification
+    template_name VARCHAR(100) NOT NULL,
+    template_type VARCHAR(50) NOT NULL CHECK (template_type IN (
+        'appointment_confirmation',
+        'appointment_reminder',
+        'appointment_reminder_1h',
+        'appointment_cancelled',
+        'waitlist_notification',
+        'payment_reminder',
+        'birthday_greeting',
+        'welcome',
+        'custom'
+    )),
+    
+    -- Channel
+    channel VARCHAR(50) NOT NULL CHECK (channel IN ('sms', 'whatsapp', 'email')),
+    
+    -- Content
+    subject VARCHAR(255) DEFAULT NULL,  -- For email
+    body_template TEXT NOT NULL,        -- With {{placeholders}}
+    
+    -- WhatsApp specific
+    whatsapp_template_id VARCHAR(100) DEFAULT NULL,
+    
+    -- Language
+    language_code VARCHAR(10) DEFAULT 'en',
+    
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_templates_business 
+    ON message_templates(business_id);
+CREATE INDEX IF NOT EXISTS idx_message_templates_type 
+    ON message_templates(template_type, channel, language_code);
+
+COMMENT ON TABLE message_templates IS 'Message templates for automated communications';
+
+
+-- ============================================================================
+-- SECTION 12: MESSAGE LOG
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS message_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+    
+    -- Message details
+    channel VARCHAR(50) NOT NULL CHECK (channel IN ('sms', 'whatsapp', 'email')),
+    direction VARCHAR(20) NOT NULL CHECK (direction IN ('outbound', 'inbound')),
+    
+    -- Addresses
+    to_address VARCHAR(255) NOT NULL,
+    from_address VARCHAR(255) DEFAULT NULL,
+    
+    -- Content
+    subject VARCHAR(255) DEFAULT NULL,
+    body TEXT NOT NULL,
+    
+    -- Status tracking
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN (
+        'pending', 'sent', 'delivered', 'read', 'failed', 'bounced'
+    )),
+    
+    -- Provider details
+    provider_message_id VARCHAR(255) DEFAULT NULL,
+    error_message TEXT DEFAULT NULL,
+    
+    -- Related records
+    appointment_id UUID REFERENCES appointments(id) ON DELETE SET NULL,
+    call_log_id UUID REFERENCES call_logs(id) ON DELETE SET NULL,
+    template_id UUID REFERENCES message_templates(id) ON DELETE SET NULL,
+    
+    -- Delivery timestamps
+    sent_at TIMESTAMP DEFAULT NULL,
+    delivered_at TIMESTAMP DEFAULT NULL,
+    read_at TIMESTAMP DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_log_customer 
+    ON message_log(customer_id);
+CREATE INDEX IF NOT EXISTS idx_message_log_business 
+    ON message_log(business_id);
+CREATE INDEX IF NOT EXISTS idx_message_log_status 
+    ON message_log(status);
+
+COMMENT ON TABLE message_log IS 'Log of all messages sent and received';
+
+
+-- ============================================================================
+-- SECTION 13: CUSTOMER FEEDBACK
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS customer_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    
+    -- Feedback details
+    feedback_type VARCHAR(50) NOT NULL CHECK (feedback_type IN (
+        'complaint', 'compliment', 'suggestion', 'question', 'general'
+    )),
+    content TEXT NOT NULL,
+    rating INTEGER DEFAULT NULL CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+    
+    -- Source
+    source VARCHAR(50) DEFAULT 'call' CHECK (source IN (
+        'call', 'message', 'email', 'manual', 'survey'
+    )),
+    call_log_id UUID REFERENCES call_logs(id) ON DELETE SET NULL,
+    
+    -- Follow-up tracking
+    requires_followup BOOLEAN DEFAULT FALSE,
+    followup_status VARCHAR(50) DEFAULT NULL CHECK (
+        followup_status IS NULL OR 
+        followup_status IN ('pending', 'in_progress', 'completed', 'escalated')
+    ),
+    followup_notes TEXT DEFAULT NULL,
+    resolved_at TIMESTAMP DEFAULT NULL,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_business 
+    ON customer_feedback(business_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_customer 
+    ON customer_feedback(customer_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_type 
+    ON customer_feedback(feedback_type);
+CREATE INDEX IF NOT EXISTS idx_feedback_followup 
+    ON customer_feedback(requires_followup, followup_status);
+
+COMMENT ON TABLE customer_feedback IS 'Customer feedback and complaints tracking';
+
+
+-- ============================================================================
+-- SECTION 14: KNOWLEDGE GAPS TRACKING
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS knowledge_gaps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    
+    -- The question/topic that couldn't be answered
+    question TEXT NOT NULL,
+    context TEXT DEFAULT NULL,
+    
+    -- Tracking
+    frequency INTEGER DEFAULT 1,
+    call_log_ids UUID[] DEFAULT '{}',
+    
+    -- Resolution
+    resolved BOOLEAN DEFAULT FALSE,
+    resolution TEXT DEFAULT NULL,
+    added_to_kb BOOLEAN DEFAULT FALSE,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    resolved_at TIMESTAMP DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_gaps_business 
+    ON knowledge_gaps(business_id, resolved);
+
+COMMENT ON TABLE knowledge_gaps IS 'Tracks questions AI could not answer for knowledge base improvement';
+
+
+-- ============================================================================
+-- SECTION 15: ENHANCED CALL LOGS
+-- ============================================================================
+
+-- Add new columns to call_logs if they don't exist
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    language_code VARCHAR(10) DEFAULT NULL;
+
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    language_source VARCHAR(50) DEFAULT NULL;
+
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    is_outbound BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    outbound_call_id UUID REFERENCES outbound_calls(id) ON DELETE SET NULL;
+
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    call_summary TEXT DEFAULT NULL;
+
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    sentiment VARCHAR(20) DEFAULT NULL CHECK (
+        sentiment IS NULL OR sentiment IN ('positive', 'neutral', 'negative')
+    );
+
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS 
+    tools_used TEXT[] DEFAULT '{}';
+
+-- Create index for outbound calls
+CREATE INDEX IF NOT EXISTS idx_call_logs_outbound 
+    ON call_logs(is_outbound, outbound_call_id);
+
+
+-- ============================================================================
+-- SECTION 16: PERFORMANCE METRICS VIEW
+-- ============================================================================
+
+CREATE OR REPLACE VIEW ai_performance_metrics AS
+SELECT 
+    business_id,
+    DATE(started_at) as date,
+    
+    -- Call volume
+    COUNT(*) as total_calls,
+    COUNT(*) FILTER (WHERE call_status = 'completed') as completed_calls,
+    COUNT(*) FILTER (WHERE is_outbound = TRUE) as outbound_calls,
+    COUNT(*) FILTER (WHERE is_outbound = FALSE) as inbound_calls,
+    
+    -- Duration
+    AVG(call_duration) FILTER (WHERE call_duration > 0) as avg_duration_seconds,
+    MAX(call_duration) as max_duration_seconds,
+    
+    -- Outcomes
+    COUNT(*) FILTER (WHERE outcome = 'appointment_booked') as appointments_booked,
+    COUNT(*) FILTER (WHERE outcome = 'appointment_cancelled') as appointments_cancelled,
+    COUNT(*) FILTER (WHERE outcome = 'appointment_rescheduled') as appointments_rescheduled,
+    COUNT(*) FILTER (WHERE outcome = 'question_answered') as questions_answered,
+    COUNT(*) FILTER (WHERE outcome = 'complaint_recorded') as complaints,
+    
+    -- Languages
+    COUNT(DISTINCT language_code) as languages_used,
+    
+    -- Sentiment (if tracked)
+    COUNT(*) FILTER (WHERE sentiment = 'positive') as positive_calls,
+    COUNT(*) FILTER (WHERE sentiment = 'negative') as negative_calls
+
+FROM call_logs
+WHERE started_at >= CURRENT_DATE - INTERVAL '90 days'
+GROUP BY business_id, DATE(started_at);
+
+COMMENT ON VIEW ai_performance_metrics IS 'Daily performance metrics for AI calls';
+
+
+-- ============================================================================
+-- SECTION 17: DEFAULT MESSAGE TEMPLATES
+-- ============================================================================
+
+-- Insert default templates (only if table is empty)
+INSERT INTO message_templates (business_id, template_name, template_type, channel, subject, body_template, language_code)
+SELECT NULL, 'Default Appointment Confirmation SMS', 'appointment_confirmation', 'sms', NULL,
+    'Hi {{first_name}}! Your appointment at {{business_name}} is confirmed for {{date}} at {{time}}. See you then!',
+    'en'
+WHERE NOT EXISTS (SELECT 1 FROM message_templates WHERE template_type = 'appointment_confirmation' AND channel = 'sms' AND business_id IS NULL);
+
+INSERT INTO message_templates (business_id, template_name, template_type, channel, subject, body_template, language_code)
+SELECT NULL, 'Default Appointment Reminder SMS', 'appointment_reminder', 'sms', NULL,
+    'Reminder: You have an appointment at {{business_name}} tomorrow ({{date}}) at {{time}}. Reply CONFIRM to confirm or call us to reschedule.',
+    'en'
+WHERE NOT EXISTS (SELECT 1 FROM message_templates WHERE template_type = 'appointment_reminder' AND channel = 'sms' AND business_id IS NULL);
+
+INSERT INTO message_templates (business_id, template_name, template_type, channel, subject, body_template, language_code)
+SELECT NULL, 'Default Appointment Confirmation SMS TR', 'appointment_confirmation', 'sms', NULL,
+    'Merhaba {{first_name}}! {{business_name}} randevunuz {{date}} tarihinde saat {{time}} için onaylanmıştır. Görüşmek üzere!',
+    'tr'
+WHERE NOT EXISTS (SELECT 1 FROM message_templates WHERE template_type = 'appointment_confirmation' AND channel = 'sms' AND language_code = 'tr' AND business_id IS NULL);
+
+INSERT INTO message_templates (business_id, template_name, template_type, channel, subject, body_template, language_code)
+SELECT NULL, 'Default Appointment Reminder SMS TR', 'appointment_reminder', 'sms', NULL,
+    'Hatırlatma: {{business_name}} randevunuz yarın ({{date}}) saat {{time}}. Onaylamak için ONAY yazın veya değiştirmek için bizi arayın.',
+    'tr'
+WHERE NOT EXISTS (SELECT 1 FROM message_templates WHERE template_type = 'appointment_reminder' AND channel = 'sms' AND language_code = 'tr' AND business_id IS NULL);
+
+
+-- ============================================================================
+-- SECTION 18: TRIGGERS FOR UPDATED_AT
+-- ============================================================================
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply triggers to tables with updated_at
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOR t IN 
+        SELECT table_name 
+        FROM information_schema.columns 
+        WHERE column_name = 'updated_at' 
+        AND table_schema = 'public'
+        AND table_name IN (
+            'customer_memory', 'customer_preferences', 'business_insights',
+            'outbound_calls', 'message_templates'
+        )
+    LOOP
+        EXECUTE format('
+            DROP TRIGGER IF EXISTS update_%s_updated_at ON %s;
+            CREATE TRIGGER update_%s_updated_at
+                BEFORE UPDATE ON %s
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column();
+        ', t, t, t, t);
+    END LOOP;
+END;
+$$;
+
+
+-- ============================================================================
+-- MIGRATION COMPLETE
+-- ============================================================================
+
+-- Add a migration record (optional - if you have a migrations table)
+-- INSERT INTO schema_migrations (version, name, applied_at)
+-- VALUES ('20241218001', 'universal_ai_agent', NOW());
+
+COMMENT ON SCHEMA public IS 'Universal AI Agent schema v1.0.0 - Full memory, outbound, and messaging support';
+
 
 
 

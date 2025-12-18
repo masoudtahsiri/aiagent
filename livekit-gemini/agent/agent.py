@@ -1,150 +1,441 @@
 #!/usr/bin/env python3
-
 """
-Multi-tenant AI Receptionist Agent - Optimized Version
+Universal AI Agent - Main Entry Point
 
-Key Improvements:
-1. Cleaner greeting flow without redundant instructions
-2. Better error handling and logging
-3. Optimized session initialization
-4. Proper call lifecycle management
+This is the core agent that handles all voice interactions.
+Features:
+- Automatic language detection from phone prefix
+- Persistent memory system integration
+- 25+ tools for complete automation
+- Inbound and outbound call handling
+- Multi-language support (45+ languages)
+
+Usage:
+    python agent.py dev    # Development mode
+    python agent.py start  # Production mode
 """
 
-import asyncio
-import logging
 import os
+import logging
 from datetime import datetime
+from typing import Optional, Tuple
 from dotenv import load_dotenv
 
 from livekit import rtc
 from livekit.agents import (
-    AgentServer,
-    AgentSession,
     Agent,
+    AgentSession,
     AutoSubscribe,
     JobContext,
     JobProcess,
     cli,
 )
+from livekit.agents.llm import function_tool
 from livekit.plugins import google, silero
 
 from backend_client import BackendClient
+from language_detector import detect_language, get_localized_greeting
 from prompt_builder import PromptBuilder, build_greeting
-from tools import get_tools_for_agent
+from tools import get_tools_for_agent, set_tool_context
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
 load_dotenv()
 
-# Logging
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
-logger = logging.getLogger("ai-receptionist")
+logger = logging.getLogger("universal-ai-agent")
 
-# Configuration
+# Reduce noise from libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("livekit").setLevel(logging.WARNING)
+
+# Initialize backend client
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 backend = BackendClient(BACKEND_URL)
 
-# Create AgentServer instance
+# Agent server
+from livekit.agents import AgentServer
 server = AgentServer()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SESSION DATA CLASS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class SessionData:
-    """Stores state for a single call session"""
+    """
+    Complete session state for a call.
+    
+    This object holds all context needed during the call:
+    - Business configuration
+    - Customer information and memory
+    - Language settings
+    - Call tracking
+    - Outbound call context (if applicable)
+    """
     
     def __init__(self, business_id: str, business_config: dict):
+        # Business context
         self.business_id = business_id
         self.business_config = business_config
+        
+        # Customer data
         self.customer = None
+        self.customer_memory = None
         self.caller_phone = None
+        
+        # Language settings
+        self.detected_language = None
+        self.language_code = "en"
+        self.language_name = "English"
+        
+        # Call type
+        self.is_outbound = False
+        self.outbound_call_id = None
+        self.outbound_context = None
+        
+        # Scheduling helpers
         self.available_slots = []
         self.default_staff_id = None
+        
+        # Call tracking
         self.call_log_id = None
         self.call_start_time = None
         self.call_outcome = "general_inquiry"
+        self.current_role_id = None
+        
+        # Session references
         self.session = None
         self.room = None
         
-        # Set default staff if only one exists
+        # Transcript collection
+        self.transcript_lines = []
+        
+        # Set default staff if only one
         staff = business_config.get("staff", [])
         if len(staff) == 1:
             self.default_staff_id = staff[0]["id"]
+    
+    def add_to_transcript(self, speaker: str, text: str):
+        """Add a line to the transcript."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.transcript_lines.append(f"[{timestamp}] {speaker}: {text}")
+    
+    def get_transcript(self) -> str:
+        """Get the full transcript as a string."""
+        return "\n".join(self.transcript_lines)
 
+
+# N8N Webhook URL for post-call processing
+N8N_CALL_ENDED_WEBHOOK = os.getenv(
+    "N8N_CALL_ENDED_WEBHOOK",
+    "https://n8n.algorityai.com/webhook/call-ended"
+)
+
+
+async def trigger_post_call_processing(session_data: SessionData):
+    """
+    Send call data to n8n for post-call memory processing.
+    
+    This triggers the workflow that:
+    1. Analyzes the transcript with Gemini
+    2. Extracts memories and preferences
+    3. Saves them to the customer profile
+    """
+    import httpx
+    
+    if not session_data.customer:
+        logger.info("⏭️ Skipping post-call processing - no customer associated")
+        return
+    
+    transcript = session_data.get_transcript()
+    if not transcript or len(transcript) < 50:
+        logger.info("⏭️ Skipping post-call processing - transcript too short")
+        return
+    
+    payload = {
+        "call_log_id": session_data.call_log_id,
+        "customer_id": session_data.customer.get("id"),
+        "business_id": session_data.business_id,
+        "transcript": transcript,
+        "language": session_data.language_code,
+        "is_outbound": session_data.is_outbound,
+        "call_outcome": session_data.call_outcome
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                N8N_CALL_ENDED_WEBHOOK,
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Post-call processing triggered successfully")
+            else:
+                logger.warning(f"⚠️ Post-call webhook returned {response.status_code}: {response.text}")
+    except Exception as e:
+        logger.error(f"❌ Failed to trigger post-call processing: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UTILITY FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def extract_caller_phone(identity: str) -> str:
-    """Extract phone number from SIP identity string"""
+    """
+    Extract phone number from SIP participant identity.
+    
+    SIP identities come in various formats:
+    - sip:+905551234567@domain
+    - sip_905551234567
+    - +905551234567
+    
+    Args:
+        identity: The participant identity string
+    
+    Returns:
+        Normalized phone number with + prefix
+    """
+    if not identity:
+        return ""
+    
+    # Remove sip: prefix
     if identity.startswith("sip:"):
         identity = identity.replace("sip:", "")
     
+    # Handle sip_ format (common in LiveKit)
     if identity.startswith("sip_"):
         phone = "+" + identity.replace("sip_", "")
     else:
+        # Extract phone from sip URI (before @)
         if "@" in identity:
             identity = identity.split("@")[0]
         phone = identity.strip()
     
-    logger.info(f"📞 Extracted caller phone: {phone}")
+    # Ensure + prefix
+    if phone and not phone.startswith("+"):
+        phone = "+" + phone
+    
+    # Clean up any remaining non-phone characters
+    phone = "".join(c for c in phone if c.isdigit() or c == "+")
+    
     return phone
 
 
 def extract_called_number(ctx: JobContext) -> str:
-    """Extract the number that was called (business AI number)"""
+    """
+    Extract the number that was dialed (the business's AI number).
+    
+    Args:
+        ctx: The job context from LiveKit
+    
+    Returns:
+        The called number with + prefix
+    
+    Raises:
+        ValueError: If called number cannot be determined
+    """
     for participant in ctx.room.remote_participants.values():
         attrs = participant.attributes
-        
-        if attrs and 'sip.trunkPhoneNumber' in attrs:
-            called = attrs['sip.trunkPhoneNumber']
-            if not called.startswith('+'):
-                called = '+' + called
-            logger.info(f"📞 Called number: {called}")
-            return called
+        if attrs:
+            # Try different attribute names
+            for key in ['sip.trunkPhoneNumber', 'sip.calledNumber', 'calledNumber']:
+                if key in attrs:
+                    called = attrs[key]
+                    if not called.startswith('+'):
+                        called = '+' + called
+                    return called
     
-    raise ValueError("Could not extract called number from participant attributes")
+    # Try room metadata
+    if ctx.room.metadata:
+        try:
+            import json
+            metadata = json.loads(ctx.room.metadata)
+            if 'calledNumber' in metadata:
+                called = metadata['calledNumber']
+                if not called.startswith('+'):
+                    called = '+' + called
+                return called
+        except:
+            pass
+    
+    raise ValueError("Could not extract called number from SIP attributes")
 
+
+def is_outbound_call(ctx: JobContext) -> Tuple[bool, Optional[str]]:
+    """
+    Determine if this is an outbound call and extract the outbound call ID.
+    
+    Outbound calls have room names following the pattern:
+    - outbound-{uuid}
+    - out-{uuid}
+    
+    Args:
+        ctx: The job context from LiveKit
+    
+    Returns:
+        Tuple of (is_outbound, outbound_call_id)
+    """
+    room_name = ctx.room.name
+    
+    if room_name.startswith("outbound-"):
+        outbound_id = room_name.replace("outbound-", "")
+        return True, outbound_id
+    
+    if room_name.startswith("out-"):
+        outbound_id = room_name.replace("out-", "")
+        return True, outbound_id
+    
+    # Check room metadata for outbound flag
+    if ctx.room.metadata:
+        try:
+            import json
+            metadata = json.loads(ctx.room.metadata)
+            if metadata.get("is_outbound"):
+                return True, metadata.get("outbound_call_id")
+        except:
+            pass
+    
+    return False, None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PREWARM - Load models before calls
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def prewarm(proc: JobProcess):
-    """Preload VAD model for faster call handling"""
-    logger.info("🔄 Loading VAD model...")
+    """
+    Prewarm the agent process by loading models.
+    Called once when the worker starts.
+    """
+    logger.info("🔄 Prewarming agent process...")
+    
+    # Load VAD model
+    logger.info("   Loading VAD model...")
     proc.userdata["vad"] = silero.VAD.load()
-    logger.info("✅ VAD ready")
+    
+    logger.info("✅ Agent process ready")
 
 
 server.setup_fnc = prewarm
 
 
-@server.rtc_session(agent_name="ai-receptionist")
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN ENTRY POINT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@server.rtc_session(agent_name="universal-ai-agent")
 async def entrypoint(ctx: JobContext):
-    """Main entry point for each incoming call"""
-    logger.info("=" * 60)
-    logger.info("🔔 NEW INCOMING CALL")
-    logger.info(f"   Room: {ctx.room.name}")
-    logger.info("=" * 60)
+    """
+    Main entry point for all calls (inbound and outbound).
+    
+    This function:
+    1. Determines call type (inbound vs outbound)
+    2. Loads business configuration
+    3. Detects language from phone prefix
+    4. Loads customer and memory context
+    5. Builds system prompt
+    6. Creates and starts the AI agent
+    """
     
     call_start = datetime.utcnow()
     
-    # Connect and wait for caller
+    # ─────────────────────────────────────────────────────────────────────────
+    # LOGGING HEADER
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    logger.info("=" * 70)
+    logger.info("🔔 INCOMING CALL")
+    logger.info(f"   Room: {ctx.room.name}")
+    logger.info(f"   Time: {call_start.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    logger.info("=" * 70)
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # CONNECT TO ROOM
+    # ─────────────────────────────────────────────────────────────────────────
+    
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     participant = await ctx.wait_for_participant()
     
-    # Extract phone numbers
-    caller_phone = extract_caller_phone(participant.identity)
-    called_number = extract_called_number(ctx)
+    logger.info(f"👤 Participant connected: {participant.identity}")
     
-    logger.info(f"📞 Call: {caller_phone} → {called_number}")
+    # ─────────────────────────────────────────────────────────────────────────
+    # DETERMINE CALL TYPE
+    # ─────────────────────────────────────────────────────────────────────────
     
-    # =========================================================================
-    # LOAD BUSINESS CONFIG
-    # =========================================================================
+    is_outbound, outbound_id = is_outbound_call(ctx)
     
-    try:
-        business_config = await backend.lookup_business_by_phone(called_number)
-    except Exception as e:
-        logger.error(f"❌ Failed to load business config: {e}")
-        return
+    if is_outbound:
+        # ═══════════════════════════════════════════════════════════════════
+        # OUTBOUND CALL FLOW
+        # ═══════════════════════════════════════════════════════════════════
+        
+        logger.info(f"📤 OUTBOUND CALL: {outbound_id}")
+        
+        # Load outbound call context
+        outbound_context = await backend.get_outbound_call(outbound_id)
+        if not outbound_context:
+            logger.error("❌ Outbound call context not found")
+            return
+        
+        caller_phone = outbound_context.get("phone_number", "")
+        business_id = outbound_context.get("business_id", "")
+        customer_id = outbound_context.get("customer_id")
+        
+        # Load business configuration
+        business_config = await backend.get_business_config(business_id)
+        if not business_config:
+            logger.error("❌ Business configuration not found")
+            return
+        
+    else:
+        # ═══════════════════════════════════════════════════════════════════
+        # INBOUND CALL FLOW
+        # ═══════════════════════════════════════════════════════════════════
+        
+        logger.info("📥 INBOUND CALL")
+        
+        # Extract phone numbers
+        caller_phone = extract_caller_phone(participant.identity)
+        
+        try:
+            called_number = extract_called_number(ctx)
+        except ValueError as e:
+            logger.error(f"❌ {e}")
+            return
+        
+        logger.info(f"📞 {caller_phone} → {called_number}")
+        
+        # Load business by called number
+        try:
+            business_config = await backend.lookup_business_by_phone(called_number)
+        except Exception as e:
+            logger.error(f"❌ Failed to load business for {called_number}: {e}")
+            return
+        
+        if not business_config:
+            logger.error(f"❌ No business found for number: {called_number}")
+            return
+        
+        outbound_context = None
+        customer_id = None
     
-    business = business_config["business"]
-    business_id = business["id"]
-    business_name = business["business_name"]
+    # ─────────────────────────────────────────────────────────────────────────
+    # EXTRACT BUSINESS INFO
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    business = business_config.get("business", {})
+    business_id = business.get("id", "")
+    business_name = business.get("business_name", "Business")
     
     logger.info(f"🏢 Business: {business_name} ({business_id})")
     
@@ -153,90 +444,164 @@ async def entrypoint(ctx: JobContext):
     session_data.caller_phone = caller_phone
     session_data.call_start_time = call_start
     session_data.room = ctx.room
+    session_data.is_outbound = is_outbound
+    session_data.outbound_context = outbound_context
+    session_data.outbound_call_id = outbound_id
     
-    # =========================================================================
-    # LOOKUP CUSTOMER (with context if exists)
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
+    # CUSTOMER LOOKUP & MEMORY
+    # ─────────────────────────────────────────────────────────────────────────
     
-    lookup, customer_context = await backend.lookup_customer_with_context(
-        caller_phone, business_id
-    )
-    is_existing = lookup.get("exists", False)
-    
-    if is_existing:
-        session_data.customer = lookup["customer"]
-        customer_name = session_data.customer.get("first_name", "Unknown")
-        logger.info(f"👤 Returning customer: {customer_name}")
-        if customer_context:
-            apt_count = len(customer_context.get("recent_appointments", []))
-            logger.info(f"   Context loaded: {apt_count} recent appointments")
+    # For outbound, we already know the customer
+    if is_outbound and customer_id:
+        customer_data = await backend.get_customer_with_memory(customer_id, business_id)
+        is_existing = bool(customer_data)
+        if customer_data:
+            session_data.customer = customer_data.get("customer")
+            session_data.customer_memory = customer_data.get("memory")
     else:
-        customer_context = None
-        logger.info("👤 New customer (not in system)")
+        # For inbound, lookup by phone
+        lookup_result = await backend.lookup_customer_with_context(
+            caller_phone, business_id
+        )
+        is_existing = lookup_result.get("exists", False)
+        
+        if is_existing:
+            session_data.customer = lookup_result.get("customer")
+            session_data.customer_memory = lookup_result.get("context", {}).get("memory")
     
-    # =========================================================================
-    # GET AI CONFIG
-    # =========================================================================
+    customer_name = ""
+    if session_data.customer:
+        customer_name = session_data.customer.get("first_name", "")
+        logger.info(f"👤 Customer: {customer_name} {session_data.customer.get('last_name', '')} (ID: {session_data.customer.get('id', '')})")
+    else:
+        logger.info("👤 Customer: NEW (not in system)")
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # LANGUAGE DETECTION
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    business_default_lang = business.get("default_language", "en")
+    
+    lang_info = detect_language(
+        caller_phone=caller_phone,
+        customer=session_data.customer,
+        business_default=business_default_lang
+    )
+    
+    session_data.detected_language = lang_info
+    session_data.language_code = lang_info["code"]
+    session_data.language_name = lang_info["name"]
+    
+    logger.info(f"🌐 Language: {lang_info['name']} ({lang_info['code']})")
+    logger.info(f"   Source: {lang_info['source']}")
+    logger.info(f"   Voice: {lang_info['voice']}")
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # LOAD AI CONFIGURATION
+    # ─────────────────────────────────────────────────────────────────────────
     
     ai_roles = business_config.get("ai_roles", [])
     ai_config = None
     
-    for role in ai_roles:
-        if role.get("role_type") == "receptionist" and role.get("is_enabled"):
-            ai_config = role
-            break
+    # For outbound calls, use specific role if specified
+    if is_outbound and outbound_context:
+        script_type = outbound_context.get("script_type", "receptionist")
+        for role in ai_roles:
+            if role.get("role_type") == script_type and role.get("is_enabled"):
+                ai_config = role
+                break
     
+    # Default to receptionist role
+    if not ai_config:
+        for role in ai_roles:
+            if role.get("role_type") == "receptionist" and role.get("is_enabled"):
+                ai_config = role
+                break
+    
+    # Fallback to first available role
     if not ai_config and ai_roles:
-        ai_config = ai_roles[0]
+        for role in ai_roles:
+            if role.get("is_enabled"):
+                ai_config = role
+                break
     
-    voice = ai_config.get("voice_style", "Kore") if ai_config else "Kore"
+    if ai_config:
+        session_data.current_role_id = ai_config.get("id")
+        voice = ai_config.get("voice_style", lang_info.get("voice", "Kore"))
+        logger.info(f"🤖 AI Role: {ai_config.get('name', 'Default')}")
+    else:
+        voice = lang_info.get("voice", "Kore")
+        logger.info("🤖 AI Role: Default (no role configured)")
     
-    # =========================================================================
-    # BUILD SYSTEM PROMPT (Optimized - no redundant greeting instructions)
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
+    # BUILD SYSTEM PROMPT
+    # ─────────────────────────────────────────────────────────────────────────
     
     prompt_builder = PromptBuilder(
         business_config=business_config,
         customer=session_data.customer,
-        customer_context=customer_context,
-        ai_config=ai_config
+        customer_context=session_data.customer_memory,
+        customer_memory=session_data.customer_memory,
+        ai_config=ai_config,
+        language_code=session_data.language_code,
+        language_name=session_data.language_name,
+        is_outbound=is_outbound,
+        outbound_context=outbound_context
     )
+    
     system_prompt = prompt_builder.build()
     
-    # Build the greeting
-    greeting = build_greeting(business_config, session_data.customer, ai_config)
+    # Build greeting
+    greeting = build_greeting(
+        business_config=business_config,
+        customer=session_data.customer,
+        ai_config=ai_config,
+        language_code=session_data.language_code,
+        is_outbound=is_outbound,
+        outbound_context=outbound_context
+    )
     
-    # Add greeting instruction to system prompt
+    # Add greeting instruction to prompt
     system_prompt = f"""{system_prompt}
 
-IMPORTANT - START THE CALL:
-You must speak FIRST. Immediately say this greeting when the call connects:
+═══════════════════════════════════════════════════════════════════════════════
+                              START THE CALL
+═══════════════════════════════════════════════════════════════════════════════
+
+CRITICAL: Speak FIRST. Say this greeting IMMEDIATELY when the call connects:
+
 "{greeting}"
-Then wait for the caller to respond and continue naturally."""
+
+Then wait for their response and continue naturally in {session_data.language_name}.
+═══════════════════════════════════════════════════════════════════════════════"""
     
-    logger.info(f"📝 System prompt built ({len(system_prompt)} chars)")
-    logger.info(f"💬 Greeting: {greeting[:50]}...")
+    logger.info(f"💬 Greeting: {greeting[:60]}...")
     
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
     # LOG CALL START
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
     
     try:
         call_log = await backend.log_call_start(
             business_id=business_id,
             caller_phone=caller_phone,
-            customer_id=session_data.customer["id"] if session_data.customer else None,
-            role_id=ai_config["id"] if ai_config else None
+            customer_id=session_data.customer.get("id") if session_data.customer else None,
+            role_id=session_data.current_role_id,
+            is_outbound=is_outbound,
+            outbound_call_id=outbound_id,
+            language_code=session_data.language_code,
+            language_source=lang_info.get("source")
         )
         if call_log:
-            session_data.call_log_id = call_log["id"]
-            logger.info(f"📊 Call log created: {call_log['id']}")
+            session_data.call_log_id = call_log.get("id")
+            logger.info(f"📝 Call logged: {session_data.call_log_id}")
     except Exception as e:
         logger.warning(f"⚠️ Failed to log call start: {e}")
     
-    # =========================================================================
-    # CREATE AGENT WITH TOOLS
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
+    # CREATE TOOLS
+    # ─────────────────────────────────────────────────────────────────────────
     
     tools = get_tools_for_agent(
         session_data=session_data,
@@ -244,63 +609,126 @@ Then wait for the caller to respond and continue naturally."""
         is_existing_customer=is_existing
     )
     
+    logger.info(f"🔧 Tools loaded: {len(tools)} tools available")
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # CREATE AGENT
+    # ─────────────────────────────────────────────────────────────────────────
+    
     agent = Agent(
         instructions=system_prompt,
         tools=tools,
     )
     
-    logger.info(f"🤖 Agent created with {len(tools)} tools")
-    
-    # =========================================================================
-    # CREATE MODEL
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
+    # CREATE MODEL & SESSION
+    # ─────────────────────────────────────────────────────────────────────────
     
     model = google.realtime.RealtimeModel(
-        model="gemini-2.5-flash-native-audio-preview-09-2025",
+        model="gemini-2.5-flash-preview-native-audio-dialog",
         voice=voice,
-        temperature=0.7,  # Slightly lower for more consistent tool calling
+        temperature=0.7,
     )
-    
-    # =========================================================================
-    # CREATE AND START SESSION
-    # =========================================================================
     
     session = AgentSession(
         llm=model,
         vad=ctx.proc.userdata.get("vad"),
     )
     
-    # Store session reference for tools (e.g., end_call)
     session_data.session = session
     
-    # Start the session
+    # ─────────────────────────────────────────────────────────────────────────
+    # EVENT HANDLERS - Transcript Collection
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    @session.on("agent_speech_committed")
+    def on_agent_speech(msg):
+        """Capture agent's speech for transcript."""
+        if hasattr(msg, 'content') and msg.content:
+            session_data.add_to_transcript("AI", msg.content)
+    
+    @session.on("user_speech_committed") 
+    def on_user_speech(msg):
+        """Capture user's speech for transcript."""
+        if hasattr(msg, 'content') and msg.content:
+            session_data.add_to_transcript("Customer", msg.content)
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # ROOM EVENT HANDLERS - Call End
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    @ctx.room.on("disconnected")
+    async def on_room_disconnected():
+        """Handle call end - log and trigger post-call processing."""
+        logger.info("📞 Call ended - room disconnected")
+        
+        # Calculate call duration
+        call_duration = None
+        if session_data.call_start_time:
+            call_duration = int((datetime.now() - session_data.call_start_time).total_seconds())
+            logger.info(f"⏱️ Call duration: {call_duration} seconds")
+        
+        # Get transcript
+        transcript = session_data.get_transcript()
+        
+        # Log call end to backend (includes transcript)
+        try:
+            await backend.log_call_end(
+                call_log_id=session_data.call_log_id,
+                duration_seconds=call_duration,
+                outcome=session_data.call_outcome,
+                transcript=transcript,
+                summary=None,  # Will be filled by n8n
+                sentiment=None  # Will be filled by n8n
+            )
+            logger.info(f"✅ Call logged with transcript ({len(transcript)} chars)")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to log call end: {e}")
+        
+        logger.info("✅ Call cleanup complete")
+    
+    @ctx.room.on("participant_disconnected")
+    async def on_participant_left(participant):
+        """Handle when customer hangs up."""
+        if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+            logger.info(f"📱 Customer disconnected: {participant.identity}")
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # START SESSION
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    logger.info("🚀 Starting AI session...")
+    
     await session.start(
         agent=agent,
         room=ctx.room,
     )
     
-    logger.info(f"✅ Session started - Voice: {voice}")
+    logger.info(f"✅ Session active | Voice: {voice} | Language: {session_data.language_name}")
     
-    # =========================================================================
-    # INITIATE GREETING
-    # AI speaks FIRST when call connects - don't wait for caller
-    # =========================================================================
+    # ─────────────────────────────────────────────────────────────────────────
+    # INITIATE CONVERSATION
+    # ─────────────────────────────────────────────────────────────────────────
     
-    logger.info("💬 Triggering greeting...")
-    
-    # Trigger AI to speak immediately - no user input needed
-    # The greeting instruction is in the system prompt
+    # Tell the AI to start speaking
     await session.generate_reply()
     
-    logger.info("✅ Conversation active")
+    logger.info("✅ Conversation started - AI is speaking")
+    
+    # The session will continue until the call ends
+    # LiveKit handles the audio streaming automatically
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    logger.info("=" * 60)
-    logger.info("  🤖 AI RECEPTIONIST AGENT")
-    logger.info("=" * 60)
-    logger.info(f"  Backend: {BACKEND_URL}")
-    logger.info("  Waiting for calls...")
-    logger.info("=" * 60)
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("  🤖 UNIVERSAL AI AGENT")
+    logger.info("  Powered by Gemini Live + LiveKit")
+    logger.info("=" * 70)
+    logger.info("")
     
     cli.run_app(server)
