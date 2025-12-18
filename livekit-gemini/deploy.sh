@@ -95,7 +95,7 @@ cat > /tmp/dispatch-rule.json << 'EOFDISPATCH'
     "room_config": {
       "agents": [
         {
-          "agent_name": "ai-receptionist"
+          "agent_name": "universal-ai-agent"
         }
       ]
     }

@@ -71,7 +71,7 @@ case $choice in
     "room_config": {
       "agents": [
         {
-          "agent_name": "ai-receptionist"
+          "agent_name": "universal-ai-agent"
         }
       ]
     }
@@ -99,7 +99,7 @@ EOFDISPATCH
     "room_config": {
       "agents": [
         {
-          "agent_name": "ai-receptionist"
+          "agent_name": "universal-ai-agent"
         }
       ]
     }

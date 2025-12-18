@@ -25,7 +25,7 @@ fi
 echo "✓ Checking deploy.sh configuration..."
 if grep -q "dispatch_rule_individual" deploy.sh && \
    grep -q "room_prefix.*sip-call" deploy.sh && \
-   grep -q "agent_name.*ai-receptionist" deploy.sh; then
+   grep -q "agent_name.*universal-ai-agent" deploy.sh; then
     echo "  ✓ deploy.sh uses dispatch_rule_individual"
 else
     echo "  ✗ deploy.sh missing dispatch_rule_individual"
