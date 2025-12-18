@@ -626,7 +626,7 @@ Then wait for their response and continue naturally in {session_data.language_na
     # ─────────────────────────────────────────────────────────────────────────
     
     model = google.realtime.RealtimeModel(
-        model="gemini-2.5-flash-preview-native-audio-dialog",
+        model="gemini-2.5-flash-native-audio-preview-12-2025",
         voice=voice,
         temperature=0.7,
     )
@@ -677,7 +677,7 @@ Then wait for their response and continue naturally in {session_data.language_na
             try:
                 await backend.log_call_end(
                     call_log_id=session_data.call_log_id,
-                    duration_seconds=call_duration,
+                    duration=call_duration,
                     outcome=session_data.call_outcome,
                     transcript=transcript,
                     summary=None,  # Will be filled by n8n
