@@ -43,6 +43,19 @@ ufw allow 7880/tcp || true
 ufw allow 7881/tcp || true
 ufw allow 10000:20000/udp || true
 
+# Pull latest code from git and copy agent files
+if [ -d "/opt/aiagent/.git" ]; then
+    echo "Pulling latest code from git..."
+    cd /opt/aiagent
+    git pull origin main || echo "Git pull failed, continuing with existing code..."
+    cd /opt/livekit-gemini
+    
+    echo "Copying latest agent files..."
+    cp -r /opt/aiagent/livekit-gemini/agent/* ./agent/ || echo "Failed to copy agent files..."
+else
+    echo "No git repo found in /opt/aiagent, using existing code..."
+fi
+
 # Build and start
 echo "Building containers..."
 docker-compose build
