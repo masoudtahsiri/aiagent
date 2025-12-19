@@ -237,7 +237,8 @@ YOUR MISSION: Provide exceptional service that exceeds human staff capabilities.
             day_num = hours.get("day_of_week", 0)
             day_name = day_names.get(day_num, f"Day {day_num}")
             
-            if hours.get("is_closed"):
+            # Backend returns is_open (boolean), not is_closed
+            if not hours.get("is_open", True):
                 lines.append(f"  {day_name}: CLOSED")
             else:
                 open_time = hours.get("open_time", "09:00")

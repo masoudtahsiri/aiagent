@@ -1534,7 +1534,8 @@ async def get_business_hours(context: RunContext) -> dict:
     }
     
     if today_hours:
-        if today_hours.get("is_closed"):
+        # Backend returns is_open (boolean), not is_closed
+        if not today_hours.get("is_open", True):
             message = "We're closed today."
         else:
             open_time = format_time_speech(today_hours.get("open_time", "9:00"))
