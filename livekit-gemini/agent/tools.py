@@ -152,6 +152,14 @@ async def check_availability(
     session = get_session()
     backend = get_backend()
     
+    # Normalize inputs - AI sometimes passes lists instead of strings
+    if isinstance(date, list):
+        date = date[0] if date else ""
+    if isinstance(service_name, list):
+        service_name = service_name[0] if service_name else None
+    if isinstance(staff_name, list):
+        staff_name = staff_name[0] if staff_name else None
+    
     # Handle relative dates
     if date.lower() == "today":
         date = datetime.now().strftime("%Y-%m-%d")
@@ -278,6 +286,18 @@ async def book_appointment(
             "message": "I need to get your information first. What's your name?",
             "next_action": "collect_customer_info"
         }
+    
+    # Normalize inputs - AI sometimes passes lists instead of strings
+    if isinstance(date, list):
+        date = date[0] if date else ""
+    if isinstance(time, list):
+        time = time[0] if time else ""
+    if isinstance(service_name, list):
+        service_name = service_name[0] if service_name else ""
+    if isinstance(staff_name, list):
+        staff_name = staff_name[0] if staff_name else None
+    if isinstance(notes, list):
+        notes = notes[0] if notes else None
     
     # Handle relative dates
     if date.lower() == "today":
