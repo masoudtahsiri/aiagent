@@ -1882,6 +1882,8 @@ async def end_call(
         success: Always True
         message: Farewell message
     """
+    import asyncio
+    
     session = get_session()
     
     # Get customer name for personalized goodbye
@@ -1904,6 +1906,18 @@ async def end_call(
             message = f"Thank you {customer_name}, have a great day! Goodbye!"
         else:
             message = "Thank you for calling! Have a great day!"
+    
+    # Schedule call disconnect after AI finishes speaking goodbye
+    async def disconnect_after_delay():
+        try:
+            await asyncio.sleep(5)  # Wait 5 seconds for goodbye to be spoken
+            if session.room:
+                logger.info("📞 Ending call - disconnecting room")
+                await session.room.disconnect()
+        except Exception as e:
+            logger.warning(f"Error disconnecting room: {e}")
+    
+    asyncio.create_task(disconnect_after_delay())
     
     return {
         "success": True,
