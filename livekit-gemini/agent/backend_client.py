@@ -373,27 +373,40 @@ class BackendClient:
         customer_id: str,
         date: str,
         time: str,
-        service_name: str,
-        staff_name: Optional[str] = None,
+        staff_id: str,
+        service_id: Optional[str] = None,
+        duration_minutes: int = 30,
         notes: Optional[str] = None
     ) -> Optional[Dict]:
         """
         Book a new appointment.
+        
+        Args:
+            business_id: Business UUID
+            customer_id: Customer UUID
+            date: Appointment date (YYYY-MM-DD)
+            time: Appointment time (HH:MM)
+            staff_id: Staff member UUID
+            service_id: Optional service UUID
+            duration_minutes: Appointment duration (default 30)
+            notes: Optional notes
         
         Returns:
             Dict with success status and appointment details
         """
         try:
             client = await self._get_client()
+            # Use agent-specific endpoint (no auth required)
             response = await client.post(
-                "/api/appointments",
+                "/api/agent/appointments/book",
                 json={
                     "business_id": business_id,
                     "customer_id": customer_id,
+                    "staff_id": staff_id,
                     "appointment_date": date,
                     "appointment_time": time,
-                    "service_name": service_name,
-                    "staff_name": staff_name,
+                    "duration_minutes": duration_minutes,
+                    "service_id": service_id,
                     "notes": notes
                 }
             )
@@ -414,9 +427,10 @@ class BackendClient:
         """Cancel an appointment."""
         try:
             client = await self._get_client()
+            # Use agent-specific endpoint (no auth required)
             response = await client.post(
-                f"/api/appointments/{appointment_id}/cancel",
-                json={"reason": reason}
+                f"/api/agent/appointments/{appointment_id}/cancel",
+                json={"cancellation_reason": reason}
             )
             response.raise_for_status()
             return {"success": True}
@@ -428,14 +442,19 @@ class BackendClient:
         self,
         appointment_id: str,
         new_date: str,
-        new_time: str
+        new_time: str,
+        staff_id: Optional[str] = None
     ) -> Optional[Dict]:
         """Reschedule an appointment to a new date/time."""
         try:
             client = await self._get_client()
+            payload = {"new_date": new_date, "new_time": new_time}
+            if staff_id:
+                payload["staff_id"] = staff_id
+            # Use agent-specific endpoint (no auth required)
             response = await client.post(
-                f"/api/appointments/{appointment_id}/reschedule",
-                json={"new_date": new_date, "new_time": new_time}
+                f"/api/agent/appointments/{appointment_id}/reschedule",
+                json=payload
             )
             response.raise_for_status()
             return {"success": True, "appointment": response.json()}

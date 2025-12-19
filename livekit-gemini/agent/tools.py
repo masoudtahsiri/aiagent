@@ -285,14 +285,52 @@ async def book_appointment(
     elif date.lower() == "tomorrow":
         date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     
+    # Look up staff_id from staff_name
+    staff_id = None
+    if staff_name:
+        staff_list = session.business_config.get("staff", [])
+        for staff in staff_list:
+            if staff.get("name", "").lower() == staff_name.lower():
+                staff_id = staff.get("id")
+                break
+        if not staff_id:
+            return {
+                "success": False,
+                "message": f"I couldn't find {staff_name}. Who would you like to book with?",
+            }
+    else:
+        # Use default staff if available
+        staff_id = session.default_staff_id
+        if not staff_id:
+            staff_list = session.business_config.get("staff", [])
+            if staff_list:
+                staff_id = staff_list[0].get("id")
+        if not staff_id:
+            return {
+                "success": False,
+                "message": "Which staff member would you like to book with?",
+            }
+    
+    # Look up service_id from service_name
+    service_id = None
+    duration_minutes = 30
+    if service_name:
+        services = session.business_config.get("services", [])
+        for svc in services:
+            if svc.get("name", "").lower() == service_name.lower():
+                service_id = svc.get("id")
+                duration_minutes = svc.get("duration_minutes", 30)
+                break
+    
     try:
         result = await backend.book_appointment(
             business_id=session.business_id,
             customer_id=session.customer["id"],
             date=date,
             time=time,
-            service_name=service_name,
-            staff_name=staff_name,
+            staff_id=staff_id,
+            service_id=service_id,
+            duration_minutes=duration_minutes,
             notes=notes
         )
         
