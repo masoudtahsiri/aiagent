@@ -52,7 +52,7 @@ def sanitize_datetime_fields(data: Any) -> Any:
 @router.post("/log", response_model=CallLogResponse)
 async def create_call_log(call_data: CallLogCreate):
     """Create call log entry (no auth - for AI agent)"""
-    result = await CallLogService.create_call_log(call_data.model_dump())
+    result = await CallLogService.create_call_log(call_data.model_dump(mode='json'))
     # FIX: Sanitize datetime fields before returning
     return sanitize_datetime_fields(result)
 
@@ -71,9 +71,11 @@ async def update_call_log(
     - transcript: Full conversation transcript
     - ended_at: When the call ended
     """
+    # FIX: Use mode='json' to convert datetime objects to ISO strings
+    # before sending to Supabase (prevents "Object of type datetime is not JSON serializable")
     result = await CallLogService.update_call_log(
         call_log_id, 
-        update_data.model_dump(exclude_unset=True)
+        update_data.model_dump(exclude_unset=True, mode='json')
     )
     # FIX: Sanitize datetime fields before returning
     return sanitize_datetime_fields(result)
