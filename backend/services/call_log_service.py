@@ -52,8 +52,8 @@ class CallLogService:
 
         
 
-        # Return Pydantic model directly - FastAPI handles serialization
-        return CallLogResponse.model_validate(result.data[0])
+        # Return raw dict - endpoint will sanitize datetime fields
+        return result.data[0]
 
     
 
@@ -83,8 +83,8 @@ class CallLogService:
 
         
 
-        # Return Pydantic model directly - FastAPI handles serialization
-        return CallLogResponse.model_validate(result.data[0])
+        # Return raw dict - endpoint will sanitize datetime fields
+        return result.data[0]
 
     
 
@@ -210,8 +210,8 @@ class CallLogService:
 
         
 
-        # Return Pydantic model directly - FastAPI handles serialization
-        return CallLogResponse.model_validate(call_log)
+        # Return raw dict - endpoint will sanitize datetime fields
+        return call_log
 
 
 
