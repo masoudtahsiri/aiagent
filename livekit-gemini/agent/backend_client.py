@@ -832,16 +832,15 @@ class BackendClient:
     ) -> Optional[Dict]:
         """Log the end of a call with outcome and metrics."""
         try:
+            from datetime import datetime
             client = await self._get_client()
-            response = await client.post(
-                f"/api/calls/{call_log_id}/end",
+            response = await client.put(
+                f"/api/calls/log/{call_log_id}",
                 json={
-                    "duration": duration,
+                    "call_duration": duration,
                     "outcome": outcome,
-                    "summary": summary,
                     "transcript": transcript,
-                    "sentiment": sentiment,
-                    "tools_used": tools_used
+                    "ended_at": datetime.utcnow().isoformat()
                 }
             )
             response.raise_for_status()
