@@ -257,6 +257,21 @@ async def save_preference(request: SavePreferenceRequest):
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to save preference")
     
+    # ─────────────────────────────────────────────────────────────────────────
+    # SYNC LANGUAGE TO CUSTOMER RECORD
+    # ─────────────────────────────────────────────────────────────────────────
+    # When a language preference is saved, also update the customer's main
+    # language field so the AI agent uses it on the next call.
+    if request.category == "communication" and request.preference_key == "preferred_language":
+        try:
+            db.table("customers").update({
+                "language": request.preference_value
+            }).eq("id", request.customer_id).execute()
+        except Exception as e:
+            # Log but don't fail - preference was saved successfully
+            import logging
+            logging.warning(f"Failed to sync language to customer record: {e}")
+    
     return result.data[0]
 
 
