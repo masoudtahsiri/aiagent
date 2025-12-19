@@ -217,7 +217,7 @@ YOUR MISSION: Provide exceptional service that exceeds human staff capabilities.
                 # Include availability exceptions (upcoming time off)
                 exceptions = member.get("availability_exceptions", [])
                 if exceptions:
-                    for exc in exceptions[:3]:  # Show up to 3 upcoming exceptions
+                    for exc in exceptions:
                         exc_date = exc.get("date", "")
                         exc_type = exc.get("type", "closed")
                         exc_reason = exc.get("reason", "")
