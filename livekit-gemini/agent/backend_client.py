@@ -317,7 +317,8 @@ class BackendClient:
         business_id: str,
         date: str,
         service_name: Optional[str] = None,
-        staff_name: Optional[str] = None
+        staff_name: Optional[str] = None,
+        staff_id: Optional[str] = None
     ) -> Optional[Dict]:
         """
         Check available appointment slots.
@@ -325,26 +326,43 @@ class BackendClient:
         Args:
             business_id: Business UUID
             date: Date to check (YYYY-MM-DD)
-            service_name: Optional service to filter by
-            staff_name: Optional staff member to filter by
+            service_name: Optional service to filter by (not used in API, for filtering results)
+            staff_name: Optional staff member name to filter by (used to find staff_id)
+            staff_id: Optional staff ID (if provided, used directly; otherwise looked up from staff_name)
         
         Returns:
             Dict with available_slots list
         """
         try:
             client = await self._get_client()
-            params = {"business_id": business_id, "date": date}
-            if service_name:
-                params["service_name"] = service_name
-            if staff_name:
-                params["staff_name"] = staff_name
+            target_staff_id = staff_id
             
+            # If staff_name provided but no staff_id, look it up from business config
+            if not target_staff_id and staff_name:
+                # Get business config to find staff_id from staff_name
+                # We need to get the business phone number first, but we have business_id
+                # Actually, we can query staff directly by name and business_id
+                # But there's no public endpoint for that, so we'll use business config
+                # For now, we'll need the caller to pass staff_id from business config
+                # This is a limitation - the agent should pass staff_id from already-loaded business config
+                logger.warning(f"Cannot look up staff_id from staff_name without business config. Please pass staff_id.")
+                return None
+            
+            if not target_staff_id:
+                logger.warning("No staff_id provided for availability check")
+                return None
+            
+            # Use the correct endpoint: /api/appointments/staff/{staff_id}/slots
             response = await client.get(
-                "/api/appointments/availability",
-                params=params
+                f"/api/appointments/staff/{target_staff_id}/slots",
+                params={"start_date": date}
             )
             response.raise_for_status()
-            return response.json()
+            slots = response.json()
+            
+            # Filter by service if needed (this would require additional logic)
+            # For now, return all slots for the staff member
+            return {"available_slots": slots}
         except Exception as e:
             logger.error(f"check_availability error: {e}")
             return None

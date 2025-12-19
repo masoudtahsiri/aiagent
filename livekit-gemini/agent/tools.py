@@ -158,12 +158,41 @@ async def check_availability(
     elif date.lower() == "tomorrow":
         date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     
+    # Look up staff_id from staff_name if provided, otherwise use default
+    staff_id = None
+    if staff_name:
+        staff_list = session.business_config.get("staff", [])
+        for staff in staff_list:
+            if staff.get("name", "").lower() == staff_name.lower():
+                staff_id = staff.get("id")
+                break
+        if not staff_id:
+            return {
+                "success": False,
+                "message": f"I couldn't find a staff member named {staff_name}. Let me check availability for all staff.",
+                "available_slots": []
+            }
+    else:
+        # Use default staff if available, or first staff member
+        staff_id = session.default_staff_id
+        if not staff_id:
+            staff_list = session.business_config.get("staff", [])
+            if staff_list:
+                staff_id = staff_list[0].get("id")
+        if not staff_id:
+            return {
+                "success": False,
+                "message": "I need to know which staff member you'd like to see. Who would you like to book with?",
+                "available_slots": []
+            }
+    
     try:
         result = await backend.check_availability(
             business_id=session.business_id,
             date=date,
             service_name=service_name,
-            staff_name=staff_name
+            staff_name=staff_name,
+            staff_id=staff_id
         )
         
         if not result:
