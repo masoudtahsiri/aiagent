@@ -50,6 +50,24 @@ def get_backend():
     return _backend_client
 
 
+def unwrap_value(value, default=None):
+    """
+    Unwrap nested lists from AI input.
+    
+    The AI sometimes passes parameters as lists or nested lists:
+    - "value" -> "value"
+    - ["value"] -> "value"
+    - [["value"]] -> "value"
+    - [] -> default
+    - None -> default
+    """
+    while isinstance(value, list):
+        if not value:
+            return default
+        value = value[0]
+    return value if value is not None else default
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # UTILITY FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -152,18 +170,15 @@ async def check_availability(
     session = get_session()
     backend = get_backend()
     
-    # Normalize inputs - AI sometimes passes lists instead of strings
-    if isinstance(date, list):
-        date = date[0] if date else ""
-    if isinstance(service_name, list):
-        service_name = service_name[0] if service_name else None
-    if isinstance(staff_name, list):
-        staff_name = staff_name[0] if staff_name else None
+    # Normalize inputs - AI sometimes passes nested lists
+    date = unwrap_value(date, "")
+    service_name = unwrap_value(service_name)
+    staff_name = unwrap_value(staff_name)
     
     # Handle relative dates
-    if date.lower() == "today":
+    if date and date.lower() == "today":
         date = datetime.now().strftime("%Y-%m-%d")
-    elif date.lower() == "tomorrow":
+    elif date and date.lower() == "tomorrow":
         date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     
     # Look up staff_id from staff_name if provided, otherwise use default
@@ -287,22 +302,17 @@ async def book_appointment(
             "next_action": "collect_customer_info"
         }
     
-    # Normalize inputs - AI sometimes passes lists instead of strings
-    if isinstance(date, list):
-        date = date[0] if date else ""
-    if isinstance(time, list):
-        time = time[0] if time else ""
-    if isinstance(service_name, list):
-        service_name = service_name[0] if service_name else ""
-    if isinstance(staff_name, list):
-        staff_name = staff_name[0] if staff_name else None
-    if isinstance(notes, list):
-        notes = notes[0] if notes else None
+    # Normalize inputs - AI sometimes passes nested lists
+    date = unwrap_value(date, "")
+    time = unwrap_value(time, "")
+    service_name = unwrap_value(service_name, "")
+    staff_name = unwrap_value(staff_name)
+    notes = unwrap_value(notes)
     
     # Handle relative dates
-    if date.lower() == "today":
+    if date and date.lower() == "today":
         date = datetime.now().strftime("%Y-%m-%d")
-    elif date.lower() == "tomorrow":
+    elif date and date.lower() == "tomorrow":
         date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     
     # Look up staff_id from staff_name
@@ -497,10 +507,16 @@ async def reschedule_appointment(
             "next_action": "identify_customer"
         }
     
+    # Normalize inputs - AI sometimes passes nested lists
+    new_date = unwrap_value(new_date, "")
+    new_time = unwrap_value(new_time, "")
+    appointment_id = unwrap_value(appointment_id)
+    current_date = unwrap_value(current_date)
+    
     # Handle relative dates
-    if new_date.lower() == "today":
+    if new_date and new_date.lower() == "today":
         new_date = datetime.now().strftime("%Y-%m-%d")
-    elif new_date.lower() == "tomorrow":
+    elif new_date and new_date.lower() == "tomorrow":
         new_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     
     try:
@@ -1006,12 +1022,18 @@ async def add_family_member(
             "next_action": "identify_customer"
         }
     
+    # Normalize inputs - AI sometimes passes nested lists
+    name = unwrap_value(name, "")
+    relationship = unwrap_value(relationship, "")
+    phone = unwrap_value(phone)
+    notes = unwrap_value(notes)
+    
     try:
         result = await backend.add_relationship(
             customer_id=session.customer["id"],
             business_id=session.business_id,
             related_name=name,
-            relationship_type=relationship.lower(),
+            relationship_type=relationship.lower() if relationship else "",
             phone=phone,
             notes=notes
         )
@@ -1134,6 +1156,10 @@ async def record_feedback(
             "message": "I'd like to record this properly. Could you tell me your name?",
             "next_action": "identify_customer"
         }
+    
+    # Normalize inputs - AI sometimes passes nested lists
+    feedback_type = unwrap_value(feedback_type, "general")
+    content = unwrap_value(content, "")
     
     try:
         result = await backend.record_feedback(
@@ -1405,10 +1431,16 @@ async def schedule_callback(
             "next_action": "identify_customer"
         }
     
+    # Normalize inputs - AI sometimes passes nested lists
+    callback_date = unwrap_value(callback_date, "")
+    callback_time = unwrap_value(callback_time, "")
+    reason = unwrap_value(reason, "")
+    notes = unwrap_value(notes)
+    
     # Handle relative dates
-    if callback_date.lower() == "today":
+    if callback_date and callback_date.lower() == "today":
         callback_date = datetime.now().strftime("%Y-%m-%d")
-    elif callback_date.lower() == "tomorrow":
+    elif callback_date and callback_date.lower() == "tomorrow":
         callback_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     
     try:
@@ -1628,10 +1660,13 @@ async def answer_question(
     session = get_session()
     backend = get_backend()
     
+    # Normalize inputs - AI sometimes passes nested lists
+    question = unwrap_value(question, "")
+    
     knowledge_base = session.business_config.get("knowledge_base", [])
     
     # First, search local knowledge base
-    question_lower = question.lower()
+    question_lower = question.lower() if question else ""
     
     for entry in knowledge_base:
         kb_question = entry.get("question", "").lower()
