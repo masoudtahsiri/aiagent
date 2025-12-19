@@ -403,11 +403,11 @@ class BackendClient:
             # Use agent-specific endpoint (no auth required)
             # Backend expects query parameters, not JSON body
             params = {
-                "business_id": business_id,
-                "customer_id": customer_id,
+                    "business_id": business_id,
+                    "customer_id": customer_id,
                 "staff_id": staff_id,
-                "appointment_date": date,
-                "appointment_time": time,
+                    "appointment_date": date,
+                    "appointment_time": time,
                 "duration_minutes": duration_minutes
             }
             if service_id:

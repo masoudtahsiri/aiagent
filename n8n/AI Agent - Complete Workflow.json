@@ -325,7 +325,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get token AND prepare delete data in one step\nconst apt = $input.first().json;\n\n// Fetch token via HTTP\nconst backendUrl = $env.BACKEND_URL || 'http://localhost:8000';\nconst tokenResponse = await this.helpers.httpRequest({\n  method: 'GET',\n  url: backendUrl + '/api/calendar/tokens/' + apt.staff_id,\n});\n\nif (!tokenResponse || !tokenResponse.access_token) {\n  return [{ json: { skip: true } }];\n}\n\nreturn [{\n  json: {\n    appointment_id: apt.id,\n    google_event_id: apt.google_event_id,\n    calendar_id: tokenResponse.calendar_id || 'primary',\n    access_token: tokenResponse.access_token,\n    skip: false\n  }\n}];\n```\n\n**New flow:**\n```\nHas Cancelled? → Prepare Delete Data (Code) → Should Delete? → Delete Google Event → Mark as Deleted"
+        "jsCode": "// Get token AND prepare delete data in one step\nconst apt = $input.first().json;\n\n// Fetch token via HTTP\nconst backendUrl = $env.BACKEND_URL || 'http://localhost:8000';\nconst tokenResponse = await this.helpers.httpRequest({\n  method: 'GET',\n  url: backendUrl + '/api/calendar/tokens/' + apt.staff_id,\n});\n\nif (!tokenResponse || !tokenResponse.access_token) {\n  return [{ json: { skip: true } }];\n}\n\nreturn [{\n  json: {\n    appointment_id: apt.id,\n    google_event_id: apt.google_event_id,\n    calendar_id: tokenResponse.calendar_id || 'primary',\n    access_token: tokenResponse.access_token,\n    skip: false\n  }\n}];"
       },
       "id": "bb6f94f2-f9df-43c7-a25d-5529d998ecd8",
       "name": "Prepare Delete Data",
@@ -1437,38 +1437,6 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "has-analysis",
-              "leftValue": "={{ $json.analysis }}",
-              "rightValue": "",
-              "operator": {
-                "type": "object",
-                "operation": "notEmpty"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "79e2ccc5-c00f-493d-8ccb-ce4c0c66492b",
-      "name": "Analysis Valid?",
-      "type": "n8n-nodes-base.if",
-      "position": [
-        10032,
-        -4176
-      ],
-      "typeVersion": 2
-    },
-    {
-      "parameters": {
         "jsCode": "const input = $input.first().json;\nconst memories = input.analysis.memories || [];\nreturn memories.map(mem => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    memory_type: mem.type || 'note',\n    content: mem.content,\n    importance: mem.importance || 5,\n    source_type: 'call',\n    source_id: input.call_log_id\n  }\n}));"
       },
       "id": "c555bd7e-09c9-4e60-a28a-952129694a7d",
@@ -1543,6 +1511,15 @@
         "url": "=https://cwcjsgdbrqjljekxpgxz.supabase.co/rest/v1/customers?id=eq.{{ $('Analysis Valid?').first().json.customer_id }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"last_call_summary\": \"{{ $('Analysis Valid?').first().json.analysis.call_summary || '' }}\",\n  \"last_call_at\": \"{{ $now.toISO() }}\"\n}",
@@ -1597,6 +1574,8 @@
     },
     {
       "parameters": {
+        "promptType": "define",
+        "text": "=You are a call quality analyst. Analyze the following call transcript and return your analysis as a valid JSON object with this exact structure:\n\n{\n  \"sentiment\": \"positive\" | \"neutral\" | \"negative\",\n  \"score\": 1-10,\n  \"call_summary\": \"Brief 1-2 sentence summary of what happened in this call\",\n  \"issues\": [\"issue 1\", \"issue 2\"],\n  \"strengths\": [\"strength 1\", \"strength 2\"],\n  \"recommendations\": [\"recommendation 1\", \"recommendation 2\"],\n  \"memories\": [\n    {\"type\": \"fact\", \"content\": \"Description of factual information\", \"importance\": 7},\n    {\"type\": \"preference\", \"content\": \"Customer preference\", \"importance\": 8},\n    {\"type\": \"note\", \"content\": \"Important note about customer\", \"importance\": 6}\n  ],\n  \"preferences\": [\n    {\"category\": \"scheduling\", \"key\": \"preferred_time\", \"value\": \"morning\", \"confidence\": 0.8},\n    {\"category\": \"communication\", \"key\": \"language\", \"value\": \"English\", \"confidence\": 0.9}\n  ]\n}\n\nIMPORTANT RULES:\n1. Return ONLY the JSON object. No markdown, no code blocks, no explanation text.\n2. ALWAYS extract at least one memory and one preference from every conversation.\n3. Memory types MUST be one of: fact, preference, note, issue, positive, conversation, relationship\n   - fact: Factual information (e.g., \"Booked root canal for Dec 24 at 3pm\")\n   - preference: Customer preferences (e.g., \"Prefers afternoon appointments\")\n   - note: General notes (e.g., \"Customer speaks English\")\n   - issue: Problems or concerns (e.g., \"Customer was frustrated with wait time\")\n   - positive: Positive feedback (e.g., \"Customer praised the service\")\n   - relationship: Family/relationships mentioned (e.g., \"Has daughter named Sarah\")\n4. For preferences, extract:\n   - scheduling: preferred_time, preferred_day, preferred_staff\n   - communication: language, contact_method\n   - service: preferred_service, special_requirements\n5. Importance scale: 1-10 (10 = critical to remember)\n6. Confidence scale: 0.0-1.0 (1.0 = absolutely certain)\n\nTranscript:\n{{ $json.transcript }}",
         "messages": {
           "messageValues": []
         },
@@ -1610,6 +1589,19 @@
       ],
       "id": "e67dd163-28fc-4667-b21f-92e83dc48968",
       "name": "Analyze with Gemini"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if analysis is valid and pass through\nconst input = $input.first().json;\n\n// If there's an error or no analysis, return empty (skip downstream)\nif (input.error || !input.analysis) {\n  return [];\n}\n\n// Analysis is valid - pass through\nreturn [{ json: input }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10032,
+        -4176
+      ],
+      "id": "6092b88c-7a3b-4661-8fee-992d3b923fb5",
+      "name": "Analysis Valid?"
     }
   ],
   "pinData": {},
@@ -2251,34 +2243,6 @@
         ]
       ]
     },
-    "Analysis Valid?": {
-      "main": [
-        [
-          {
-            "node": "Prepare Memories",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Prepare Preferences",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Update Customer Summary",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Respond Analysis Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Prepare Memories": {
       "main": [
         [
@@ -2322,6 +2286,27 @@
           }
         ]
       ]
+    },
+    "Analysis Valid?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Memories",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Preferences",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Customer Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -2333,7 +2318,7 @@
     "saveExecutionProgress": true,
     "errorWorkflow": "ZkQplwjtccGdKYZd"
   },
-  "versionId": "c2b3f942-0cca-48e2-b0da-a15fe4a2b6d6",
+  "versionId": "0c2bddac-f90a-46a4-9a43-d3cfb847fa52",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"
