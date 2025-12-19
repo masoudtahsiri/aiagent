@@ -210,9 +210,21 @@ YOUR MISSION: Provide exceptional service that exceeds human staff capabilities.
             lines.append("\n👥 STAFF MEMBERS:")
             for member in self.staff:
                 name = member.get("name", "Unknown")
-                role = member.get("role", "")
+                role = member.get("title", member.get("role", ""))
                 role_str = f" ({role})" if role else ""
                 lines.append(f"  • {name}{role_str}")
+                
+                # Include availability exceptions (upcoming time off)
+                exceptions = member.get("availability_exceptions", [])
+                if exceptions:
+                    for exc in exceptions[:3]:  # Show up to 3 upcoming exceptions
+                        exc_date = exc.get("date", "")
+                        exc_type = exc.get("type", "closed")
+                        exc_reason = exc.get("reason", "")
+                        
+                        if exc_type == "closed":
+                            reason_str = f" - {exc_reason}" if exc_reason else ""
+                            lines.append(f"      ⚠️ Off on {exc_date}{reason_str}")
         
         return "\n".join(lines)
     
