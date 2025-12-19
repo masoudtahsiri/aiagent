@@ -27,6 +27,7 @@ from livekit.agents import (
     Agent,
     AgentSession,
     AutoSubscribe,
+    ConversationItemAddedEvent,
     JobContext,
     JobProcess,
     cli,
@@ -642,17 +643,22 @@ Then wait for their response and continue naturally in {session_data.language_na
     # EVENT HANDLERS - Transcript Collection
     # ─────────────────────────────────────────────────────────────────────────
     
-    @session.on("agent_speech_committed")
-    def on_agent_speech(msg):
-        """Capture agent's speech for transcript."""
-        if hasattr(msg, 'content') and msg.content:
-            session_data.add_to_transcript("AI", msg.content)
-    
-    @session.on("user_speech_committed") 
-    def on_user_speech(msg):
-        """Capture user's speech for transcript."""
-        if hasattr(msg, 'content') and msg.content:
-            session_data.add_to_transcript("Customer", msg.content)
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(event: ConversationItemAddedEvent):
+        """Capture conversation items (both user and agent) for transcript."""
+        # Get the text content from the conversation item
+        text_content = event.item.text_content if hasattr(event.item, 'text_content') else None
+        
+        if text_content:
+            # Determine speaker based on role
+            if event.item.role == "assistant" or event.item.role == "agent":
+                speaker = "AI"
+            elif event.item.role == "user":
+                speaker = "Customer"
+            else:
+                speaker = event.item.role  # Fallback to role name
+            
+            session_data.add_to_transcript(speaker, text_content)
     
     # ─────────────────────────────────────────────────────────────────────────
     # ROOM EVENT HANDLERS - Call End
