@@ -67,8 +67,8 @@ class AddSpecialDateRequest(BaseModel):
 
 def get_db():
     """Get Supabase database client"""
-    from backend.database.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from backend.database.supabase_client import get_db as get_supabase_db
+    return get_supabase_db()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
