@@ -52,8 +52,8 @@ class CallLogService:
 
         
 
-        # Use Pydantic to ensure proper datetime serialization
-        return CallLogResponse.model_validate(result.data[0]).model_dump()
+        # Use Pydantic to ensure proper datetime serialization (mode='json' for ISO strings)
+        return CallLogResponse.model_validate(result.data[0]).model_dump(mode='json')
 
     
 
@@ -83,8 +83,8 @@ class CallLogService:
 
         
 
-        # Use Pydantic to ensure proper datetime serialization
-        return CallLogResponse.model_validate(result.data[0]).model_dump()
+        # Use Pydantic to ensure proper datetime serialization (mode='json' for ISO strings)
+        return CallLogResponse.model_validate(result.data[0]).model_dump(mode='json')
 
     
 
@@ -210,8 +210,8 @@ class CallLogService:
 
         
 
-        # Use Pydantic to ensure proper datetime serialization
-        return CallLogResponse.model_validate(call_log).model_dump()
+        # Use Pydantic to ensure proper datetime serialization (mode='json' for ISO strings)
+        return CallLogResponse.model_validate(call_log).model_dump(mode='json')
 
 
 

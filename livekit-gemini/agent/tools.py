@@ -412,11 +412,12 @@ async def cancel_appointment(
 ) -> dict:
     """
     Cancel an existing appointment.
+    IMPORTANT: Always ask the customer for their cancellation reason before calling this function.
     
     Args:
         appointment_id: The appointment ID (if known)
         appointment_date: Date of appointment to cancel (if ID not known)
-        reason: Reason for cancellation (optional)
+        reason: The reason for cancellation - ALWAYS ask the customer why they are cancelling
     
     Returns:
         success: Whether cancellation succeeded
@@ -425,11 +426,24 @@ async def cancel_appointment(
     session = get_session()
     backend = get_backend()
     
+    # Normalize inputs (AI may pass lists)
+    reason = unwrap_value(reason)
+    appointment_id = unwrap_value(appointment_id)
+    appointment_date = unwrap_value(appointment_date)
+    
     if not session.customer:
         return {
             "success": False,
             "message": "Let me look up your account first. What's your name?",
             "next_action": "identify_customer"
+        }
+    
+    # Ask for reason if not provided
+    if not reason:
+        return {
+            "success": False,
+            "message": "I understand you'd like to cancel. May I ask the reason for the cancellation?",
+            "awaiting": "cancellation_reason"
         }
     
     try:
