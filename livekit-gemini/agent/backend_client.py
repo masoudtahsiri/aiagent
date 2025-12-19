@@ -263,7 +263,7 @@ class BackendClient:
         
         Args:
             customer_id: Customer UUID
-            business_id: Business UUID
+            business_id: Business UUID (not used - kept for compatibility)
             status: Filter by status (scheduled, completed, cancelled, no_show)
         
         Returns:
@@ -271,12 +271,16 @@ class BackendClient:
         """
         try:
             client = await self._get_client()
-            params = {"business_id": business_id}
+            # Use agent-specific endpoint (no auth required)
+            params = {}
             if status:
                 params["status"] = status
+            # Set upcoming_only=False to get all appointments when no status filter
+            if not status:
+                params["upcoming_only"] = "false"
             
             response = await client.get(
-                f"/api/customers/{customer_id}/appointments",
+                f"/api/agent/appointments/customer/{customer_id}",
                 params=params
             )
             response.raise_for_status()
@@ -294,13 +298,13 @@ class BackendClient:
         Get customer's full history with the business.
         
         Returns:
-            Dict with appointments, feedback, interactions
+            Dict with tags, recent_appointments, stats
         """
         try:
             client = await self._get_client()
+            # Use agent-specific endpoint (no auth required)
             response = await client.get(
-                f"/api/customers/{customer_id}/history",
-                params={"business_id": business_id}
+                f"/api/agent/appointments/customer-context/{customer_id}"
             )
             response.raise_for_status()
             return response.json()
