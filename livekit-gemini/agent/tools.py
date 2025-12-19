@@ -366,6 +366,7 @@ async def book_appointment(
         
         if not result or not result.get("success"):
             error = result.get("error", "") if result else ""
+            error = str(unwrap_value(error, ""))  # Ensure error is a string
             if "conflict" in error.lower() or "not available" in error.lower():
                 return {
                     "success": False,
@@ -568,6 +569,7 @@ async def reschedule_appointment(
             }
         
         error = result.get("error", "") if result else ""
+        error = str(unwrap_value(error, ""))  # Ensure error is a string
         if "not available" in error.lower():
             return {
                 "success": False,
@@ -831,6 +833,7 @@ async def create_new_customer(
             }
         
         error = result.get("error", "") if result else ""
+        error = str(unwrap_value(error, ""))  # Ensure error is a string
         if "duplicate" in error.lower() or "exists" in error.lower():
             return {
                 "success": False,
