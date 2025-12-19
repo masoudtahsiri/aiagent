@@ -10,6 +10,8 @@ from datetime import datetime
 
 from backend.database.supabase_client import get_db
 
+from backend.models.call_log import CallLogResponse
+
 
 
 
@@ -50,7 +52,8 @@ class CallLogService:
 
         
 
-        return result.data[0]
+        # Use Pydantic to ensure proper datetime serialization
+        return CallLogResponse.model_validate(result.data[0]).model_dump()
 
     
 
@@ -80,7 +83,8 @@ class CallLogService:
 
         
 
-        return result.data[0]
+        # Use Pydantic to ensure proper datetime serialization
+        return CallLogResponse.model_validate(result.data[0]).model_dump()
 
     
 
@@ -206,7 +210,8 @@ class CallLogService:
 
         
 
-        return call_log
+        # Use Pydantic to ensure proper datetime serialization
+        return CallLogResponse.model_validate(call_log).model_dump()
 
 
 
