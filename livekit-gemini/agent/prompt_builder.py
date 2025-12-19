@@ -71,7 +71,7 @@ class PromptBuilder:
         # Extract common data
         self.staff = business_config.get("staff", [])
         self.services = business_config.get("services", [])
-        self.operating_hours = business_config.get("operating_hours", [])
+        self.operating_hours = business_config.get("business_hours", [])
         self.knowledge_base = business_config.get("knowledge_base", [])
     
     def build(self) -> str:

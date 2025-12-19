@@ -1510,7 +1510,7 @@ async def get_business_hours(context: RunContext) -> dict:
     """
     session = get_session()
     
-    hours = session.business_config.get("operating_hours", [])
+    hours = session.business_config.get("business_hours", [])
     
     if not hours:
         return {
