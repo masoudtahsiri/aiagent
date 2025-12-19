@@ -397,18 +397,23 @@ class BackendClient:
         try:
             client = await self._get_client()
             # Use agent-specific endpoint (no auth required)
+            # Backend expects query parameters, not JSON body
+            params = {
+                "business_id": business_id,
+                "customer_id": customer_id,
+                "staff_id": staff_id,
+                "appointment_date": date,
+                "appointment_time": time,
+                "duration_minutes": duration_minutes
+            }
+            if service_id:
+                params["service_id"] = service_id
+            if notes:
+                params["notes"] = notes
+            
             response = await client.post(
                 "/api/agent/appointments/book",
-                json={
-                    "business_id": business_id,
-                    "customer_id": customer_id,
-                    "staff_id": staff_id,
-                    "appointment_date": date,
-                    "appointment_time": time,
-                    "duration_minutes": duration_minutes,
-                    "service_id": service_id,
-                    "notes": notes
-                }
+                params=params
             )
             response.raise_for_status()
             return {"success": True, "appointment": response.json()}
@@ -428,9 +433,13 @@ class BackendClient:
         try:
             client = await self._get_client()
             # Use agent-specific endpoint (no auth required)
+            # Backend expects query parameters, not JSON body
+            params = {}
+            if reason:
+                params["cancellation_reason"] = reason
             response = await client.post(
                 f"/api/agent/appointments/{appointment_id}/cancel",
-                json={"cancellation_reason": reason}
+                params=params
             )
             response.raise_for_status()
             return {"success": True}
@@ -448,13 +457,14 @@ class BackendClient:
         """Reschedule an appointment to a new date/time."""
         try:
             client = await self._get_client()
-            payload = {"new_date": new_date, "new_time": new_time}
+            # Backend expects query parameters, not JSON body
+            params = {"new_date": new_date, "new_time": new_time}
             if staff_id:
-                payload["staff_id"] = staff_id
+                params["staff_id"] = staff_id
             # Use agent-specific endpoint (no auth required)
             response = await client.post(
                 f"/api/agent/appointments/{appointment_id}/reschedule",
-                json=payload
+                params=params
             )
             response.raise_for_status()
             return {"success": True, "appointment": response.json()}
