@@ -203,7 +203,7 @@ class BackendClient:
         try:
             client = await self._get_client()
             response = await client.post(
-                "/api/customers",
+                "/api/customers/create",
                 json={
                     "business_id": business_id,
                     "first_name": first_name,
