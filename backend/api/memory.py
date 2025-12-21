@@ -62,6 +62,35 @@ class AddSpecialDateRequest(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# CONSOLIDATED MEMORY MODELS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class UpdateLongTermMemoryRequest(BaseModel):
+    """
+    Long-term memory: permanent facts, preferences, relationships.
+    Uses structured key-value format to prevent duplicates.
+    Merged with existing data (not replaced).
+    """
+    customer_id: str
+    preferences: Optional[dict] = Field(default=None, description="Key-value preferences, e.g., {'scheduling_time': 'morning', 'communication_method': 'email'}")
+    facts: Optional[List[str]] = Field(default=None, description="List of facts to add/merge")
+    relationships: Optional[dict] = Field(default=None, description="Relationships by name, e.g., {'Sarah': {'type': 'assistant', 'phone': '+1...'}}")
+    notes: Optional[List[str]] = Field(default=None, description="General notes to add/merge")
+
+
+class UpdateShortTermMemoryRequest(BaseModel):
+    """
+    Short-term memory: current context that expires/gets replaced.
+    Replaced entirely each call (not merged).
+    """
+    customer_id: str
+    active_deals: Optional[List[dict]] = Field(default=None, description="Current active deals/opportunities")
+    open_issues: Optional[List[dict]] = Field(default=None, description="Unresolved issues")
+    recent_context: Optional[List[str]] = Field(default=None, description="Recent conversation context")
+    follow_ups: Optional[List[dict]] = Field(default=None, description="Scheduled follow-up actions")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DATABASE HELPER
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -456,4 +485,199 @@ async def confirm_preference(preference_id: str):
         raise HTTPException(status_code=404, detail="Preference not found")
     
     return result.data[0]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONSOLIDATED MEMORY SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/consolidated/{customer_id}")
+async def get_consolidated_memory(customer_id: str):
+    """
+    Get customer's consolidated memory (long-term + short-term).
+    This is the primary endpoint for AI agents to load customer context.
+    """
+    db = get_db()
+    
+    result = db.table("customers").select(
+        "id, first_name, last_name, long_term_memory, short_term_memory"
+    ).eq("id", customer_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    customer = result.data[0]
+    
+    return {
+        "customer_id": customer["id"],
+        "name": f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip(),
+        "long_term": customer.get("long_term_memory") or {
+            "preferences": {},
+            "facts": [],
+            "relationships": {},
+            "notes": []
+        },
+        "short_term": customer.get("short_term_memory") or {
+            "active_deals": [],
+            "open_issues": [],
+            "recent_context": [],
+            "follow_ups": []
+        }
+    }
+
+
+@router.post("/consolidated/long-term")
+async def update_long_term_memory(request: UpdateLongTermMemoryRequest):
+    """
+    Update customer's long-term memory.
+    MERGES with existing data (preferences overwrite by key, lists append unique).
+    """
+    db = get_db()
+    
+    # Get current memory
+    current = db.table("customers").select("long_term_memory").eq("id", request.customer_id).execute()
+    
+    if not current.data:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    existing = current.data[0].get("long_term_memory") or {
+        "preferences": {},
+        "facts": [],
+        "relationships": {},
+        "notes": []
+    }
+    
+    # Merge preferences (key-value, overwrites duplicates)
+    if request.preferences:
+        existing["preferences"] = {**existing.get("preferences", {}), **request.preferences}
+    
+    # Merge relationships (by name, overwrites duplicates)
+    if request.relationships:
+        existing["relationships"] = {**existing.get("relationships", {}), **request.relationships}
+    
+    # Merge facts (deduplicate)
+    if request.facts:
+        existing_facts = set(existing.get("facts", []))
+        for fact in request.facts:
+            existing_facts.add(fact)
+        existing["facts"] = list(existing_facts)
+    
+    # Merge notes (deduplicate)
+    if request.notes:
+        existing_notes = set(existing.get("notes", []))
+        for note in request.notes:
+            existing_notes.add(note)
+        existing["notes"] = list(existing_notes)
+    
+    # Save updated memory
+    result = db.table("customers").update({
+        "long_term_memory": existing
+    }).eq("id", request.customer_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to update long-term memory")
+    
+    return {
+        "success": True,
+        "customer_id": request.customer_id,
+        "long_term_memory": existing
+    }
+
+
+@router.post("/consolidated/short-term")
+async def update_short_term_memory(request: UpdateShortTermMemoryRequest):
+    """
+    Update customer's short-term memory.
+    REPLACES existing data (current context, not history).
+    """
+    db = get_db()
+    
+    short_term = {
+        "active_deals": request.active_deals or [],
+        "open_issues": request.open_issues or [],
+        "recent_context": request.recent_context or [],
+        "follow_ups": request.follow_ups or [],
+        "last_updated": datetime.utcnow().isoformat()
+    }
+    
+    result = db.table("customers").update({
+        "short_term_memory": short_term
+    }).eq("id", request.customer_id).execute()
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    return {
+        "success": True,
+        "customer_id": request.customer_id,
+        "short_term_memory": short_term
+    }
+
+
+@router.post("/consolidated/merge-from-call")
+async def merge_memory_from_call(
+    customer_id: str,
+    long_term_updates: Optional[dict] = None,
+    short_term_updates: Optional[dict] = None
+):
+    """
+    Convenience endpoint for n8n to update both memories after a call.
+    Long-term is merged, short-term is replaced.
+    """
+    db = get_db()
+    results = {}
+    
+    if long_term_updates:
+        # Merge long-term
+        current = db.table("customers").select("long_term_memory").eq("id", customer_id).execute()
+        if current.data:
+            existing = current.data[0].get("long_term_memory") or {
+                "preferences": {},
+                "facts": [],
+                "relationships": {},
+                "notes": []
+            }
+            
+            # Merge preferences
+            if "preferences" in long_term_updates:
+                existing["preferences"] = {**existing.get("preferences", {}), **long_term_updates["preferences"]}
+            
+            # Merge relationships
+            if "relationships" in long_term_updates:
+                existing["relationships"] = {**existing.get("relationships", {}), **long_term_updates["relationships"]}
+            
+            # Merge facts (deduplicate)
+            if "facts" in long_term_updates:
+                existing_facts = set(existing.get("facts", []))
+                for fact in long_term_updates["facts"]:
+                    existing_facts.add(fact)
+                existing["facts"] = list(existing_facts)
+            
+            # Merge notes (deduplicate)
+            if "notes" in long_term_updates:
+                existing_notes = set(existing.get("notes", []))
+                for note in long_term_updates["notes"]:
+                    existing_notes.add(note)
+                existing["notes"] = list(existing_notes)
+            
+            db.table("customers").update({"long_term_memory": existing}).eq("id", customer_id).execute()
+            results["long_term"] = existing
+    
+    if short_term_updates:
+        # Replace short-term
+        short_term = {
+            "active_deals": short_term_updates.get("active_deals", []),
+            "open_issues": short_term_updates.get("open_issues", []),
+            "recent_context": short_term_updates.get("recent_context", []),
+            "follow_ups": short_term_updates.get("follow_ups", []),
+            "last_updated": datetime.utcnow().isoformat()
+        }
+        db.table("customers").update({"short_term_memory": short_term}).eq("id", customer_id).execute()
+        results["short_term"] = short_term
+    
+    return {
+        "success": True,
+        "customer_id": customer_id,
+        **results
+    }
 

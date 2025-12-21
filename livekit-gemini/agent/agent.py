@@ -91,7 +91,9 @@ class SessionData:
         
         # Customer data
         self.customer = None
-        self.customer_memory = None
+        self.customer_memory = None  # Legacy
+        self.long_term_memory = {}   # New consolidated long-term memory
+        self.short_term_memory = {}  # New consolidated short-term memory
         self.caller_phone = None
         
         # Language settings
@@ -472,6 +474,13 @@ async def entrypoint(ctx: JobContext):
             session_data.customer = lookup_result.get("customer")
             session_data.customer_memory = lookup_result.get("context", {}).get("memory")
     
+    # Load consolidated memory (new system - long-term + short-term)
+    if session_data.customer:
+        consolidated = await backend.get_consolidated_memory(session_data.customer["id"])
+        if consolidated:
+            session_data.long_term_memory = consolidated.get("long_term", {})
+            session_data.short_term_memory = consolidated.get("short_term", {})
+    
     customer_name = ""
     if session_data.customer:
         customer_name = session_data.customer.get("first_name", "")
@@ -545,6 +554,8 @@ async def entrypoint(ctx: JobContext):
         customer=session_data.customer,
         customer_context=session_data.customer_memory,
         customer_memory=session_data.customer_memory,
+        long_term_memory=session_data.long_term_memory,
+        short_term_memory=session_data.short_term_memory,
         ai_config=ai_config,
         language_code=session_data.language_code,
         language_name=session_data.language_name,

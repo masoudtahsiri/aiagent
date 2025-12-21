@@ -546,6 +546,28 @@ class BackendClient:
     # MEMORY OPERATIONS
     # ═══════════════════════════════════════════════════════════════════════════
     
+    async def get_consolidated_memory(
+        self,
+        customer_id: str
+    ) -> Optional[Dict]:
+        """
+        Get customer's consolidated memory (long-term + short-term).
+        This is the primary method for loading customer context.
+        
+        Returns:
+            Dict with long_term and short_term memory
+        """
+        try:
+            client = await self._get_client()
+            response = await client.get(
+                f"/api/memory/consolidated/{customer_id}"
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"get_consolidated_memory error: {e}")
+            return None
+    
     async def get_customer_memory(
         self,
         customer_id: str,
@@ -553,6 +575,7 @@ class BackendClient:
     ) -> Optional[Dict]:
         """
         Get customer's memories, preferences, relationships, and special dates.
+        LEGACY: Use get_consolidated_memory() for new implementations.
         
         Returns:
             Dict with memories, preferences, relationships, special_dates
@@ -646,6 +669,78 @@ class BackendClient:
             logger.error(f"update_preference error: {e}")
             return None
     
+    async def update_long_term_memory(
+        self,
+        customer_id: str,
+        preferences: Optional[Dict] = None,
+        facts: Optional[list] = None,
+        relationships: Optional[Dict] = None,
+        notes: Optional[list] = None
+    ) -> Optional[Dict]:
+        """
+        Update customer's long-term memory (merged with existing).
+        
+        Args:
+            customer_id: Customer UUID
+            preferences: Key-value preferences (e.g., {'scheduling_time': 'morning'})
+            facts: List of facts to add
+            relationships: Relationships by name (e.g., {'Sarah': {'type': 'assistant'}})
+            notes: List of notes to add
+        """
+        try:
+            client = await self._get_client()
+            response = await client.post(
+                "/api/memory/consolidated/long-term",
+                json={
+                    "customer_id": customer_id,
+                    "preferences": preferences,
+                    "facts": facts,
+                    "relationships": relationships,
+                    "notes": notes
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"update_long_term_memory error: {e}")
+            return None
+    
+    async def update_short_term_memory(
+        self,
+        customer_id: str,
+        active_deals: Optional[list] = None,
+        open_issues: Optional[list] = None,
+        recent_context: Optional[list] = None,
+        follow_ups: Optional[list] = None
+    ) -> Optional[Dict]:
+        """
+        Update customer's short-term memory (replaces existing).
+        
+        Args:
+            customer_id: Customer UUID
+            active_deals: Current active deals/opportunities
+            open_issues: Unresolved issues
+            recent_context: Recent conversation context
+            follow_ups: Scheduled follow-up actions
+        """
+        try:
+            client = await self._get_client()
+            response = await client.post(
+                "/api/memory/consolidated/short-term",
+                json={
+                    "customer_id": customer_id,
+                    "active_deals": active_deals,
+                    "open_issues": open_issues,
+                    "recent_context": recent_context,
+                    "follow_ups": follow_ups
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"update_short_term_memory error: {e}")
+            return None
+    
     async def add_relationship(
         self,
         customer_id: str,
@@ -655,7 +750,7 @@ class BackendClient:
         phone: Optional[str] = None,
         notes: Optional[str] = None
     ) -> Optional[Dict]:
-        """Add a family member or relationship to customer."""
+        """Add a family member or relationship to customer. LEGACY: Use update_long_term_memory() instead."""
         try:
             client = await self._get_client()
             response = await client.post(

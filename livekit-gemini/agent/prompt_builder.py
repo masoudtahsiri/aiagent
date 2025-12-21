@@ -37,6 +37,8 @@ class PromptBuilder:
         customer: Optional[Dict[str, Any]] = None,
         customer_context: Optional[Dict[str, Any]] = None,
         customer_memory: Optional[Dict[str, Any]] = None,
+        long_term_memory: Optional[Dict[str, Any]] = None,
+        short_term_memory: Optional[Dict[str, Any]] = None,
         ai_config: Optional[Dict[str, Any]] = None,
         language_code: str = "en",
         language_name: str = "English",
@@ -50,7 +52,9 @@ class PromptBuilder:
             business_config: Full business configuration including staff, services, etc.
             customer: Customer record (if identified)
             customer_context: Recent appointments and history
-            customer_memory: Memories, preferences, relationships
+            customer_memory: Memories, preferences, relationships (LEGACY)
+            long_term_memory: Consolidated long-term memory (preferences, facts, relationships)
+            short_term_memory: Consolidated short-term memory (active deals, issues, context)
             ai_config: AI role configuration
             language_code: Language code for the conversation
             language_name: Human-readable language name
@@ -61,7 +65,9 @@ class PromptBuilder:
         self.business = business_config.get("business", {})
         self.customer = customer
         self.customer_context = customer_context or {}
-        self.customer_memory = customer_memory or {}
+        self.customer_memory = customer_memory or {}  # Legacy
+        self.long_term_memory = long_term_memory or {}
+        self.short_term_memory = short_term_memory or {}
         self.ai_config = ai_config or {}
         self.language_code = language_code
         self.language_name = language_name
@@ -99,8 +105,11 @@ class PromptBuilder:
         if self.customer:
             sections.append(self._build_existing_customer())
             
-            # Memory section (if available)
-            if self.customer_memory:
+            # Consolidated memory section (new system)
+            if self.long_term_memory or self.short_term_memory:
+                sections.append(self._build_consolidated_memory())
+            # Legacy memory section (fallback)
+            elif self.customer_memory:
                 sections.append(self._build_customer_memory())
         else:
             sections.append(self._build_new_customer_flow())
@@ -450,6 +459,108 @@ YOUR MISSION: Provide exceptional service that exceeds human staff capabilities.
         lines.append("""
 Use this information naturally in conversation. Reference relevant memories when
 appropriate but don't list everything - be natural and human-like.""")
+        
+        return "\n".join(lines)
+    
+    def _build_consolidated_memory(self) -> str:
+        """Build consolidated memory section (new system - long-term + short-term)"""
+        lines = [
+            "═══════════════════════════════════════════════════════════════════════════════",
+            "                         CUSTOMER MEMORY & INSIGHTS",
+            "═══════════════════════════════════════════════════════════════════════════════"
+        ]
+        
+        # Long-term memory (permanent, who they ARE)
+        if self.long_term_memory:
+            # Preferences
+            preferences = self.long_term_memory.get("preferences", {})
+            if preferences:
+                lines.append("\n💡 KNOWN PREFERENCES:")
+                for key, value in preferences.items():
+                    # Format key nicely (e.g., scheduling_time -> Scheduling Time)
+                    formatted_key = key.replace("_", " ").title()
+                    lines.append(f"  • {formatted_key}: {value}")
+            
+            # Facts
+            facts = self.long_term_memory.get("facts", [])
+            if facts:
+                lines.append("\n📌 KEY FACTS:")
+                for fact in facts[:10]:  # Limit to 10 most important
+                    lines.append(f"  • {fact}")
+            
+            # Relationships
+            relationships = self.long_term_memory.get("relationships", {})
+            if relationships:
+                lines.append("\n👨‍👩‍👧‍👦 RELATIONSHIPS:")
+                for name, info in relationships.items():
+                    rel_type = info.get("type", "contact")
+                    lines.append(f"  • {name} ({rel_type})")
+            
+            # Notes
+            notes = self.long_term_memory.get("notes", [])
+            if notes:
+                lines.append("\n📝 NOTES:")
+                for note in notes[:5]:  # Limit to 5 most recent
+                    lines.append(f"  • {note}")
+        
+        # Short-term memory (current context, what's happening NOW)
+        if self.short_term_memory:
+            # Active deals/opportunities
+            active_deals = self.short_term_memory.get("active_deals", [])
+            if active_deals:
+                lines.append("\n🎯 ACTIVE DEALS/OPPORTUNITIES:")
+                for deal in active_deals:
+                    if isinstance(deal, dict):
+                        product = deal.get("product", "Unknown")
+                        stage = deal.get("stage", "")
+                        next_action = deal.get("next_action", "")
+                        lines.append(f"  • {product} - {stage}")
+                        if next_action:
+                            lines.append(f"    → Next: {next_action}")
+                    else:
+                        lines.append(f"  • {deal}")
+            
+            # Open issues
+            open_issues = self.short_term_memory.get("open_issues", [])
+            if open_issues:
+                lines.append("\n⚠️ OPEN ISSUES TO ADDRESS:")
+                for issue in open_issues:
+                    if isinstance(issue, dict):
+                        issue_type = issue.get("type", "issue")
+                        status = issue.get("status", "")
+                        context = issue.get("context", "")
+                        lines.append(f"  • [{issue_type}] {context} ({status})")
+                    else:
+                        lines.append(f"  • {issue}")
+            
+            # Recent context
+            recent_context = self.short_term_memory.get("recent_context", [])
+            if recent_context:
+                lines.append("\n💬 RECENT CONTEXT:")
+                for ctx in recent_context[:5]:
+                    lines.append(f"  • {ctx}")
+            
+            # Follow-ups
+            follow_ups = self.short_term_memory.get("follow_ups", [])
+            if follow_ups:
+                lines.append("\n📋 SCHEDULED FOLLOW-UPS:")
+                for fu in follow_ups:
+                    if isinstance(fu, dict):
+                        action = fu.get("action", "Follow up")
+                        date = fu.get("date", "")
+                        reason = fu.get("reason", "")
+                        lines.append(f"  • {action} on {date}: {reason}")
+                    else:
+                        lines.append(f"  • {fu}")
+        
+        if len(lines) <= 3:  # Only header lines
+            return ""
+        
+        lines.append("""
+Use this information naturally in conversation. Reference relevant context when
+appropriate but don't list everything - be natural and human-like.
+
+LONG-TERM info tells you WHO they are. SHORT-TERM info tells you WHAT'S happening now.""")
         
         return "\n".join(lines)
     
