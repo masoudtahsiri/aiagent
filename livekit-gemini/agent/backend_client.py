@@ -586,7 +586,7 @@ class BackendClient:
         Args:
             customer_id: Customer UUID
             business_id: Business UUID
-            memory_type: Type of memory (fact, preference, note, issue, positive)
+            memory_type: Type of memory (fact, preference, note, issue)
             content: The memory content
             importance: Importance score 1-10
             structured_data: Optional structured data

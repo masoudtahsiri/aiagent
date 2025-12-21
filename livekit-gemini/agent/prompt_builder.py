@@ -364,9 +364,7 @@ YOUR MISSION: Provide exceptional service that exceeds human staff capabilities.
                     "fact": "📌",
                     "preference": "💡",
                     "issue": "⚠️",
-                    "positive": "💚",
-                    "note": "📝",
-                    "relationship": "👥"
+                    "note": "📝"
                 }.get(mem_type, "•")
                 
                 lines.append(f"  {type_icon} {content} {stars}")

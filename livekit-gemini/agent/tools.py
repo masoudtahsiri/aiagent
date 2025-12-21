@@ -1810,7 +1810,7 @@ async def save_memory(
     
     Args:
         content: What to remember (e.g., "Prefers morning appointments")
-        memory_type: Type of memory - 'fact', 'preference', 'issue', 'positive'
+        memory_type: Type of memory - 'fact', 'preference', 'issue', 'note'
         importance: How important (1-10, higher = more important to remember)
     
     Returns:

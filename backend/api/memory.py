@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/memory", tags=["Memory System"])
 class SaveMemoryRequest(BaseModel):
     customer_id: str
     business_id: str
-    memory_type: str = Field(..., description="fact, preference, note, issue, positive, conversation, relationship")
+    memory_type: str = Field(..., description="fact, preference, note, issue")
     content: str
     importance: int = Field(default=5, ge=1, le=10)
     structured_data: Optional[dict] = None
@@ -158,14 +158,11 @@ async def save_memory(request: SaveMemoryRequest):
     - preference: Expressed preferences
     - note: General observations
     - issue: Problems or complaints
-    - positive: Positive feedback/experiences
-    - conversation: Call summary
-    - relationship: Family/relationship info
     """
     db = get_db()
     
     # Validate memory type
-    valid_types = ["fact", "preference", "note", "issue", "positive", "conversation", "relationship"]
+    valid_types = ["fact", "preference", "note", "issue"]
     if request.memory_type not in valid_types:
         raise HTTPException(
             status_code=400, 
