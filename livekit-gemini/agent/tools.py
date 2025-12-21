@@ -880,6 +880,11 @@ async def create_new_customer(
 @function_tool()
 async def update_customer_info(
     context: RunContext,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    date_of_birth: Optional[str] = None,
+    city: Optional[str] = None,
+    address: Optional[str] = None,
     phone: Optional[str] = None,
     email: Optional[str] = None,
     preferred_contact_method: Optional[str] = None,
@@ -887,9 +892,14 @@ async def update_customer_info(
     notes: Optional[str] = None,
 ) -> dict:
     """
-    Update the customer's contact information or preferences.
+    Update the customer's personal information, contact details, or preferences.
     
     Args:
+        first_name: Customer's first name
+        last_name: Customer's last name
+        date_of_birth: Date of birth in YYYY-MM-DD format
+        city: City where the customer lives
+        address: Full street address
         phone: New phone number
         email: New email address
         preferred_contact_method: How they prefer to be contacted (phone, sms, email, whatsapp)
@@ -912,6 +922,16 @@ async def update_customer_info(
     
     try:
         update_data = {}
+        if first_name:
+            update_data["first_name"] = first_name
+        if last_name:
+            update_data["last_name"] = last_name
+        if date_of_birth:
+            update_data["date_of_birth"] = date_of_birth
+        if city:
+            update_data["city"] = city
+        if address:
+            update_data["address"] = address
         if phone:
             update_data["phone"] = phone
         if email:
