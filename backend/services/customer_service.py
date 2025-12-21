@@ -93,6 +93,50 @@ class CustomerService:
         return serialize_dates(result.data[0])
     
     @staticmethod
+    async def update_customer_for_agent(customer_id: str, update_data: dict) -> dict:
+        """
+        Update customer (for AI agent - no authentication required)
+        """
+        db = get_db()
+        
+        # Get customer to verify it exists
+        customer_result = db.table("customers").select("*").eq("id", customer_id).execute()
+        
+        if not customer_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Customer not found"
+            )
+        
+        # Remove None values and convert dates
+        cleaned_data = {}
+        for key, value in update_data.items():
+            if value is not None:
+                if isinstance(value, date):
+                    cleaned_data[key] = value.isoformat()
+                elif isinstance(value, datetime):
+                    cleaned_data[key] = value.isoformat()
+                else:
+                    cleaned_data[key] = value
+        
+        if not cleaned_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No data to update"
+            )
+        
+        # Update customer
+        result = db.table("customers").update(cleaned_data).eq("id", customer_id).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Customer not found"
+            )
+        
+        return serialize_dates(result.data[0])
+    
+    @staticmethod
     async def create_customer(customer_data: dict, user_id: str) -> dict:
         """Create a new customer"""
         db = get_db()

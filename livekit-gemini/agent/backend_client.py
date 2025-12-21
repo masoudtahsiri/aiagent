@@ -251,8 +251,8 @@ class BackendClient:
         """
         try:
             client = await self._get_client()
-            response = await client.patch(
-                f"/api/customers/{customer_id}",
+            response = await client.put(
+                f"/api/customers/update/{customer_id}",
                 json=update_fields
             )
             response.raise_for_status()

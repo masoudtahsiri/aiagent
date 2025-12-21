@@ -25,6 +25,13 @@ async def create_customer_for_agent(customer_data: CustomerCreate):
     return await CustomerService.create_customer_for_agent(customer_dict)
 
 
+@router.put("/update/{customer_id}", response_model=CustomerResponse)
+async def update_customer_for_agent(customer_id: str, customer_data: CustomerUpdate):
+    """Update customer (for AI agent - no auth required)"""
+    update_dict = customer_data.model_dump(exclude_unset=True)
+    return await CustomerService.update_customer_for_agent(customer_id, update_dict)
+
+
 @router.post("", response_model=CustomerResponse)
 async def create_customer(
     customer_data: CustomerCreate,
