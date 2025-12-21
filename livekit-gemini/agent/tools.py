@@ -799,16 +799,22 @@ async def create_new_customer(
     context: RunContext,
     first_name: str,
     last_name: str,
+    date_of_birth: Optional[str] = None,
+    city: Optional[str] = None,
+    address: Optional[str] = None,
     phone: Optional[str] = None,
     email: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> dict:
     """
-    Register a new customer in the system.
+    Register a new customer in the system. Collect all required information from the caller.
     
     Args:
-        first_name: Customer's first name
-        last_name: Customer's last name
+        first_name: Customer's first name (required)
+        last_name: Customer's last name (required)
+        date_of_birth: Date of birth in YYYY-MM-DD format (required - ask the caller)
+        city: City where the customer lives (required - ask the caller)
+        address: Full street address (required - ask the caller)
         phone: Phone number (optional - will use caller's number if not provided)
         email: Email address (optional)
         notes: Any notes about the customer (optional)
@@ -830,6 +836,9 @@ async def create_new_customer(
             business_id=session.business_id,
             first_name=first_name,
             last_name=last_name,
+            date_of_birth=date_of_birth,
+            city=city,
+            address=address,
             phone=phone,
             email=email,
             notes=notes,

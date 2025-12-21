@@ -181,6 +181,9 @@ class BackendClient:
         first_name: str,
         last_name: str,
         phone: str,
+        date_of_birth: Optional[str] = None,
+        city: Optional[str] = None,
+        address: Optional[str] = None,
         email: Optional[str] = None,
         notes: Optional[str] = None,
         language: Optional[str] = None
@@ -193,6 +196,9 @@ class BackendClient:
             first_name: Customer's first name
             last_name: Customer's last name
             phone: Phone number
+            date_of_birth: Date of birth (YYYY-MM-DD)
+            city: City
+            address: Street address
             email: Email address (optional)
             notes: Initial notes (optional)
             language: Preferred language code (optional)
@@ -209,6 +215,9 @@ class BackendClient:
                     "first_name": first_name,
                     "last_name": last_name,
                     "phone": phone,
+                    "date_of_birth": date_of_birth,
+                    "city": city,
+                    "address": address,
                     "email": email,
                     "notes": notes,
                     "language": language
