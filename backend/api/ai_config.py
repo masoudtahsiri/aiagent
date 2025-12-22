@@ -3,10 +3,11 @@ AI Configuration Endpoints - Optimized Version
 
 Key Optimizations:
 1. Batch database queries where possible
-2. In-memory caching for business configs (60 second TTL)
-3. Selective field loading (don't fetch unnecessary data)
-4. Parallel async operations for independent queries
-5. Early termination for not-found cases
+2. Redis caching for business configs (5 minute TTL, persists across restarts)
+3. In-memory fallback cache when Redis unavailable
+4. Selective field loading (don't fetch unnecessary data)
+5. Parallel async operations for independent queries
+6. Early termination for not-found cases
 
 All endpoints maintain backward compatibility.
 """
@@ -22,6 +23,7 @@ import logging
 from backend.models.ai_config import AIRoleCreate, AIRoleUpdate, AIRoleResponse
 from backend.models.business import PhoneNumberLookup
 from backend.database.supabase_client import get_db
+from backend.database.redis_client import RedisCache
 from backend.middleware.auth import get_current_active_user
 
 router = APIRouter(prefix="/api/ai", tags=["AI Configuration"])
@@ -60,8 +62,9 @@ class BusinessConfigCache:
         self._timestamps.pop(key, None)
 
 
-# Global cache instance
-_config_cache = BusinessConfigCache(ttl_seconds=60)
+# Global cache instance - 5 minute TTL for better hit rate
+# Business config rarely changes, so longer cache is safe
+_config_cache = BusinessConfigCache(ttl_seconds=300)
 
 
 # =============================================================================
@@ -74,7 +77,8 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
     Lookup business by AI phone number (for agent routing - no auth)
 
     Optimizations:
-    - Caches result for 60 seconds
+    - Redis caching (5 min TTL, persists across restarts)
+    - In-memory fallback cache
     - Batches related queries
     - Only fetches active/upcoming data
     
@@ -88,15 +92,27 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
     - Knowledge base / FAQs
     """
     start = time.perf_counter()
-    cache_hit = False
+    cache_source = None
     
-    # Check cache first
+    # ═══════════════════════════════════════════════════════════════════════
+    # CACHE LOOKUP: Redis first, then in-memory fallback
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    # Try Redis first (persistent, shared across workers)
+    cached = RedisCache.get_business_by_phone(lookup.phone_number)
+    if cached:
+        cache_source = "redis"
+        elapsed = (time.perf_counter() - start) * 1000
+        logger.info(f"⚡ lookup_business_by_phone: {elapsed:.1f}ms (cache: {cache_source})")
+        return cached
+    
+    # Fallback to in-memory cache
     cache_key = f"biz_phone:{lookup.phone_number}"
     cached = _config_cache.get(cache_key)
     if cached:
-        cache_hit = True
+        cache_source = "memory"
         elapsed = (time.perf_counter() - start) * 1000
-        logger.info(f"lookup_business_by_phone: {elapsed:.1f}ms (cache: {cache_hit})")
+        logger.info(f"⚡ lookup_business_by_phone: {elapsed:.1f}ms (cache: {cache_source})")
         return cached
     
     db = get_db()
@@ -317,12 +333,20 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
         "knowledge_base": knowledge_base
     }
 
-    # Cache the result
+    # ═══════════════════════════════════════════════════════════════════════
+    # CACHE THE RESULT: Redis (persistent) + in-memory (fast fallback)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    # Save to Redis (persistent, shared across workers)
+    redis_saved = RedisCache.set_business_by_phone(lookup.phone_number, response)
+    
+    # Also save to in-memory cache (fast fallback if Redis fails)
     _config_cache.set(cache_key, response)
     
     # Log timing
     elapsed = (time.perf_counter() - start) * 1000
-    logger.info(f"lookup_business_by_phone: {elapsed:.1f}ms (cache: {cache_hit})")
+    cache_status = "saved to redis" if redis_saved else "saved to memory only"
+    logger.info(f"🔍 lookup_business_by_phone: {elapsed:.1f}ms ({cache_status})")
     
     return response
 
@@ -360,10 +384,12 @@ async def create_ai_role(
     if not result.data:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create AI role")
     
-    # Invalidate cache for this business
+    # Invalidate cache for this business (both Redis and in-memory)
     biz_result = db.table("businesses").select("ai_phone_number").eq("id", role_data.business_id).execute()
     if biz_result.data and biz_result.data[0].get("ai_phone_number"):
-        _config_cache.invalidate(f"biz_phone:{biz_result.data[0]['ai_phone_number']}")
+        phone = biz_result.data[0]['ai_phone_number']
+        RedisCache.invalidate_business(phone)
+        _config_cache.invalidate(f"biz_phone:{phone}")
     
     role = result.data[0]
     return {
@@ -452,10 +478,12 @@ async def update_ai_role(
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI role not found")
     
-    # Invalidate cache
+    # Invalidate cache (both Redis and in-memory)
     biz_result = db.table("businesses").select("ai_phone_number").eq("id", role["business_id"]).execute()
     if biz_result.data and biz_result.data[0].get("ai_phone_number"):
-        _config_cache.invalidate(f"biz_phone:{biz_result.data[0]['ai_phone_number']}")
+        phone = biz_result.data[0]['ai_phone_number']
+        RedisCache.invalidate_business(phone)
+        _config_cache.invalidate(f"biz_phone:{phone}")
     
     updated_role = result.data[0]
     return {

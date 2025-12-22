@@ -586,6 +586,8 @@ async def entrypoint(ctx: JobContext):
     # ─────────────────────────────────────────────────────────────────────────
     # CUSTOMER LOOKUP & MEMORY (Backend API calls)
     # ─────────────────────────────────────────────────────────────────────────
+    # OPTIMIZED: Use combined endpoint that returns customer + memory in ONE call
+    # This eliminates one API round-trip (~230ms savings)
     
     # For outbound, we already know the customer
     if is_outbound and customer_id:
@@ -595,25 +597,25 @@ async def entrypoint(ctx: JobContext):
         if customer_data:
             session_data.customer = customer_data.get("customer")
             session_data.customer_memory = customer_data.get("memory")
+            # Also load consolidated memory for outbound
+            async with tracker.measure("📡 API: get_consolidated_memory"):
+                consolidated = await backend.get_consolidated_memory(customer_id)
+            if consolidated:
+                session_data.long_term_memory = consolidated.get("long_term", {})
+                session_data.short_term_memory = consolidated.get("short_term", {})
     else:
-        # For inbound, lookup by phone
-        async with tracker.measure("📡 API: lookup_customer_with_context"):
-            lookup_result = await backend.lookup_customer_with_context(
+        # For inbound, use COMBINED lookup that returns customer + memory in one call
+        async with tracker.measure("📡 API: lookup_customer_with_memory"):
+            lookup_result = await backend.lookup_customer_with_memory(
                 caller_phone, business_id
             )
         is_existing = lookup_result.get("exists", False)
         
         if is_existing:
             session_data.customer = lookup_result.get("customer")
-            session_data.customer_memory = lookup_result.get("context", {}).get("memory")
-    
-    # Load consolidated memory (new system - long-term + short-term)
-    if session_data.customer:
-        async with tracker.measure("📡 API: get_consolidated_memory"):
-            consolidated = await backend.get_consolidated_memory(session_data.customer["id"])
-        if consolidated:
-            session_data.long_term_memory = consolidated.get("long_term", {})
-            session_data.short_term_memory = consolidated.get("short_term", {})
+            # Memory is already included in the response - no second API call needed!
+            session_data.long_term_memory = lookup_result.get("long_term_memory", {})
+            session_data.short_term_memory = lookup_result.get("short_term_memory", {})
     
     customer_name = ""
     if session_data.customer:

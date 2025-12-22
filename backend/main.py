@@ -42,6 +42,13 @@ async def lifespan(app: FastAPI):
     print("🚀 AI Receptionist API starting...")
     print(f"   CORS origins: {settings.cors_origins_list}")
     
+    # Initialize Redis cache
+    try:
+        from backend.database.redis_client import init_redis
+        init_redis()
+    except Exception as e:
+        print(f"⚠️ Redis init warning: {e}")
+    
     yield
     
     # Shutdown
@@ -155,9 +162,20 @@ def health_check():
     except Exception as e:
         db_status = f"error: {str(e)[:50]}"
     
+    # Redis connectivity check
+    redis_status = "disabled"
+    try:
+        from backend.database.redis_client import get_redis
+        redis_client = get_redis()
+        if redis_client:
+            redis_status = "connected"
+    except Exception as e:
+        redis_status = f"error: {str(e)[:50]}"
+    
     return {
         "status": "healthy",
         "database": db_status,
+        "redis": redis_status,
         "timestamp": datetime.utcnow().isoformat(),
         "version": "1.0.0"
     }
