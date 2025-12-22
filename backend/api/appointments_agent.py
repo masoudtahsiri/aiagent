@@ -1,11 +1,12 @@
 """Appointment endpoints for AI agent (no authentication required)
 
 OPTIMIZED: Uses parallel queries for faster booking (~3x improvement)
+FIXED: Now blocks multiple time slots based on service duration
 """
 
 from fastapi import APIRouter, Query, HTTPException, status
-from typing import Optional
-from datetime import date
+from typing import Optional, List
+from datetime import date, datetime, timedelta
 import asyncio
 import time
 import logging
@@ -14,6 +15,38 @@ from backend.database.supabase_client import get_db
 from backend.services.reminder_service import ReminderService
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_slots_needed(duration_minutes: int, slot_duration: int = 30) -> int:
+    """Calculate how many time slots are needed for a service duration"""
+    import math
+    return math.ceil(duration_minutes / slot_duration)
+
+
+def get_consecutive_slot_times(start_time: str, count: int, slot_duration: int = 30) -> List[str]:
+    """
+    Get list of consecutive slot times starting from start_time.
+    
+    Args:
+        start_time: Starting time in HH:MM or HH:MM:SS format
+        count: Number of slots needed
+        slot_duration: Duration of each slot in minutes (default 30)
+    
+    Returns:
+        List of times in HH:MM:SS format
+    """
+    # Parse start time
+    if len(start_time) == 5:
+        start_time = start_time + ":00"
+    
+    base_time = datetime.strptime(start_time, "%H:%M:%S")
+    
+    times = []
+    for i in range(count):
+        slot_time = base_time + timedelta(minutes=i * slot_duration)
+        times.append(slot_time.strftime("%H:%M:%S"))
+    
+    return times
 
 router = APIRouter(prefix="/api/agent/appointments", tags=["Agent Appointments"])
 
@@ -39,6 +72,7 @@ async def book_appointment_for_agent(
     Book appointment (no auth - for AI agent)
     
     OPTIMIZED: Runs verification queries in parallel (~3x faster)
+    FIXED: Now blocks multiple time slots based on service duration
     """
     start_time = time.perf_counter()
     db = get_db()
@@ -50,7 +84,27 @@ async def book_appointment_for_agent(
         appointment_time_db = appointment_time
     
     # ═══════════════════════════════════════════════════════════════════════
-    # PARALLEL VERIFICATION: Run 4 independent queries simultaneously
+    # GET SERVICE DURATION: Determines how many slots to block
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    actual_duration = duration_minutes  # Default
+    if service_id:
+        service_result = await asyncio.to_thread(
+            lambda: db.table("services").select("duration_minutes").eq("id", service_id).execute()
+        )
+        if service_result.data:
+            actual_duration = service_result.data[0].get("duration_minutes", duration_minutes)
+            logger.info(f"📋 Service duration: {actual_duration} minutes")
+    
+    # Calculate how many 30-minute slots are needed
+    slot_duration = 30  # Standard slot size
+    slots_needed = calculate_slots_needed(actual_duration, slot_duration)
+    slot_times = get_consecutive_slot_times(appointment_time_db, slots_needed, slot_duration)
+    
+    logger.info(f"📋 Booking requires {slots_needed} slots: {slot_times}")
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # PARALLEL VERIFICATION: Run queries simultaneously
     # ═══════════════════════════════════════════════════════════════════════
     
     def verify_business():
@@ -62,15 +116,20 @@ async def book_appointment_for_agent(
     def verify_staff():
         return db.table("staff").select("id, name").eq("id", staff_id).eq("business_id", business_id).execute()
     
-    def check_slot():
-        return db.table("time_slots").select("*").eq("staff_id", staff_id).eq("date", appointment_date).eq("time", appointment_time_db).eq("is_booked", False).eq("is_blocked", False).execute()
+    def check_all_slots():
+        """Check ALL required slots are available"""
+        return db.table("time_slots").select("*").eq(
+            "staff_id", staff_id
+        ).eq("date", appointment_date).in_(
+            "time", slot_times
+        ).eq("is_booked", False).eq("is_blocked", False).execute()
     
-    # Run all 4 queries in parallel
-    business_result, customer_result, staff_result, slot_result = await asyncio.gather(
+    # Run all queries in parallel
+    business_result, customer_result, staff_result, slots_result = await asyncio.gather(
         asyncio.to_thread(verify_business),
         asyncio.to_thread(verify_customer),
         asyncio.to_thread(verify_staff),
-        asyncio.to_thread(check_slot)
+        asyncio.to_thread(check_all_slots)
     )
     
     parallel_time = (time.perf_counter() - start_time) * 1000
@@ -86,45 +145,37 @@ async def book_appointment_for_agent(
     if not staff_result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff not found")
     
-    if not slot_result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Time slot is not available")
+    # Check ALL required slots are available
+    available_slots = slots_result.data or []
+    if len(available_slots) < slots_needed:
+        missing_count = slots_needed - len(available_slots)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Not enough consecutive time slots available. Need {slots_needed}, found {len(available_slots)}."
+        )
     
-    slot_id = slot_result.data[0]["id"]
+    # Get all slot IDs to mark as booked
+    slot_ids = [slot["id"] for slot in available_slots]
+    slot_id = slot_ids[0]  # Primary slot ID for appointment record
 
     
 
-    # Create appointment
-
+    # Create appointment (use actual service duration)
     appointment_data = {
-
         "business_id": business_id,
-
         "customer_id": customer_id,
-
         "staff_id": staff_id,
-
         "service_id": service_id,
-
         "slot_id": slot_id,
-
         "appointment_date": appointment_date,
-
         "appointment_time": appointment_time_db,
-
-        "duration_minutes": duration_minutes,
-
+        "duration_minutes": actual_duration,  # Use service duration
         "notes": notes,
-
         "status": "scheduled",
-
         "created_via": "ai_phone",
-
         "reminder_sent_email": False,
-
         "reminder_sent_call": False,
-
         "reminder_sent_sms": False
-
     }
 
     
@@ -147,8 +198,10 @@ async def book_appointment_for_agent(
     # PARALLEL POST-BOOKING: Run follow-up operations in parallel
     # ═══════════════════════════════════════════════════════════════════════
     
-    def mark_slot_booked():
-        return db.table("time_slots").update({"is_booked": True}).eq("id", slot_id).execute()
+    def mark_all_slots_booked():
+        """Mark ALL slots for this appointment as booked"""
+        # Update all slots in one query using IN clause
+        return db.table("time_slots").update({"is_booked": True}).in_("id", slot_ids).execute()
     
     def update_customer_stats():
         # Use SQL increment to avoid race conditions
@@ -166,15 +219,17 @@ async def book_appointment_for_agent(
             "change_type": "created",
             "new_date": appointment_date,
             "new_time": appointment_time_db,
-            "notes": "Booked via AI phone agent"
+            "notes": f"Booked via AI phone agent ({slots_needed} slots blocked)"
         }).execute()
     
     # Run all 3 operations in parallel
     await asyncio.gather(
-        asyncio.to_thread(mark_slot_booked),
+        asyncio.to_thread(mark_all_slots_booked),
         asyncio.to_thread(update_customer_stats),
         asyncio.to_thread(log_to_history)
     )
+    
+    logger.info(f"✅ Marked {len(slot_ids)} slots as booked: {slot_ids}")
     
     # Create reminders (runs async)
     try:
@@ -258,48 +313,44 @@ async def get_customer_appointments(
 
 
 @router.post("/{appointment_id}/cancel")
-
 async def cancel_appointment_for_agent(
-
     appointment_id: str,
-
     cancellation_reason: Optional[str] = None
-
 ):
-
-    """Cancel appointment (no auth - for AI agent)"""
-
+    """
+    Cancel appointment (no auth - for AI agent)
+    
+    FIXED: Now frees ALL time slots based on appointment duration
+    """
     db = get_db()
-
     
-
     # Get appointment
-
     apt_result = db.table("appointments").select("*").eq("id", appointment_id).execute()
-
     
-
     if not apt_result.data:
-
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
-
     
-
     appointment = apt_result.data[0]
-
     
-
     if appointment["status"] == "cancelled":
-
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment is already cancelled")
-
     
-
-    # Free up slot
-
-    if appointment.get("slot_id"):
-
-        db.table("time_slots").update({"is_booked": False}).eq("id", appointment["slot_id"]).execute()
+    # ═══════════════════════════════════════════════════════════════════════
+    # FREE ALL SLOTS: Calculate and free all slots based on duration
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    duration = appointment.get("duration_minutes", 30)
+    slots_to_free = calculate_slots_needed(duration, 30)
+    slot_times = get_consecutive_slot_times(appointment["appointment_time"], slots_to_free, 30)
+    
+    logger.info(f"📋 Cancelling: freeing {slots_to_free} slots at {slot_times}")
+    
+    # Free all slots for this appointment
+    db.table("time_slots").update({"is_booked": False}).eq(
+        "staff_id", appointment["staff_id"]
+    ).eq("date", appointment["appointment_date"]).in_("time", slot_times).execute()
+    
+    logger.info(f"✅ Freed {slots_to_free} slots for cancelled appointment")
 
     
 
@@ -354,131 +405,102 @@ async def cancel_appointment_for_agent(
 
 
 @router.post("/{appointment_id}/reschedule")
-
 async def reschedule_appointment_for_agent(
-
     appointment_id: str,
-
     new_date: str,
-
     new_time: str,
-
     staff_id: Optional[str] = None
-
 ):
-
-    """Reschedule appointment (no auth - for AI agent)"""
-
+    """
+    Reschedule appointment (no auth - for AI agent)
+    
+    FIXED: Now handles multiple time slots based on appointment duration
+    """
     db = get_db()
-
     
-
     # Get appointment
-
     apt_result = db.table("appointments").select("*").eq("id", appointment_id).execute()
-
     
-
     if not apt_result.data:
-
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
-
     
-
     appointment = apt_result.data[0]
-
     
-
     if appointment["status"] == "cancelled":
-
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reschedule cancelled appointment")
-
     
-
     # Use existing staff if not provided
-
     target_staff_id = staff_id or appointment["staff_id"]
-
     
-
     # Normalize time format
-
     if len(new_time) == 5:
-
         new_time_db = new_time + ":00"
-
     else:
-
         new_time_db = new_time
-
     
-
-    # Check new slot availability
-
-    slot_result = db.table("time_slots").select("*").eq("staff_id", target_staff_id).eq("date", new_date).eq("time", new_time_db).eq("is_booked", False).eq("is_blocked", False).execute()
-
+    # ═══════════════════════════════════════════════════════════════════════
+    # CALCULATE SLOTS NEEDED: Based on appointment duration
+    # ═══════════════════════════════════════════════════════════════════════
     
-
-    if not slot_result.data:
-
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New time slot is not available")
-
+    duration = appointment.get("duration_minutes", 30)
+    slots_needed = calculate_slots_needed(duration, 30)
+    new_slot_times = get_consecutive_slot_times(new_time_db, slots_needed, 30)
+    old_slot_times = get_consecutive_slot_times(appointment["appointment_time"], slots_needed, 30)
     
-
-    new_slot_id = slot_result.data[0]["id"]
-
+    logger.info(f"📋 Rescheduling: need {slots_needed} slots, new times: {new_slot_times}")
     
-
-    # Free old slot
-
-    if appointment.get("slot_id"):
-
-        db.table("time_slots").update({"is_booked": False}).eq("id", appointment["slot_id"]).execute()
-
+    # ═══════════════════════════════════════════════════════════════════════
+    # CHECK NEW SLOTS AVAILABILITY
+    # ═══════════════════════════════════════════════════════════════════════
     
-
-    # Book new slot
-
-    db.table("time_slots").update({"is_booked": True}).eq("id", new_slot_id).execute()
-
+    slots_result = db.table("time_slots").select("*").eq(
+        "staff_id", target_staff_id
+    ).eq("date", new_date).in_(
+        "time", new_slot_times
+    ).eq("is_booked", False).eq("is_blocked", False).execute()
     
-
+    available_slots = slots_result.data or []
+    if len(available_slots) < slots_needed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Not enough consecutive time slots available at new time. Need {slots_needed}, found {len(available_slots)}."
+        )
+    
+    new_slot_ids = [slot["id"] for slot in available_slots]
+    new_slot_id = new_slot_ids[0]  # Primary slot ID for appointment record
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # FREE OLD SLOTS, BOOK NEW SLOTS
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    # Free all old slots
+    db.table("time_slots").update({"is_booked": False}).eq(
+        "staff_id", appointment["staff_id"]
+    ).eq("date", appointment["appointment_date"]).in_("time", old_slot_times).execute()
+    
+    # Book all new slots
+    db.table("time_slots").update({"is_booked": True}).in_("id", new_slot_ids).execute()
+    
+    logger.info(f"✅ Freed {slots_needed} old slots, booked {len(new_slot_ids)} new slots")
+    
     # Update appointment
-
     db.table("appointments").update({
-
         "appointment_date": new_date,
-
         "appointment_time": new_time_db,
-
         "staff_id": target_staff_id,
-
         "slot_id": new_slot_id
-
     }).eq("id", appointment_id).execute()
-
     
-
     # Log to history
-
     db.table("appointment_history").insert({
-
         "appointment_id": appointment_id,
-
         "changed_by": "ai",
-
         "change_type": "rescheduled",
-
         "old_date": appointment["appointment_date"],
-
         "old_time": appointment["appointment_time"],
-
         "new_date": new_date,
-
         "new_time": new_time_db,
-
-        "notes": "Rescheduled via AI phone agent"
-
+        "notes": f"Rescheduled via AI phone agent ({slots_needed} slots)"
     }).execute()
 
     
