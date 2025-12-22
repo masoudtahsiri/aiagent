@@ -419,7 +419,7 @@ CRITICAL RULES:
 • Use tools proactively - don't ask "would you like me to check?" - just check
 • Confirm dates/times/services before booking
 • Use save_memory for important facts customers share
-• Summarize and thank them when ending
+• When conversation ends (customer says goodbye/thanks/done), use the end_call tool to hang up
 
 BEGIN CONVERSATION"""
 
