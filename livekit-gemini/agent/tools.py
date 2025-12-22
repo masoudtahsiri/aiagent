@@ -9,9 +9,12 @@ This module provides all the tools the AI agent needs to handle any task:
 - System (3 tools)
 
 Total: 25 tools (22 implemented here, excluding 3 payment tools)
+
+Includes latency tracking for all tool executions.
 """
 
 import logging
+import time
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from functools import wraps
@@ -22,6 +25,32 @@ if TYPE_CHECKING:
     from backend_client import BackendClient
 
 logger = logging.getLogger("ai-agent-tools")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOOL EXECUTION TIMING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def timed_tool(tool_name: str):
+    """
+    Decorator to time tool execution.
+    Logs the duration of each tool call.
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            start_time = time.perf_counter()
+            try:
+                result = await func(*args, **kwargs)
+                duration = (time.perf_counter() - start_time) * 1000
+                logger.info(f"🔧 TOOL [{duration:6.1f}ms] {tool_name} ✅")
+                return result
+            except Exception as e:
+                duration = (time.perf_counter() - start_time) * 1000
+                logger.error(f"🔧 TOOL [{duration:6.1f}ms] {tool_name} ❌ Error: {e}")
+                raise
+        return wrapper
+    return decorator
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -167,6 +196,9 @@ async def check_availability(
         available_slots: List of available time slots
         message: Natural language summary to tell caller
     """
+    tool_start = time.perf_counter()
+    logger.info("🔧 TOOL START: check_availability")
+    
     session = get_session()
     backend = get_backend()
     
@@ -252,6 +284,8 @@ async def check_availability(
             times = ", ".join(time_list)
             message = f"I have several openings on {date_formatted}. The earliest are at {times}. Would any of these work?"
         
+        tool_duration = (time.perf_counter() - tool_start) * 1000
+        logger.info(f"🔧 TOOL COMPLETE [{tool_duration:6.1f}ms]: check_availability ✅")
         return {
             "success": True,
             "message": message,
@@ -260,7 +294,8 @@ async def check_availability(
         }
         
     except Exception as e:
-        logger.error(f"check_availability error: {e}")
+        tool_duration = (time.perf_counter() - tool_start) * 1000
+        logger.error(f"🔧 TOOL COMPLETE [{tool_duration:6.1f}ms]: check_availability ❌ Error: {e}")
         return {
             "success": False,
             "message": "I'm having trouble accessing the schedule. Let me try that again.",
@@ -272,7 +307,7 @@ async def check_availability(
 async def book_appointment(
     context: RunContext,
     date: str,
-    time: str,
+    time_slot: str,
     service_name: str,
     staff_name: Optional[str] = None,
     notes: Optional[str] = None,
@@ -282,7 +317,7 @@ async def book_appointment(
     
     Args:
         date: Appointment date (YYYY-MM-DD)
-        time: Appointment time (HH:MM)
+        time_slot: Appointment time (HH:MM)
         service_name: Name of the service to book
         staff_name: Optional staff member preference
         notes: Optional notes for the appointment
@@ -292,6 +327,9 @@ async def book_appointment(
         message: Confirmation message to tell caller
         appointment: Created appointment details
     """
+    tool_start = time.perf_counter()
+    logger.info(f"🔧 TOOL START: book_appointment (date={date}, time={time_slot})")
+    
     session = get_session()
     backend = get_backend()
     
@@ -304,7 +342,7 @@ async def book_appointment(
     
     # Normalize inputs - AI sometimes passes nested lists
     date = unwrap_value(date, "")
-    time = unwrap_value(time, "")
+    time_slot = unwrap_value(time_slot, "")
     service_name = unwrap_value(service_name, "")
     staff_name = unwrap_value(staff_name)
     notes = unwrap_value(notes)
@@ -357,7 +395,7 @@ async def book_appointment(
             business_id=session.business_id,
             customer_id=session.customer["id"],
             date=date,
-            time=time,
+            appointment_time=time_slot,
             staff_id=staff_id,
             service_id=service_id,
             duration_minutes=duration_minutes,
@@ -382,12 +420,15 @@ async def book_appointment(
         
         # Format confirmation
         date_formatted = format_date_speech(date)
-        time_formatted = format_time_speech(time)
+        time_formatted = format_time_speech(time_slot)
         staff = appointment.get("staff_name", staff_name) or ""
         staff_str = f" with {staff}" if staff else ""
         
         # Update call outcome
         session.call_outcome = "appointment_booked"
+        
+        tool_duration = (time.perf_counter() - tool_start) * 1000
+        logger.info(f"🔧 TOOL COMPLETE [{tool_duration:6.1f}ms]: book_appointment ✅")
         
         return {
             "success": True,
@@ -396,7 +437,8 @@ async def book_appointment(
         }
         
     except Exception as e:
-        logger.error(f"book_appointment error: {e}")
+        tool_duration = (time.perf_counter() - tool_start) * 1000
+        logger.error(f"🔧 TOOL COMPLETE [{tool_duration:6.1f}ms]: book_appointment ❌ Error: {e}")
         return {
             "success": False,
             "message": "I ran into an issue booking that appointment. Let me try again."

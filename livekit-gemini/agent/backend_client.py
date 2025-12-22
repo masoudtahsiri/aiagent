@@ -11,15 +11,30 @@ This module provides all communication with the backend API:
 - Call logging
 
 All methods are async and handle errors gracefully.
+Includes latency tracking for all API calls.
 """
 
 import logging
+import time
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 import httpx
 
 logger = logging.getLogger("backend-client")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LATENCY TRACKING FOR API CALLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class APILatencyTracker:
+    """Track latency of backend API calls."""
+    
+    @staticmethod
+    def log_api_call(method: str, endpoint: str, duration_ms: float, success: bool = True):
+        """Log an API call with timing information."""
+        status = "✅" if success else "❌"
+        logger.info(f"⏱️ API {status} [{duration_ms:6.1f}ms] {method} {endpoint}")
 
 
 class BackendClient:
@@ -75,21 +90,29 @@ class BackendClient:
         Returns:
             Full business configuration including staff, services, hours, etc.
         """
+        start_time = time.perf_counter()
+        endpoint = "/api/ai/lookup-by-phone"
         try:
             client = await self._get_client()
             response = await client.post(
-                "/api/ai/lookup-by-phone",
+                endpoint,
                 json={"phone_number": phone_number}
             )
             response.raise_for_status()
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, True)
             return response.json()
         except httpx.HTTPStatusError as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             if e.response.status_code == 404:
                 logger.warning(f"No business found for phone: {phone_number}")
                 return None
             logger.error(f"lookup_business_by_phone error: {e}")
             raise
         except Exception as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             logger.error(f"lookup_business_by_phone error: {e}")
             raise
     
@@ -131,20 +154,28 @@ class BackendClient:
         Returns:
             Dict with exists, customer, and context (appointments, memory)
         """
+        start_time = time.perf_counter()
+        endpoint = "/api/customers/lookup"
         try:
             client = await self._get_client()
             response = await client.post(
-                "/api/customers/lookup",
+                endpoint,
                 json={"phone": phone, "business_id": business_id}
             )
             response.raise_for_status()
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, True)
             return response.json()
         except httpx.HTTPStatusError as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             if e.response.status_code == 404:
                 return {"exists": False, "customer": None, "context": {}}
             logger.error(f"lookup_customer_with_context error: {e}")
             return {"exists": False, "customer": None, "context": {}}
         except Exception as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             logger.error(f"lookup_customer_with_context error: {e}")
             return {"exists": False, "customer": None, "context": {}}
     
@@ -346,18 +377,13 @@ class BackendClient:
         Returns:
             Dict with available_slots list
         """
+        start_time = time.perf_counter()
         try:
             client = await self._get_client()
             target_staff_id = staff_id
             
             # If staff_name provided but no staff_id, look it up from business config
             if not target_staff_id and staff_name:
-                # Get business config to find staff_id from staff_name
-                # We need to get the business phone number first, but we have business_id
-                # Actually, we can query staff directly by name and business_id
-                # But there's no public endpoint for that, so we'll use business config
-                # For now, we'll need the caller to pass staff_id from business config
-                # This is a limitation - the agent should pass staff_id from already-loaded business config
                 logger.warning(f"Cannot look up staff_id from staff_name without business config. Please pass staff_id.")
                 return None
             
@@ -366,17 +392,23 @@ class BackendClient:
                 return None
             
             # Use the correct endpoint: /api/appointments/staff/{staff_id}/slots
+            endpoint = f"/api/appointments/staff/{target_staff_id}/slots"
             response = await client.get(
-                f"/api/appointments/staff/{target_staff_id}/slots",
+                endpoint,
                 params={"start_date": date}
             )
             response.raise_for_status()
             slots = response.json()
             
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("GET", endpoint, duration, True)
+            
             # Filter by service if needed (this would require additional logic)
             # For now, return all slots for the staff member
             return {"available_slots": slots}
         except Exception as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("GET", "/api/appointments/staff/.../slots", duration, False)
             logger.error(f"check_availability error: {e}")
             return None
     
@@ -385,7 +417,7 @@ class BackendClient:
         business_id: str,
         customer_id: str,
         date: str,
-        time: str,
+        appointment_time: str,
         staff_id: str,
         service_id: Optional[str] = None,
         duration_minutes: int = 30,
@@ -398,7 +430,7 @@ class BackendClient:
             business_id: Business UUID
             customer_id: Customer UUID
             date: Appointment date (YYYY-MM-DD)
-            time: Appointment time (HH:MM)
+            appointment_time: Appointment time (HH:MM)
             staff_id: Staff member UUID
             service_id: Optional service UUID
             duration_minutes: Appointment duration (default 30)
@@ -407,6 +439,8 @@ class BackendClient:
         Returns:
             Dict with success status and appointment details
         """
+        api_start = time.perf_counter()
+        endpoint = "/api/agent/appointments/book"
         try:
             client = await self._get_client()
             # Use agent-specific endpoint (no auth required)
@@ -416,7 +450,7 @@ class BackendClient:
                     "customer_id": customer_id,
                 "staff_id": staff_id,
                     "appointment_date": date,
-                    "appointment_time": time,
+                    "appointment_time": appointment_time,
                 "duration_minutes": duration_minutes
             }
             if service_id:
@@ -425,15 +459,21 @@ class BackendClient:
                 params["notes"] = notes
             
             response = await client.post(
-                "/api/agent/appointments/book",
+                endpoint,
                 params=params
             )
             response.raise_for_status()
+            duration = (time.perf_counter() - api_start) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, True)
             return {"success": True, "appointment": response.json()}
         except httpx.HTTPStatusError as e:
+            duration = (time.perf_counter() - api_start) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             error = e.response.json().get("detail", str(e)) if e.response.content else str(e)
             return {"success": False, "error": error}
         except Exception as e:
+            duration = (time.perf_counter() - api_start) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             logger.error(f"book_appointment error: {e}")
             return {"success": False, "error": str(e)}
     
@@ -557,14 +597,18 @@ class BackendClient:
         Returns:
             Dict with long_term and short_term memory
         """
+        start_time = time.perf_counter()
+        endpoint = f"/api/memory/consolidated/{customer_id}"
         try:
             client = await self._get_client()
-            response = await client.get(
-                f"/api/memory/consolidated/{customer_id}"
-            )
+            response = await client.get(endpoint)
             response.raise_for_status()
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("GET", endpoint, duration, True)
             return response.json()
         except Exception as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("GET", endpoint, duration, False)
             logger.error(f"get_consolidated_memory error: {e}")
             return None
     
@@ -957,10 +1001,12 @@ class BackendClient:
         language_source: Optional[str] = None
     ) -> Optional[Dict]:
         """Log the start of a call."""
+        start_time = time.perf_counter()
+        endpoint = "/api/calls/log"
         try:
             client = await self._get_client()
             response = await client.post(
-                "/api/calls/log",
+                endpoint,
                 json={
                     "business_id": business_id,
                     "caller_phone": caller_phone,
@@ -970,8 +1016,12 @@ class BackendClient:
                 }
             )
             response.raise_for_status()
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, True)
             return response.json()
         except Exception as e:
+            duration = (time.perf_counter() - start_time) * 1000
+            APILatencyTracker.log_api_call("POST", endpoint, duration, False)
             logger.error(f"log_call_start error: {e}")
             return None
     

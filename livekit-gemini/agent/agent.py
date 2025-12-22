@@ -18,6 +18,7 @@ Usage:
 import os
 import asyncio
 import logging
+import time
 from datetime import datetime
 from typing import Optional, Tuple
 from dotenv import load_dotenv
@@ -34,6 +35,7 @@ from livekit.agents import (
 )
 from livekit.agents.llm import function_tool
 from livekit.plugins import google, silero
+from google.genai import types  # For Gemini realtime configuration
 
 from backend_client import BackendClient
 from language_detector import detect_language, get_localized_greeting
@@ -66,6 +68,106 @@ backend = BackendClient(BACKEND_URL)
 # Agent server
 from livekit.agents import AgentServer
 server = AgentServer()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LATENCY TRACKER - Measures timing through entire call flow
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class LatencyTracker:
+    """
+    Tracks latency through the entire call flow:
+    
+    INBOUND PATH:
+    Phone → SIP → LiveKit → Agent → Gemini → Backend → DB
+    
+    OUTBOUND PATH:  
+    Gemini → Agent → LiveKit → SIP → Phone
+    """
+    
+    def __init__(self, call_id: str = ""):
+        self.call_id = call_id
+        self.checkpoints: dict[str, float] = {}
+        self.start_time = time.perf_counter()
+        self._last_checkpoint = self.start_time
+        
+    def checkpoint(self, name: str, details: str = "") -> float:
+        """
+        Record a checkpoint and log the time since last checkpoint.
+        Returns time in milliseconds since last checkpoint.
+        """
+        now = time.perf_counter()
+        elapsed_total = (now - self.start_time) * 1000  # ms
+        elapsed_since_last = (now - self._last_checkpoint) * 1000  # ms
+        
+        self.checkpoints[name] = now
+        self._last_checkpoint = now
+        
+        # Format the log message
+        detail_str = f" | {details}" if details else ""
+        logger.info(f"⏱️ [{elapsed_total:7.1f}ms total | +{elapsed_since_last:6.1f}ms] {name}{detail_str}")
+        
+        return elapsed_since_last
+    
+    def measure(self, name: str):
+        """
+        Context manager to measure duration of a code block.
+        Usage:
+            with tracker.measure("Backend API call"):
+                result = await backend.some_call()
+        """
+        return _LatencyMeasure(self, name)
+    
+    def summary(self) -> str:
+        """Get a summary of all checkpoints."""
+        if not self.checkpoints:
+            return "No checkpoints recorded"
+        
+        lines = ["═══ LATENCY SUMMARY ═══"]
+        prev_time = self.start_time
+        for name, timestamp in self.checkpoints.items():
+            delta = (timestamp - prev_time) * 1000
+            total = (timestamp - self.start_time) * 1000
+            lines.append(f"  {name}: +{delta:.1f}ms (total: {total:.1f}ms)")
+            prev_time = timestamp
+        
+        total_time = (time.perf_counter() - self.start_time) * 1000
+        lines.append(f"  ─────────────────────")
+        lines.append(f"  TOTAL: {total_time:.1f}ms")
+        return "\n".join(lines)
+
+
+class _LatencyMeasure:
+    """Context manager for measuring code block duration."""
+    
+    def __init__(self, tracker: LatencyTracker, name: str):
+        self.tracker = tracker
+        self.name = name
+        self.start = None
+        
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+    
+    def __exit__(self, *args):
+        elapsed = (time.perf_counter() - self.start) * 1000
+        now = time.perf_counter()
+        elapsed_total = (now - self.tracker.start_time) * 1000
+        self.tracker.checkpoints[self.name] = now
+        self.tracker._last_checkpoint = now
+        logger.info(f"⏱️ [{elapsed_total:7.1f}ms total | +{elapsed:6.1f}ms] {self.name}")
+        
+    async def __aenter__(self):
+        self.start = time.perf_counter()
+        return self
+    
+    async def __aexit__(self, *args):
+        elapsed = (time.perf_counter() - self.start) * 1000
+        now = time.perf_counter()
+        elapsed_total = (now - self.tracker.start_time) * 1000
+        self.tracker.checkpoints[self.name] = now
+        self.tracker._last_checkpoint = now
+        logger.info(f"⏱️ [{elapsed_total:7.1f}ms total | +{elapsed:6.1f}ms] {self.name}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -119,6 +221,10 @@ class SessionData:
         # Session references
         self.session = None
         self.room = None
+        
+        # Latency tracking
+        self.latency_tracker = None
+        self._user_speech_start = None  # Track when user starts speaking
         
         # Transcript collection
         self.transcript_lines = []
@@ -323,11 +429,24 @@ def prewarm(proc: JobProcess):
     """
     logger.info("🔄 Prewarming agent process...")
     
-    # Load VAD model
-    logger.info("   Loading VAD model...")
-    proc.userdata["vad"] = silero.VAD.load()
+    # Load VAD model with PHONE-OPTIMIZED settings
+    # These settings are tuned for SIP/phone audio quality
+    logger.info("   Loading VAD model (phone-optimized)...")
+    proc.userdata["vad"] = silero.VAD.load(
+        # Lower threshold = more sensitive to speech (phone audio is often quieter)
+        activation_threshold=0.35,
+        
+        # Wait longer before deciding speech ended (people pause mid-sentence)
+        min_silence_duration=0.8,
+        
+        # Shorter minimum speech = detect short utterances like "yes", "no"
+        min_speech_duration=0.05,
+        
+        # Include more audio before detected speech (catches word beginnings)
+        prefix_padding_duration=0.4,
+    )
     
-    logger.info("✅ Agent process ready")
+    logger.info("✅ Agent process ready (VAD: threshold=0.35, silence=0.8s)")
 
 
 server.setup_fnc = prewarm
@@ -353,22 +472,31 @@ async def entrypoint(ctx: JobContext):
     
     call_start = datetime.utcnow()
     
+    # ═══════════════════════════════════════════════════════════════════════
+    # LATENCY TRACKING - Initialize tracker for this call
+    # ═══════════════════════════════════════════════════════════════════════
+    tracker = LatencyTracker(call_id=ctx.room.name)
+    
     # ─────────────────────────────────────────────────────────────────────────
     # LOGGING HEADER
     # ─────────────────────────────────────────────────────────────────────────
     
     logger.info("=" * 70)
-    logger.info("🔔 INCOMING CALL")
+    logger.info("🔔 INCOMING CALL - LATENCY TRACKING ENABLED")
     logger.info(f"   Room: {ctx.room.name}")
     logger.info(f"   Time: {call_start.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     logger.info("=" * 70)
+    tracker.checkpoint("📞 CALL_RECEIVED", "SIP → LiveKit notification received")
     
     # ─────────────────────────────────────────────────────────────────────────
-    # CONNECT TO ROOM
+    # CONNECT TO ROOM (LiveKit Server connection)
     # ─────────────────────────────────────────────────────────────────────────
     
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    tracker.checkpoint("🔌 ROOM_CONNECTED", "Agent connected to LiveKit room")
+    
     participant = await ctx.wait_for_participant()
+    tracker.checkpoint("👤 PARTICIPANT_JOINED", f"SIP participant: {participant.identity[:20]}...")
     
     logger.info(f"👤 Participant connected: {participant.identity}")
     
@@ -386,7 +514,8 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"📤 OUTBOUND CALL: {outbound_id}")
         
         # Load outbound call context
-        outbound_context = await backend.get_outbound_call(outbound_id)
+        async with tracker.measure("📡 API: get_outbound_call"):
+            outbound_context = await backend.get_outbound_call(outbound_id)
         if not outbound_context:
             logger.error("❌ Outbound call context not found")
             return
@@ -396,7 +525,8 @@ async def entrypoint(ctx: JobContext):
         customer_id = outbound_context.get("customer_id")
         
         # Load business configuration
-        business_config = await backend.get_business_config(business_id)
+        async with tracker.measure("📡 API: get_business_config"):
+            business_config = await backend.get_business_config(business_id)
         if not business_config:
             logger.error("❌ Business configuration not found")
             return
@@ -419,9 +549,10 @@ async def entrypoint(ctx: JobContext):
         
         logger.info(f"📞 {caller_phone} → {called_number}")
         
-        # Load business by called number
+        # Load business by called number (Backend API call)
         try:
-            business_config = await backend.lookup_business_by_phone(called_number)
+            async with tracker.measure("📡 API: lookup_business_by_phone"):
+                business_config = await backend.lookup_business_by_phone(called_number)
         except Exception as e:
             logger.error(f"❌ Failed to load business for {called_number}: {e}")
             return
@@ -453,21 +584,23 @@ async def entrypoint(ctx: JobContext):
     session_data.outbound_call_id = outbound_id
     
     # ─────────────────────────────────────────────────────────────────────────
-    # CUSTOMER LOOKUP & MEMORY
+    # CUSTOMER LOOKUP & MEMORY (Backend API calls)
     # ─────────────────────────────────────────────────────────────────────────
     
     # For outbound, we already know the customer
     if is_outbound and customer_id:
-        customer_data = await backend.get_customer_with_memory(customer_id, business_id)
+        async with tracker.measure("📡 API: get_customer_with_memory"):
+            customer_data = await backend.get_customer_with_memory(customer_id, business_id)
         is_existing = bool(customer_data)
         if customer_data:
             session_data.customer = customer_data.get("customer")
             session_data.customer_memory = customer_data.get("memory")
     else:
         # For inbound, lookup by phone
-        lookup_result = await backend.lookup_customer_with_context(
-            caller_phone, business_id
-        )
+        async with tracker.measure("📡 API: lookup_customer_with_context"):
+            lookup_result = await backend.lookup_customer_with_context(
+                caller_phone, business_id
+            )
         is_existing = lookup_result.get("exists", False)
         
         if is_existing:
@@ -476,7 +609,8 @@ async def entrypoint(ctx: JobContext):
     
     # Load consolidated memory (new system - long-term + short-term)
     if session_data.customer:
-        consolidated = await backend.get_consolidated_memory(session_data.customer["id"])
+        async with tracker.measure("📡 API: get_consolidated_memory"):
+            consolidated = await backend.get_consolidated_memory(session_data.customer["id"])
         if consolidated:
             session_data.long_term_memory = consolidated.get("long_term", {})
             session_data.short_term_memory = consolidated.get("short_term", {})
@@ -491,6 +625,8 @@ async def entrypoint(ctx: JobContext):
     # ─────────────────────────────────────────────────────────────────────────
     # LANGUAGE DETECTION
     # ─────────────────────────────────────────────────────────────────────────
+    
+    tracker.checkpoint("🌐 LANGUAGE_DETECTION", "Detecting caller language")
     
     business_default_lang = business.get("default_language", "en")
     
@@ -549,6 +685,8 @@ async def entrypoint(ctx: JobContext):
     # BUILD SYSTEM PROMPT
     # ─────────────────────────────────────────────────────────────────────────
     
+    tracker.checkpoint("📝 PROMPT_BUILDING", "Building system prompt")
+    
     prompt_builder = PromptBuilder(
         business_config=business_config,
         customer=session_data.customer,
@@ -564,6 +702,7 @@ async def entrypoint(ctx: JobContext):
     )
     
     system_prompt = prompt_builder.build()
+    tracker.checkpoint("📝 PROMPT_BUILT", f"Prompt size: {len(system_prompt)} chars")
     
     # Build greeting
     greeting = build_greeting(
@@ -592,20 +731,21 @@ Then wait for their response and continue naturally in {session_data.language_na
     logger.info(f"💬 Greeting: {greeting[:60]}...")
     
     # ─────────────────────────────────────────────────────────────────────────
-    # LOG CALL START
+    # LOG CALL START (Backend API - fire and forget, don't block)
     # ─────────────────────────────────────────────────────────────────────────
     
     try:
-        call_log = await backend.log_call_start(
-            business_id=business_id,
-            caller_phone=caller_phone,
-            customer_id=session_data.customer.get("id") if session_data.customer else None,
-            role_id=session_data.current_role_id,
-            is_outbound=is_outbound,
-            outbound_call_id=outbound_id,
-            language_code=session_data.language_code,
-            language_source=lang_info.get("source")
-        )
+        async with tracker.measure("📡 API: log_call_start"):
+            call_log = await backend.log_call_start(
+                business_id=business_id,
+                caller_phone=caller_phone,
+                customer_id=session_data.customer.get("id") if session_data.customer else None,
+                role_id=session_data.current_role_id,
+                is_outbound=is_outbound,
+                outbound_call_id=outbound_id,
+                language_code=session_data.language_code,
+                language_source=lang_info.get("source")
+            )
         if call_log:
             session_data.call_log_id = call_log.get("id")
             logger.info(f"📝 Call logged: {session_data.call_log_id}")
@@ -615,6 +755,8 @@ Then wait for their response and continue naturally in {session_data.language_na
     # ─────────────────────────────────────────────────────────────────────────
     # CREATE TOOLS
     # ─────────────────────────────────────────────────────────────────────────
+    
+    tracker.checkpoint("🔧 TOOLS_LOADING", "Initializing agent tools")
     
     tools = get_tools_for_agent(
         session_data=session_data,
@@ -628,6 +770,8 @@ Then wait for their response and continue naturally in {session_data.language_na
     # CREATE AGENT
     # ─────────────────────────────────────────────────────────────────────────
     
+    tracker.checkpoint("🤖 AGENT_CREATION", "Creating AI agent")
+    
     agent = Agent(
         instructions=system_prompt,
         tools=tools,
@@ -637,21 +781,57 @@ Then wait for their response and continue naturally in {session_data.language_na
     # CREATE MODEL & SESSION
     # ─────────────────────────────────────────────────────────────────────────
     
+    tracker.checkpoint("🧠 GEMINI_MODEL_INIT", "Initializing Gemini Realtime Model")
+    
+    # Configure Gemini Realtime Model with optimized settings for phone calls
     model = google.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-12-2025",
         voice=voice,
-        temperature=0.7,
+        temperature=0.6,  # Slightly lower = more consistent responses
+        
+        # Enable input audio transcription - helps debug what Gemini hears
+        input_audio_transcription=types.AudioTranscriptionConfig(),
+        
+        # Enable output transcription for logging
+        output_audio_transcription=types.AudioTranscriptionConfig(),
     )
     
+    tracker.checkpoint("🎙️ SESSION_INIT", "Creating AgentSession with phone-optimized timing")
+    
+    # Configure AgentSession with phone-optimized timing
     session = AgentSession(
         llm=model,
         vad=ctx.proc.userdata.get("vad"),
+        
+        # ═══ TURN DETECTION & TIMING ═══
+        # Wait a bit longer before deciding user stopped speaking
+        # (phone calls have more natural pauses)
+        min_endpointing_delay=0.6,  # Default was 0.5s
+        
+        # Maximum time to wait for user to continue speaking
+        max_endpointing_delay=4.0,  # Default was 3.0s
+        
+        # ═══ INTERRUPTION HANDLING ═══
+        # Allow interruptions (user can cut off AI mid-sentence)
+        allow_interruptions=True,
+        
+        # User must speak at least 300ms to count as interruption
+        # (prevents noise from interrupting AI)
+        min_interruption_duration=0.3,  # Default was 0.5s
+        
+        # ═══ FALSE INTERRUPTION RECOVERY ═══
+        # If user interrupts but says nothing, resume after 2.5s
+        false_interruption_timeout=2.5,  # Default was 2.0s
+        resume_false_interruption=True,
     )
     
     session_data.session = session
     
+    # Store tracker in session_data for use in event handlers
+    session_data.latency_tracker = tracker
+    
     # ─────────────────────────────────────────────────────────────────────────
-    # EVENT HANDLERS - Transcript Collection
+    # EVENT HANDLERS - Transcript Collection & Debug Logging
     # ─────────────────────────────────────────────────────────────────────────
     
     @session.on("conversation_item_added")
@@ -671,6 +851,48 @@ Then wait for their response and continue naturally in {session_data.language_na
             
             session_data.add_to_transcript(speaker, text_content)
     
+    # ═══ DEBUG: Log what the AI hears from user ═══
+    @session.on("user_input_transcribed")
+    def on_user_input_transcribed(event):
+        """Debug: Log what Gemini transcribed from user speech."""
+        transcript = event.transcript if hasattr(event, 'transcript') else str(event)
+        is_final = event.is_final if hasattr(event, 'is_final') else True
+        
+        if is_final:
+            logger.info(f"🎤 USER SAID: \"{transcript}\"")
+        else:
+            logger.debug(f"🎤 [interim]: \"{transcript}\"")
+    
+    # ═══ DEBUG: Log speech detection events with timing ═══
+    @session.on("user_state_changed")
+    def on_user_state_changed(event):
+        """Debug: Log when user starts/stops speaking with timing."""
+        new_state = event.new_state if hasattr(event, 'new_state') else str(event)
+        if new_state == "speaking":
+            logger.info("🗣️ User started speaking")
+            # Track when user starts speaking for response latency
+            session_data._user_speech_start = time.perf_counter()
+        elif new_state == "listening":
+            speech_duration = 0
+            if hasattr(session_data, '_user_speech_start') and session_data._user_speech_start:
+                speech_duration = (time.perf_counter() - session_data._user_speech_start) * 1000
+            logger.info(f"👂 User stopped speaking (duration: {speech_duration:.0f}ms)")
+    
+    # ═══ Track AI response latency ═══
+    @session.on("agent_state_changed")
+    def on_agent_state_changed(event):
+        """Track when AI starts/stops speaking for latency measurement."""
+        new_state = event.new_state if hasattr(event, 'new_state') else str(event)
+        if new_state == "speaking":
+            # Calculate time from user stopping to AI starting
+            if hasattr(session_data, '_user_speech_start') and session_data._user_speech_start:
+                response_latency = (time.perf_counter() - session_data._user_speech_start) * 1000
+                logger.info(f"🤖 AI started speaking (response latency: {response_latency:.0f}ms)")
+            else:
+                logger.info("🤖 AI started speaking")
+        elif new_state == "listening":
+            logger.info("🤖 AI stopped speaking, listening...")
+    
     # ─────────────────────────────────────────────────────────────────────────
     # ROOM EVENT HANDLERS - Call End
     # ─────────────────────────────────────────────────────────────────────────
@@ -679,19 +901,24 @@ Then wait for their response and continue naturally in {session_data.language_na
     def on_room_disconnected():
         """Handle call end - log and trigger post-call processing."""
         async def _handle_disconnected():
-            logger.info("📞 Call ended - room disconnected")
+            logger.info("")
+            logger.info("═" * 70)
+            logger.info("📞 CALL ENDED - Final Summary")
+            logger.info("═" * 70)
             
             # Calculate call duration
             call_duration = None
             if session_data.call_start_time:
                 call_duration = int((datetime.now() - session_data.call_start_time).total_seconds())
-                logger.info(f"⏱️ Call duration: {call_duration} seconds")
+                logger.info(f"⏱️ Total call duration: {call_duration} seconds")
             
             # Get transcript
             transcript = session_data.get_transcript()
+            logger.info(f"📝 Transcript length: {len(transcript)} chars")
             
             # Log call end to backend (includes transcript)
             try:
+                log_start = time.perf_counter()
                 await backend.log_call_end(
                     call_log_id=session_data.call_log_id,
                     duration=call_duration,
@@ -700,11 +927,14 @@ Then wait for their response and continue naturally in {session_data.language_na
                     summary=None,  # Will be filled by n8n
                     sentiment=None  # Will be filled by n8n
                 )
-                logger.info(f"✅ Call logged with transcript ({len(transcript)} chars)")
+                log_time = (time.perf_counter() - log_start) * 1000
+                logger.info(f"✅ Call logged to backend ({log_time:.0f}ms)")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to log call end: {e}")
             
+            logger.info("═" * 70)
             logger.info("✅ Call cleanup complete")
+            logger.info("═" * 70)
         
         asyncio.create_task(_handle_disconnected())
     
@@ -718,24 +948,39 @@ Then wait for their response and continue naturally in {session_data.language_na
         asyncio.create_task(_handle_participant_left())
     
     # ─────────────────────────────────────────────────────────────────────────
-    # START SESSION
+    # START SESSION (Connect to Gemini API)
     # ─────────────────────────────────────────────────────────────────────────
     
     logger.info("🚀 Starting AI session...")
+    tracker.checkpoint("🚀 SESSION_STARTING", "Connecting to Gemini Realtime API")
     
     await session.start(
         agent=agent,
         room=ctx.room,
     )
     
+    tracker.checkpoint("✅ SESSION_CONNECTED", "Gemini session active")
     logger.info(f"✅ Session active | Voice: {voice} | Language: {session_data.language_name}")
     
     # ─────────────────────────────────────────────────────────────────────────
-    # INITIATE CONVERSATION
+    # INITIATE CONVERSATION (First AI speech)
     # ─────────────────────────────────────────────────────────────────────────
+    
+    tracker.checkpoint("💬 GENERATING_GREETING", "Requesting first AI response")
     
     # Tell the AI to start speaking
     await session.generate_reply()
+    
+    tracker.checkpoint("🔊 FIRST_AUDIO_SENT", "AI greeting audio sent to LiveKit")
+    
+    # Log the full setup latency summary
+    logger.info("")
+    logger.info("═" * 70)
+    logger.info("                    CALL SETUP COMPLETE - LATENCY SUMMARY")
+    logger.info("═" * 70)
+    logger.info(tracker.summary())
+    logger.info("═" * 70)
+    logger.info("")
     
     logger.info("✅ Conversation started - AI is speaking")
     
