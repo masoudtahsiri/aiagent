@@ -90,6 +90,17 @@ class UpdateShortTermMemoryRequest(BaseModel):
     follow_ups: Optional[List[dict]] = Field(default=None, description="Scheduled follow-up actions")
 
 
+class MergeFromCallRequest(BaseModel):
+    """
+    Request from n8n after call analysis.
+    Contains customer_id, business_id, call_log_id, and analysis with memory updates.
+    """
+    customer_id: str
+    business_id: str
+    call_log_id: Optional[str] = None
+    analysis: dict = Field(..., description="Contains long_term_memory and short_term_memory")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATABASE HELPER
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -615,17 +626,28 @@ async def update_short_term_memory(request: UpdateShortTermMemoryRequest):
 
 
 @router.post("/consolidated/merge-from-call")
-async def merge_memory_from_call(
-    customer_id: str,
-    long_term_updates: Optional[dict] = None,
-    short_term_updates: Optional[dict] = None
-):
+async def merge_memory_from_call(request: MergeFromCallRequest):
     """
     Convenience endpoint for n8n to update both memories after a call.
     Long-term is merged, short-term is replaced.
+    
+    Expected body from n8n:
+    {
+        "customer_id": "...",
+        "business_id": "...",
+        "call_log_id": "...",
+        "analysis": {
+            "long_term_memory": {...},
+            "short_term_memory": {...}
+        }
+    }
     """
     db = get_db()
     results = {}
+    
+    customer_id = request.customer_id
+    long_term_updates = request.analysis.get("long_term_memory")
+    short_term_updates = request.analysis.get("short_term_memory")
     
     if long_term_updates:
         # Merge long-term
