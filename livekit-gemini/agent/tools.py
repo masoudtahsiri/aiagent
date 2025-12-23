@@ -19,7 +19,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from functools import wraps
 
-from livekit.agents import function_tool, RunContext
+from livekit.agents import function_tool, RunContext, get_job_context
 
 if TYPE_CHECKING:
     from backend_client import BackendClient
@@ -1978,17 +1978,19 @@ async def end_call(
         else:
             message = "Thank you for calling! Have a great day!"
     
-    # Schedule call disconnect after AI finishes speaking goodbye
-    async def disconnect_after_delay():
+    # Schedule room deletion after AI finishes speaking goodbye
+    # Using get_job_context().delete_room() which "Deletes the room and disconnects all participants"
+    # This is the official LiveKit API that properly terminates SIP calls
+    async def delete_room_after_delay():
         try:
-            await asyncio.sleep(5)  # Wait 5 seconds for goodbye to be spoken
-            if session.room:
-                logger.info("📞 Ending call - disconnecting room")
-                await session.room.disconnect()
+            await asyncio.sleep(4)  # Wait 4 seconds for goodbye to be spoken
+            logger.info("📞 Ending call - deleting room to disconnect all participants")
+            job_ctx = get_job_context()
+            job_ctx.delete_room()  # This deletes room AND disconnects SIP participant
         except Exception as e:
-            logger.warning(f"Error disconnecting room: {e}")
+            logger.warning(f"Error deleting room: {e}")
     
-    asyncio.create_task(disconnect_after_delay())
+    asyncio.create_task(delete_room_after_delay())
     
     return {
         "success": True,
