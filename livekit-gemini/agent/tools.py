@@ -241,13 +241,23 @@ async def check_availability(
                 "available_slots": []
             }
     
+    # Look up service duration from business config
+    service_duration_minutes = 30  # Default
+    if service_name:
+        services_list = session.business_config.get("services", [])
+        for service in services_list:
+            if service.get("name", "").lower() == service_name.lower():
+                service_duration_minutes = service.get("duration_minutes", 30)
+                break
+    
     try:
         result = await backend.check_availability(
             business_id=session.business_id,
             date=date,
             service_name=service_name,
             staff_name=staff_name,
-            staff_id=staff_id
+            staff_id=staff_id,
+            service_duration_minutes=service_duration_minutes
         )
         
         if not result:

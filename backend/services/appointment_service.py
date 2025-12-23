@@ -22,12 +22,17 @@ class AppointmentService:
         staff_id: str,
         start_date: date,
         end_date: Optional[date] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        service_duration_minutes: int = 30
     ) -> List[dict]:
         """
         Get available time slots for staff, filtered by closures, exceptions, and external calendar events.
         
         OPTIMIZED: Runs 5 independent queries in parallel for ~3x faster response.
+        
+        Additional filters:
+        - Past times are filtered out for today
+        - Slots that would extend past closing time (based on service duration) are filtered
         """
         import time
         query_start = time.perf_counter()
@@ -72,10 +77,10 @@ class AppointmentService:
             ).lte("exception_date", str(end_date)).execute()
         
         def query_hours():
-            """Get business hours (to filter closed days of week)"""
-            return db.table("business_hours").select("day_of_week").eq(
+            """Get business hours (closed days and closing times)"""
+            return db.table("business_hours").select("day_of_week, is_open, close_time").eq(
                 "business_id", business_id
-            ).eq("is_open", False).execute()
+            ).execute()
         
         def query_slots():
             """Get available slots from time_slots table"""
@@ -112,7 +117,19 @@ class AppointmentService:
         # Process results
         closed_dates = {c["closure_date"] for c in (closures_result.data or [])}
         staff_off_dates = {e["exception_date"] for e in (exceptions_result.data or [])}
-        closed_weekdays = {h["day_of_week"] for h in (hours_result.data or [])}
+        
+        # Build closed weekdays set and closing times map
+        closed_weekdays = set()
+        closing_times = {}  # day_of_week -> close_time string
+        for h in (hours_result.data or []):
+            if not h.get("is_open", True):
+                closed_weekdays.add(h["day_of_week"])
+            elif h.get("close_time"):
+                closing_times[h["day_of_week"]] = h["close_time"]
+        
+        # Get current datetime for filtering past times
+        now = datetime.now()
+        today = now.date()
         
         # Build list of blocked time ranges from external events
         blocked_ranges = []
@@ -177,6 +194,28 @@ class AppointmentService:
             
             if is_blocked_by_external:
                 continue
+            
+            # NEW: Filter out past times for today
+            if slot_date_obj == today and slot_datetime <= now:
+                continue
+            
+            # NEW: Filter slots that would extend past closing time
+            close_time_str = closing_times.get(day_of_week)
+            if close_time_str:
+                try:
+                    close_parts = close_time_str.split(":")
+                    close_hour = int(close_parts[0])
+                    close_minute = int(close_parts[1]) if len(close_parts) > 1 else 0
+                    close_datetime = datetime.combine(
+                        slot_date_obj,
+                        datetime.min.time().replace(hour=close_hour, minute=close_minute)
+                    )
+                    # Calculate when service would end based on service duration
+                    service_end = slot_datetime + timedelta(minutes=service_duration_minutes)
+                    if service_end > close_datetime:
+                        continue
+                except (ValueError, IndexError):
+                    pass  # If parsing fails, don't filter
             
             # Slot passed all filters - it's available
             filtered_slots.append(slot)

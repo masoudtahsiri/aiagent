@@ -409,7 +409,8 @@ class BackendClient:
         date: str,
         service_name: Optional[str] = None,
         staff_name: Optional[str] = None,
-        staff_id: Optional[str] = None
+        staff_id: Optional[str] = None,
+        service_duration_minutes: int = 30
     ) -> Optional[Dict]:
         """
         Check available appointment slots.
@@ -420,9 +421,10 @@ class BackendClient:
             service_name: Optional service to filter by (not used in API, for filtering results)
             staff_name: Optional staff member name to filter by (used to find staff_id)
             staff_id: Optional staff ID (if provided, used directly; otherwise looked up from staff_name)
+            service_duration_minutes: Service duration for filtering slots (default 30)
         
         Returns:
-            Dict with available_slots list
+            Dict with available_slots list (filtered by time - no past slots, respects closing time)
         """
         start_time = time.perf_counter()
         try:
@@ -442,7 +444,10 @@ class BackendClient:
             endpoint = f"/api/appointments/staff/{target_staff_id}/slots"
             response = await client.get(
                 endpoint,
-                params={"start_date": date}
+                params={
+                    "start_date": date,
+                    "service_duration": service_duration_minutes
+                }
             )
             response.raise_for_status()
             slots = response.json()
@@ -450,8 +455,6 @@ class BackendClient:
             duration = (time.perf_counter() - start_time) * 1000
             APILatencyTracker.log_api_call("GET", endpoint, duration, True)
             
-            # Filter by service if needed (this would require additional logic)
-            # For now, return all slots for the staff member
             return {"available_slots": slots}
         except Exception as e:
             duration = (time.perf_counter() - start_time) * 1000

@@ -17,10 +17,20 @@ router = APIRouter(prefix="/api/appointments", tags=["Appointment Management"])
 async def get_available_slots(
     staff_id: str,
     start_date: date = Query(...),
-    end_date: Optional[date] = None
+    end_date: Optional[date] = None,
+    service_duration: int = Query(default=30, description="Service duration in minutes for filtering")
 ):
-    """Get available time slots for staff (no auth required - for AI agent)"""
-    return await AppointmentService.get_available_slots(staff_id, start_date, end_date)
+    """
+    Get available time slots for staff (no auth required - for AI agent).
+    
+    Filters:
+    - Past times for today are excluded
+    - Slots that would extend past closing time (based on service_duration) are excluded
+    """
+    return await AppointmentService.get_available_slots(
+        staff_id, start_date, end_date, 
+        service_duration_minutes=service_duration
+    )
 
 
 @router.post("", response_model=AppointmentResponse)
