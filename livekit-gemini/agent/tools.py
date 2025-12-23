@@ -1983,7 +1983,7 @@ async def end_call(
     # This is the official LiveKit API that properly terminates SIP calls
     async def delete_room_after_delay():
         try:
-            await asyncio.sleep(4)  # Wait 4 seconds for goodbye to be spoken
+            await asyncio.sleep(6)  # Wait 6 seconds for goodbye to be fully spoken
             logger.info("📞 Ending call - deleting room to disconnect all participants")
             job_ctx = get_job_context()
             job_ctx.delete_room()  # This deletes room AND disconnects SIP participant
