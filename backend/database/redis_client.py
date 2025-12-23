@@ -91,8 +91,8 @@ class RedisCache:
     PREFIX_CUSTOMER = "cust:"
     
     # Default TTLs (in seconds)
-    TTL_BUSINESS = 300  # 5 minutes - business config rarely changes
-    TTL_CUSTOMER = 60   # 1 minute - customer data may update
+    TTL_BUSINESS = 604800  # 7 days - business config rarely changes
+    TTL_CUSTOMER = 60      # 1 minute - customer data may update
     
     @staticmethod
     def get(key: str) -> Optional[Any]:
