@@ -207,9 +207,43 @@ jobs:
             }
             EOFN8N
             
+            # Create nginx configuration for dev subdomain (Vite dev server)
+            cat > /etc/nginx/sites-available/dev-subdomain << EOFDEV
+            server {
+                listen 80;
+                server_name dev.algorityai.com;
+                
+                location / {
+                    proxy_pass http://127.0.0.1:5173;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade \$http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_set_header X-Forwarded-Host \$host;
+                    proxy_buffering off;
+                }
+                
+                location /api/ {
+                    proxy_pass http://127.0.0.1:8000/api/;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade \$http_upgrade;
+                    proxy_set_header Connection upgrade;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_cache_bypass \$http_upgrade;
+                }
+            }
+            EOFDEV
+            
             # Enable the sites
             ln -sf /etc/nginx/sites-available/aiagent-frontend /etc/nginx/sites-enabled/
             ln -sf /etc/nginx/sites-available/n8n-subdomain /etc/nginx/sites-enabled/
+            ln -sf /etc/nginx/sites-available/dev-subdomain /etc/nginx/sites-enabled/
             
             # Remove old configs that conflict
             rm -f /etc/nginx/sites-enabled/default
