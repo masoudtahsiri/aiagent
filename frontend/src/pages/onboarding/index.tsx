@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForm, Controller } from 'react-hook-form';
 import { 
   Building2, Clock, Users, Bot, Check, ArrowRight, 
   ArrowLeft, Sparkles, Phone
@@ -12,6 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/form-elements';
 import { Logo } from '@/components/shared/loading-screen';
 import { cn } from '@/lib/utils';
+import { post } from '@/lib/api/client';
+import { useAuth } from '@/features/auth/auth-provider';
+import { toast } from 'sonner';
 
 const steps = [
   { id: 1, title: 'Business Info', icon: Building2 },
@@ -45,14 +49,166 @@ const voiceStyles = [
   { value: 'friendly_male', label: 'Friendly Male', description: 'Warm, approachable tone' },
 ];
 
+interface OnboardingFormData {
+  // Step 1: Business Info
+  business_name: string;
+  industry: string;
+  phone_number: string;
+  timezone: string;
+  
+  // Step 2: Hours
+  hours: Array<{
+    day_of_week: number;
+    is_open: boolean;
+    open_time: string;
+    close_time: string;
+  }>;
+  
+  // Step 3: Staff
+  staff: Array<{
+    name: string;
+    title: string;
+  }>;
+  
+  // Step 4: AI Setup
+  ai_name: string;
+  voice_style: string;
+  greeting_message: string;
+}
+
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { user, refreshUser } = useAuth();
 
-  const nextStep = () => {
-    if (currentStep < 5) {
-      setCurrentStep(currentStep + 1);
+  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<OnboardingFormData>({
+    defaultValues: {
+      business_name: '',
+      industry: '',
+      phone_number: '',
+      timezone: 'America/New_York',
+      hours: [
+        { day_of_week: 1, is_open: true, open_time: '09:00', close_time: '17:00' }, // Monday
+        { day_of_week: 2, is_open: true, open_time: '09:00', close_time: '17:00' }, // Tuesday
+        { day_of_week: 3, is_open: true, open_time: '09:00', close_time: '17:00' }, // Wednesday
+        { day_of_week: 4, is_open: true, open_time: '09:00', close_time: '17:00' }, // Thursday
+        { day_of_week: 5, is_open: true, open_time: '09:00', close_time: '17:00' }, // Friday
+        { day_of_week: 6, is_open: false, open_time: '09:00', close_time: '17:00' }, // Saturday
+        { day_of_week: 0, is_open: false, open_time: '09:00', close_time: '17:00' }, // Sunday
+      ],
+      staff: [{ name: '', title: '' }],
+      ai_name: 'Sarah',
+      voice_style: 'professional_female',
+      greeting_message: 'Thank you for calling. This is Sarah, your virtual assistant. How can I help you today?',
+    },
+  });
+
+  const nextStep = async () => {
+    if (currentStep === 1) {
+      // Validate and create business
+      const formData = watch();
+      if (!formData.business_name || !formData.industry) {
+        toast.error('Please fill in all required fields');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const business = await post('/api/businesses', {
+          business_name: formData.business_name,
+          industry: formData.industry,
+          phone_number: formData.phone_number || null,
+          timezone: formData.timezone,
+          owner_email: user?.email,
+        });
+        setBusinessId(business.id);
+        toast.success('Business created!');
+        setCurrentStep(2);
+      } catch (error: any) {
+        toast.error('Failed to create business', {
+          description: error.response?.data?.detail || 'Please try again',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (currentStep === 2) {
+      // Save business hours
+      if (!businessId) {
+        toast.error('Business not found');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const hours = watch('hours');
+        await post(`/api/business-hours/${businessId}`, {
+          business_id: businessId,
+          hours: hours.map(h => ({
+            day_of_week: h.day_of_week,
+            is_open: h.is_open,
+            open_time: h.is_open ? h.open_time : null,
+            close_time: h.is_open ? h.close_time : null,
+          })),
+        });
+        toast.success('Business hours saved!');
+        setCurrentStep(3);
+      } catch (error: any) {
+        toast.error('Failed to save business hours', {
+          description: error.response?.data?.detail || 'Please try again',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (currentStep === 3) {
+      // Save staff (optional - can skip)
+      setCurrentStep(4);
+    } else if (currentStep === 4) {
+      // Save AI config and staff
+      if (!businessId) {
+        toast.error('Business not found');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const formData = watch();
+        
+        // Create staff members
+        const staffPromises = formData.staff
+          .filter(s => s.name && s.title)
+          .map(staff => post('/api/staff', {
+            business_id: businessId,
+            name: staff.name,
+            title: staff.title,
+          }));
+        
+        await Promise.all(staffPromises);
+
+        // Create AI role
+        await post('/api/ai/roles', {
+          business_id: businessId,
+          role_type: 'receptionist',
+          ai_name: formData.ai_name,
+          voice_style: formData.voice_style,
+          system_prompt: `You are ${formData.ai_name}, a professional AI receptionist for ${formData.business_name}. You help customers schedule appointments, answer questions, and provide excellent service.`,
+          greeting_message: formData.greeting_message,
+          is_enabled: true,
+        });
+
+        // Refresh user data to get business_id
+        await refreshUser();
+        
+        toast.success('Setup complete!');
+        setCurrentStep(5);
+      } catch (error: any) {
+        toast.error('Failed to complete setup', {
+          description: error.response?.data?.detail || 'Please try again',
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -64,7 +220,8 @@ export default function OnboardingPage() {
 
   const handleComplete = async () => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait a moment for user data to refresh
+    await new Promise(resolve => setTimeout(resolve, 1000));
     setIsLoading(false);
     navigate('/');
   };
@@ -121,10 +278,10 @@ export default function OnboardingPage() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
             >
-              {currentStep === 1 && <BusinessInfoStep />}
-              {currentStep === 2 && <HoursStep />}
-              {currentStep === 3 && <StaffStep />}
-              {currentStep === 4 && <AISetupStep />}
+              {currentStep === 1 && <BusinessInfoStep control={control} errors={errors} />}
+              {currentStep === 2 && <HoursStep control={control} watch={watch} />}
+              {currentStep === 3 && <StaffStep control={control} setValue={setValue} watch={watch} />}
+              {currentStep === 4 && <AISetupStep control={control} watch={watch} businessName={watch('business_name')} />}
               {currentStep === 5 && <CompleteStep />}
             </motion.div>
           </AnimatePresence>
@@ -134,14 +291,14 @@ export default function OnboardingPage() {
             <Button
               variant="outline"
               onClick={prevStep}
-              disabled={currentStep === 1}
+              disabled={currentStep === 1 || isLoading}
               leftIcon={<ArrowLeft className="h-4 w-4" />}
             >
               Back
             </Button>
 
             {currentStep < 5 ? (
-              <Button onClick={nextStep} rightIcon={<ArrowRight className="h-4 w-4" />}>
+              <Button onClick={nextStep} loading={isLoading} rightIcon={<ArrowRight className="h-4 w-4" />}>
                 Continue
               </Button>
             ) : (
@@ -158,7 +315,7 @@ export default function OnboardingPage() {
 }
 
 // Step 1: Business Info
-function BusinessInfoStep() {
+function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
   return (
     <div className="space-y-6">
       <div>
@@ -169,40 +326,72 @@ function BusinessInfoStep() {
       <div className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Business Name *</label>
-          <Input placeholder="e.g., Smile Dental Clinic" />
+          <Controller
+            name="business_name"
+            control={control}
+            rules={{ required: 'Business name is required' }}
+            render={({ field }) => (
+              <Input placeholder="e.g., Smile Dental Clinic" {...field} />
+            )}
+          />
+          {errors.business_name && (
+            <p className="text-xs text-destructive">{errors.business_name.message}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Industry *</label>
-          <Select>
-            <SelectTrigger>
-              <SelectValue placeholder="Select your industry" />
-            </SelectTrigger>
-            <SelectContent>
-              {industries.map((ind) => (
-                <SelectItem key={ind.value} value={ind.value}>{ind.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Controller
+            name="industry"
+            control={control}
+            rules={{ required: 'Industry is required' }}
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  {industries.map((ind) => (
+                    <SelectItem key={ind.value} value={ind.value}>{ind.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.industry && (
+            <p className="text-xs text-destructive">{errors.industry.message}</p>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Phone Number</label>
-            <Input type="tel" placeholder="+1 (555) 000-0000" />
+            <Controller
+              name="phone_number"
+              control={control}
+              render={({ field }) => (
+                <Input type="tel" placeholder="+1 (555) 000-0000" {...field} />
+              )}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Timezone *</label>
-            <Select defaultValue="America/New_York">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {timezones.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="timezone"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timezones.map((tz) => (
+                      <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
         </div>
       </div>
@@ -211,9 +400,24 @@ function BusinessInfoStep() {
 }
 
 // Step 2: Hours
-function HoursStep() {
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  
+function HoursStep({ control, watch }: { control: any; watch: any }) {
+  const days = [
+    { name: 'Sunday', value: 0 },
+    { name: 'Monday', value: 1 },
+    { name: 'Tuesday', value: 2 },
+    { name: 'Wednesday', value: 3 },
+    { name: 'Thursday', value: 4 },
+    { name: 'Friday', value: 5 },
+    { name: 'Saturday', value: 6 },
+  ];
+
+  const timeOptions = Array.from({ length: 24 }, (_, i) => {
+    const hour = i.toString().padStart(2, '0');
+    return `${hour}:00`;
+  });
+
+  const hours = watch('hours') || [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -222,44 +426,76 @@ function HoursStep() {
       </div>
 
       <div className="space-y-3">
-        {days.map((day, i) => (
-          <div key={day} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
-            <Switch defaultChecked={i < 5} />
-            <span className="w-24 font-medium">{day}</span>
-            <Select defaultValue="09:00">
-              <SelectTrigger className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['08:00', '09:00', '10:00'].map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-muted-foreground">to</span>
-            <Select defaultValue="17:00">
-              <SelectTrigger className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['17:00', '18:00', '19:00', '20:00'].map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ))}
+        {days.map((day) => {
+          const dayHour = hours.find((h: any) => h.day_of_week === day.value) || hours[day.value];
+          const isOpen = dayHour?.is_open ?? false;
+          
+          return (
+            <div key={day.value} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+              <Controller
+                name={`hours.${day.value}.is_open`}
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                )}
+              />
+              <span className="w-24 font-medium">{day.name}</span>
+              <Controller
+                name={`hours.${day.value}.open_time`}
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange} disabled={!isOpen}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <span className="text-muted-foreground">to</span>
+              <Controller
+                name={`hours.${day.value}.close_time`}
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange} disabled={!isOpen}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 // Step 3: Staff
-function StaffStep() {
-  const [staffMembers, setStaffMembers] = useState([{ name: '', title: '' }]);
+function StaffStep({ control, setValue, watch }: { control: any; setValue: any; watch: any }) {
+  const staff = watch('staff') || [{ name: '', title: '' }];
 
   const addStaff = () => {
-    setStaffMembers([...staffMembers, { name: '', title: '' }]);
+    const current = watch('staff') || [];
+    setValue('staff', [...current, { name: '', title: '' }]);
+  };
+
+  const removeStaff = (index: number) => {
+    const current = watch('staff') || [];
+    setValue('staff', current.filter((_: any, i: number) => i !== index));
   };
 
   return (
@@ -270,16 +506,39 @@ function StaffStep() {
       </div>
 
       <div className="space-y-4">
-        {staffMembers.map((_, index) => (
+        {staff.map((_: any, index: number) => (
           <div key={index} className="grid gap-4 sm:grid-cols-2 p-4 rounded-lg bg-muted/50">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Name</label>
-              <Input placeholder="e.g., Dr. Sarah Wilson" />
+              <Controller
+                name={`staff.${index}.name`}
+                control={control}
+                render={({ field }) => (
+                  <Input placeholder="e.g., Dr. Sarah Wilson" {...field} />
+                )}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Title</label>
-              <Input placeholder="e.g., Senior Dentist" />
+              <Controller
+                name={`staff.${index}.title`}
+                control={control}
+                render={({ field }) => (
+                  <Input placeholder="e.g., Senior Dentist" {...field} />
+                )}
+              />
             </div>
+            {staff.length > 1 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => removeStaff(index)}
+                className="col-span-2"
+              >
+                Remove
+              </Button>
+            )}
           </div>
         ))}
 
@@ -296,8 +555,8 @@ function StaffStep() {
 }
 
 // Step 4: AI Setup
-function AISetupStep() {
-  const [selectedVoice, setSelectedVoice] = useState('professional_female');
+function AISetupStep({ control, watch, businessName }: { control: any; watch: any; businessName: string }) {
+  const selectedVoice = watch('voice_style') || 'professional_female';
 
   return (
     <div className="space-y-6">
@@ -309,7 +568,13 @@ function AISetupStep() {
       <div className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">AI Name</label>
-          <Input placeholder="e.g., Sarah" defaultValue="Sarah" />
+          <Controller
+            name="ai_name"
+            control={control}
+            render={({ field }) => (
+              <Input placeholder="e.g., Sarah" {...field} />
+            )}
+          />
           <p className="text-xs text-muted-foreground">This is how the AI will introduce itself</p>
         </div>
 
@@ -317,33 +582,47 @@ function AISetupStep() {
           <label className="text-sm font-medium">Voice Style</label>
           <div className="grid gap-3 sm:grid-cols-2">
             {voiceStyles.map((voice) => (
-              <button
+              <Controller
                 key={voice.value}
-                onClick={() => setSelectedVoice(voice.value)}
-                className={cn(
-                  'p-4 rounded-lg border-2 text-left transition-all',
-                  selectedVoice === voice.value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
+                name="voice_style"
+                control={control}
+                render={({ field }) => (
+                  <button
+                    type="button"
+                    onClick={() => field.onChange(voice.value)}
+                    className={cn(
+                      'p-4 rounded-lg border-2 text-left transition-all',
+                      selectedVoice === voice.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{voice.label}</span>
+                      {selectedVoice === voice.value && (
+                        <Check className="h-5 w-5 text-primary" />
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{voice.description}</p>
+                  </button>
                 )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{voice.label}</span>
-                  {selectedVoice === voice.value && (
-                    <Check className="h-5 w-5 text-primary" />
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">{voice.description}</p>
-              </button>
+              />
             ))}
           </div>
         </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Greeting Message</label>
-          <textarea
-            className="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
-            defaultValue="Thank you for calling [Business Name]. This is Sarah, your virtual assistant. How can I help you today?"
+          <Controller
+            name="greeting_message"
+            control={control}
+            render={({ field }) => (
+              <textarea
+                className="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
+                placeholder={`Thank you for calling ${businessName || '[Business Name]'}. This is ${watch('ai_name') || 'Sarah'}, your virtual assistant. How can I help you today?`}
+                {...field}
+              />
+            )}
           />
         </div>
       </div>

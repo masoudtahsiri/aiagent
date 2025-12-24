@@ -14,6 +14,7 @@ interface AuthContextType {
   login: (data: LoginRequest) => Promise<void>;
   signup: (data: SignupRequest) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -98,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signupMutation.mutateAsync(data);
     },
     logout,
+    refreshUser: async () => {
+      await refetch();
+    },
   };
 
   if (!isInitialized) {
