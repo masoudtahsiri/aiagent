@@ -60,63 +60,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = 'Button';
 
-// Card Component
-export interface CardProps {
-  children: React.ReactNode;
-  className?: string;
-  padding?: 'none' | 'sm' | 'md' | 'lg';
-}
-
-interface CardSubComponentProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const CardHeaderComponent: React.FC<CardSubComponentProps> = ({ children, className }) => (
-  <div className={clsx('border-b border-gray-200 pb-4 mb-4', className)}>{children}</div>
-);
-
-const CardBodyComponent: React.FC<CardSubComponentProps> = ({ children, className }) => <div className={className}>{children}</div>;
-
-const CardFooterComponent: React.FC<CardSubComponentProps> = ({ children, className }) => (
-  <div className={clsx('border-t border-gray-200 pt-4 mt-4', className)}>{children}</div>
-);
-
-const CardComponent: React.FC<CardProps> = ({ children, className, padding = 'md' }) => {
-  const paddingClasses = {
-    none: '',
-    sm: 'p-3',
-    md: 'p-4',
-    lg: 'p-6',
-  };
-  return (
-    <div className={clsx('bg-white rounded-xl border border-gray-200 shadow-sm', paddingClasses[padding], className)}>
-      {children}
-    </div>
-  );
-};
-
-// Create Card with sub-components using a more explicit pattern
-type CardType = React.FC<CardProps> & {
-  Header: React.FC<CardSubComponentProps>;
-  Body: React.FC<CardSubComponentProps>;
-  Footer: React.FC<CardSubComponentProps>;
-};
-
-const CardWithSubComponents = CardComponent as CardType;
-CardWithSubComponents.Header = CardHeaderComponent;
-CardWithSubComponents.Body = CardBodyComponent;
-CardWithSubComponents.Footer = CardFooterComponent;
-
-export const Card: CardType = CardWithSubComponents;
-
-// Aliases for shadcn-like API
-export const CardHeader = Card.Header;
-export const CardContent = Card.Body;
-export const CardFooter = Card.Footer;
-export const CardTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-  <h3 className={clsx('text-lg font-semibold text-gray-900', className)}>{children}</h3>
-);
+// Re-export Card from card.tsx
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './card';
 
 // Badge Component
 const badgeVariants = cva('inline-flex items-center rounded-full font-medium', {
@@ -143,10 +88,11 @@ const badgeVariants = cva('inline-flex items-center rounded-full font-medium', {
   },
 });
 
-export interface BadgeProps extends VariantProps<typeof badgeVariants> {
+export interface BadgeProps {
   children: React.ReactNode;
   className?: string;
   variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'error' | 'info' | 'secondary' | 'outline' | null | undefined;
+  size?: 'sm' | 'md';
 }
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant, size, className }) => (
@@ -196,7 +142,7 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', classNam
 // Skeleton Component
 export interface SkeletonProps {
   className?: string;
-  variant?: 'text' | 'circular' | 'rectangular' | string;
+  variant?: string;
   width?: string | number;
   height?: string | number;
 }
@@ -208,7 +154,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className, variant = 'text',
     rectangular: 'rounded-lg',
   };
 
-  const variantClass = typeof variant === 'string' && variant in variantClasses 
+  const variantClass = variant && variant in variantClasses 
     ? variantClasses[variant] 
     : variantClasses.text;
 
