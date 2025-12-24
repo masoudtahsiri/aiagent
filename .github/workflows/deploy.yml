@@ -188,9 +188,10 @@ jobs:
             # Remove default site if exists
             rm -f /etc/nginx/sites-enabled/default
             
-            # Test and reload nginx
-            nginx -t && systemctl reload nginx
+            # Test and start/reload nginx
+            nginx -t
             systemctl enable nginx
+            systemctl restart nginx
             
             echo "✅ Frontend deployed and nginx configured"
             
