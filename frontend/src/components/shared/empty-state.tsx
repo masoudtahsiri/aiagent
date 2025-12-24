@@ -1,21 +1,17 @@
-import { ReactNode } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { ReactNode, ElementType } from 'react';
+import { FolderOpen, LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 
 interface EmptyStateProps {
-  icon?: ReactNode;
+  icon?: LucideIcon | ElementType;
   title: string;
   description?: string;
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
+  action?: ReactNode;
   className?: string;
 }
 
 export function EmptyState({
-  icon,
+  icon: Icon,
   title,
   description,
   action,
@@ -29,7 +25,7 @@ export function EmptyState({
       )}
     >
       <div className="mb-4 p-4 rounded-full bg-muted">
-        {icon || <FolderOpen className="h-8 w-8 text-muted-foreground" />}
+        {Icon ? <Icon className="h-8 w-8 text-muted-foreground" /> : <FolderOpen className="h-8 w-8 text-muted-foreground" />}
       </div>
       
       <h3 className="text-lg font-semibold mb-1">{title}</h3>
@@ -40,11 +36,7 @@ export function EmptyState({
         </p>
       )}
       
-      {action && (
-        <Button onClick={action.onClick}>
-          {action.label}
-        </Button>
-      )}
+      {action && action}
     </div>
   );
 }

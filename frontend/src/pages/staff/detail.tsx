@@ -54,6 +54,7 @@ export default function StaffDetailPage() {
 
   return (
     <PageContainer
+      title={staff.name}
       breadcrumbs={[
         { label: 'Staff', href: '/staff' },
         { label: staff.name },

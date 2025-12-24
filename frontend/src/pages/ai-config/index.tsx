@@ -32,7 +32,7 @@ export default function AIConfigPage() {
     >
       {/* AI Status */}
       <div className="mb-8">
-        <AIStatusWidget />
+        <AIStatusWidget status="active" callsToday={156} />
       </div>
 
       {/* Quick Stats */}

@@ -94,9 +94,11 @@ export default function CustomerDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading] = useState(false);
 
+  const customer = mockCustomer;
+
   if (isLoading) {
     return (
-      <PageContainer>
+      <PageContainer title="Loading...">
         <div className="space-y-6">
           <Skeleton className="h-40 rounded-xl" />
           <Skeleton className="h-96 rounded-xl" />
@@ -105,10 +107,9 @@ export default function CustomerDetailPage() {
     );
   }
 
-  const customer = mockCustomer;
-
   return (
     <PageContainer
+      title={`${customer.first_name} ${customer.last_name}`}
       breadcrumbs={[
         { label: 'Customers', href: '/customers' },
         { label: `${customer.first_name} ${customer.last_name}` },
