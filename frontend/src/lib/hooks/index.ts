@@ -75,9 +75,22 @@ export function useMediaQuery(breakpoint: Breakpoint): boolean {
   return matches;
 }
 
-export const useIsMobile = () => !useMediaQuery('md');
-export const useIsTablet = () => useMediaQuery('md') && !useMediaQuery('lg');
-export const useIsDesktop = () => useMediaQuery('lg');
+// FIXED: Hooks must always be called - no short-circuit evaluation
+export function useIsMobile() {
+  const isMd = useMediaQuery('md');
+  return !isMd;
+}
+
+export function useIsTablet() {
+  const isMd = useMediaQuery('md');
+  const isLg = useMediaQuery('lg');
+  return isMd && !isLg;
+}
+
+export function useIsDesktop() {
+  const isLg = useMediaQuery('lg');
+  return isLg;
+}
 
 // Keyboard shortcut hook
 type KeyCombo = {
