@@ -13,7 +13,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Deploy Backend and LiveKit Agent
+      # ============================================
+      # Build Frontend
+      # ============================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+      
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: http://185.8.130.155:8000
+      
+      # ============================================
+      # Upload Frontend Build to Server
+      # ============================================
+      - name: Upload frontend build to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "frontend/dist/*"
+          target: "/opt/aiagent/frontend"
+          strip_components: 2
+      
+      - name: Deploy Backend, Agent, and Configure Frontend
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -103,6 +135,64 @@ jobs:
             systemctl restart aiagent-backend
             sleep 5
             systemctl status aiagent-backend --no-pager | head -5
+            
+            # ============================================
+            # Configure Nginx for Frontend
+            # ============================================
+            echo ""
+            echo "📦 Configuring Nginx for Frontend..."
+            
+            # Install nginx if not present
+            if ! command -v nginx &> /dev/null; then
+              echo "Installing nginx..."
+              apt-get update
+              apt-get install -y nginx
+            fi
+            
+            # Create nginx configuration for frontend
+            cat > /etc/nginx/sites-available/aiagent-frontend << 'EOFNGINX'
+            server {
+                listen 80;
+                server_name _;
+                
+                root /opt/aiagent/frontend/dist;
+                index index.html;
+                
+                # Frontend static files
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+                
+                # Proxy API requests to backend
+                location /api/ {
+                    proxy_pass http://127.0.0.1:8000/api/;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_cache_bypass $http_upgrade;
+                }
+                
+                # Gzip compression
+                gzip on;
+                gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+            }
+            EOFNGINX
+            
+            # Enable the site
+            ln -sf /etc/nginx/sites-available/aiagent-frontend /etc/nginx/sites-enabled/
+            
+            # Remove default site if exists
+            rm -f /etc/nginx/sites-enabled/default
+            
+            # Test and reload nginx
+            nginx -t && systemctl reload nginx
+            systemctl enable nginx
+            
+            echo "✅ Frontend deployed and nginx configured"
             
             # ============================================
             # Deploy LiveKit-Gemini Agent
@@ -256,7 +346,9 @@ jobs:
             
             echo "SIP configuration recreated successfully"
             
-            # Check status
+            # ============================================
+            # Final Status Check
+            # ============================================
             echo ""
             echo "✅ Deployment complete!"
             echo ""
@@ -264,10 +356,21 @@ jobs:
             echo "Backend:"
             systemctl status aiagent-backend --no-pager | head -3
             echo ""
+            echo "Nginx (Frontend):"
+            systemctl status nginx --no-pager | head -3
+            echo ""
             echo "LiveKit Containers:"
             docker-compose ps
             echo ""
             echo "=== Health Checks ==="
+            echo "Backend API:"
             curl -s http://localhost:8000/health || echo "Backend health check failed"
             echo ""
-
+            echo "Frontend:"
+            curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:80 || echo "Frontend health check failed"
+            echo ""
+            echo ""
+            echo "=== Access URLs ==="
+            echo "Frontend: http://185.8.130.155"
+            echo "Backend API: http://185.8.130.155:8000"
+            echo ""
