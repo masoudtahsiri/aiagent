@@ -5,6 +5,7 @@ import {
   Search, Plus, MoreHorizontal, Phone, Mail, Calendar,
   ChevronLeft, ChevronRight, Users, Filter
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,78 +23,36 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useDebounce, useIsMobile } from '@/lib/hooks';
 import { formatDate, formatPhone } from '@/lib/utils/format';
+import { useCustomers, useCreateCustomer, useDeleteCustomer } from '@/lib/api/hooks';
+import type { Customer } from '@/types';
 
-// Mock customers data
-const mockCustomers = [
-  {
-    id: '1',
-    first_name: 'John',
-    last_name: 'Smith',
-    phone: '+15550123',
-    email: 'john.smith@email.com',
-    total_appointments: 12,
-    last_visit_date: '2024-12-20',
-    customer_since: '2024-01-15',
-  },
-  {
-    id: '2',
-    first_name: 'Emily',
-    last_name: 'Johnson',
-    phone: '+15550124',
-    email: 'emily.j@email.com',
-    total_appointments: 8,
-    last_visit_date: '2024-12-18',
-    customer_since: '2024-03-22',
-  },
-  {
-    id: '3',
-    first_name: 'Robert',
-    last_name: 'Davis',
-    phone: '+15550125',
-    email: 'r.davis@email.com',
-    total_appointments: 15,
-    last_visit_date: '2024-12-15',
-    customer_since: '2023-11-08',
-  },
-  {
-    id: '4',
-    first_name: 'Sarah',
-    last_name: 'Wilson',
-    phone: '+15550126',
-    email: 'sarah.w@email.com',
-    total_appointments: 5,
-    last_visit_date: '2024-12-10',
-    customer_since: '2024-06-01',
-  },
-  {
-    id: '5',
-    first_name: 'Michael',
-    last_name: 'Brown',
-    phone: '+15550127',
-    email: 'mike.brown@email.com',
-    total_appointments: 22,
-    last_visit_date: '2024-12-22',
-    customer_since: '2023-08-14',
-  },
-];
+const ITEMS_PER_PAGE = 20;
 
 export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
-  const [isLoading] = useState(false);
   const [page, setPage] = useState(1);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const offset = (page - 1) * ITEMS_PER_PAGE;
+  
+  // Fetch customers from API
+  const { data: customersResponse, isLoading, refetch } = useCustomers(
+    debouncedSearch || undefined, 
+    ITEMS_PER_PAGE, 
+    offset
+  );
+  
+  const customers = customersResponse?.data || [];
+  const totalCustomers = customersResponse?.total || 0;
+  const totalPages = Math.ceil(totalCustomers / ITEMS_PER_PAGE);
 
-  const filteredCustomers = mockCustomers.filter(customer => {
-    const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase();
-    const search = debouncedSearch.toLowerCase();
-    return fullName.includes(search) || 
-           customer.phone.includes(search) || 
-           customer.email?.toLowerCase().includes(search);
-  });
+  const handleNewCustomerSuccess = () => {
+    setShowNewModal(false);
+    refetch();
+  };
 
   return (
     <PageContainer
@@ -112,7 +71,10 @@ export default function CustomersPage() {
           <Input
             placeholder="Search by name, phone, or email..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1); // Reset to first page on search
+            }}
             className="pl-10"
           />
         </div>
@@ -128,7 +90,7 @@ export default function CustomersPage() {
             <Skeleton key={i} className="h-20 rounded-xl" />
           ))}
         </div>
-      ) : filteredCustomers.length === 0 ? (
+      ) : customers.length === 0 ? (
         <EmptyState
           icon={Users}
           title="No customers found"
@@ -140,16 +102,16 @@ export default function CustomersPage() {
           }
         />
       ) : isMobile ? (
-        <MobileCustomerList customers={filteredCustomers} />
+        <MobileCustomerList customers={customers} />
       ) : (
-        <DesktopCustomerTable customers={filteredCustomers} />
+        <DesktopCustomerTable customers={customers} onRefresh={refetch} />
       )}
 
       {/* Pagination */}
-      {filteredCustomers.length > 0 && (
+      {customers.length > 0 && (
         <div className="flex items-center justify-between mt-6">
           <p className="text-sm text-muted-foreground">
-            Showing {filteredCustomers.length} of {mockCustomers.length} customers
+            Showing {offset + 1}-{Math.min(offset + customers.length, totalCustomers)} of {totalCustomers} customers
           </p>
           <div className="flex items-center gap-2">
             <Button 
@@ -160,10 +122,11 @@ export default function CustomersPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm px-2">Page {page}</span>
+            <span className="text-sm px-2">Page {page} of {totalPages || 1}</span>
             <Button 
               variant="outline" 
               size="icon-sm"
+              disabled={page >= totalPages}
               onClick={() => setPage(p => p + 1)}
             >
               <ChevronRight className="h-4 w-4" />
@@ -178,7 +141,7 @@ export default function CustomersPage() {
           <DialogHeader>
             <DialogTitle>Add New Customer</DialogTitle>
           </DialogHeader>
-          <NewCustomerForm onSuccess={() => setShowNewModal(false)} />
+          <NewCustomerForm onSuccess={handleNewCustomerSuccess} />
         </DialogContent>
       </Dialog>
     </PageContainer>
@@ -186,7 +149,7 @@ export default function CustomersPage() {
 }
 
 // Mobile Customer List
-function MobileCustomerList({ customers }: { customers: typeof mockCustomers }) {
+function MobileCustomerList({ customers }: { customers: Customer[] }) {
   return (
     <div className="space-y-3">
       {customers.map((customer, i) => (
@@ -199,7 +162,7 @@ function MobileCustomerList({ customers }: { customers: typeof mockCustomers }) 
           <Link to={`/customers/${customer.id}`}>
             <Card className="p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3">
-                <Avatar name={`${customer.first_name} ${customer.last_name}`} size="lg" />
+                <Avatar name={`${customer.first_name || ''} ${customer.last_name || ''}`} size="lg" />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold truncate">
                     {customer.first_name} {customer.last_name}
@@ -215,7 +178,7 @@ function MobileCustomerList({ customers }: { customers: typeof mockCustomers }) 
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm">
+                    <Button variant="ghost" size="icon-sm" onClick={(e) => e.preventDefault()}>
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -235,7 +198,27 @@ function MobileCustomerList({ customers }: { customers: typeof mockCustomers }) 
 }
 
 // Desktop Customer Table
-function DesktopCustomerTable({ customers }: { customers: typeof mockCustomers }) {
+function DesktopCustomerTable({ 
+  customers, 
+  onRefresh 
+}: { 
+  customers: Customer[]; 
+  onRefresh: () => void;
+}) {
+  const deleteCustomer = useDeleteCustomer();
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+    
+    try {
+      await deleteCustomer.mutateAsync(id);
+      toast.success('Customer deleted');
+      onRefresh();
+    } catch (error) {
+      toast.error('Failed to delete customer');
+    }
+  };
+
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -261,7 +244,7 @@ function DesktopCustomerTable({ customers }: { customers: typeof mockCustomers }
               >
                 <td className="p-4">
                   <Link to={`/customers/${customer.id}`} className="flex items-center gap-3">
-                    <Avatar name={`${customer.first_name} ${customer.last_name}`} />
+                    <Avatar name={`${customer.first_name || ''} ${customer.last_name || ''}`} />
                     <span className="font-medium hover:text-primary">
                       {customer.first_name} {customer.last_name}
                     </span>
@@ -303,6 +286,12 @@ function DesktopCustomerTable({ customers }: { customers: typeof mockCustomers }
                       </DropdownMenuItem>
                       <DropdownMenuItem>Book Appointment</DropdownMenuItem>
                       <DropdownMenuItem>Send Message</DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={() => handleDelete(customer.id, `${customer.first_name} ${customer.last_name}`)}
+                      >
+                        Delete
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>
@@ -317,14 +306,33 @@ function DesktopCustomerTable({ customers }: { customers: typeof mockCustomers }
 
 // New Customer Form
 function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    email: '',
+    notes: '',
+  });
+  
+  const createCustomer = useCreateCustomer();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
+    
+    try {
+      await createCustomer.mutateAsync({
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        phone: formData.phone,
+        email: formData.email || undefined,
+        notes: formData.notes || undefined,
+        language: 'en',
+      });
+      toast.success('Customer created successfully');
+      onSuccess();
+    } catch (error) {
+      toast.error('Failed to create customer');
+    }
   };
 
   return (
@@ -332,22 +340,43 @@ function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">First Name *</label>
-          <Input placeholder="John" required />
+          <Input 
+            placeholder="John" 
+            required 
+            value={formData.first_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
+          />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Last Name *</label>
-          <Input placeholder="Smith" required />
+          <Input 
+            placeholder="Smith" 
+            required 
+            value={formData.last_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
+          />
         </div>
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Phone Number *</label>
-        <Input type="tel" placeholder="+1 (555) 000-0000" required />
+        <Input 
+          type="tel" 
+          placeholder="+1 (555) 000-0000" 
+          required 
+          value={formData.phone}
+          onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+        />
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Email</label>
-        <Input type="email" placeholder="john@example.com" />
+        <Input 
+          type="email" 
+          placeholder="john@example.com" 
+          value={formData.email}
+          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -355,6 +384,8 @@ function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
         <textarea 
           className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
           placeholder="Any notes about this customer..."
+          value={formData.notes}
+          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
         />
       </div>
 
@@ -362,7 +393,7 @@ function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
         <Button type="button" variant="outline" onClick={onSuccess}>
           Cancel
         </Button>
-        <Button type="submit" loading={isLoading}>
+        <Button type="submit" loading={createCustomer.isPending}>
           Add Customer
         </Button>
       </div>

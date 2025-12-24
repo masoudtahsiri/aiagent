@@ -11,85 +11,13 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatsCard } from '@/components/cards/stats-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, formatCallDuration, formatPhone } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
-
-// Mock call data
-const mockCalls = [
-  {
-    id: '1',
-    caller_phone: '+15550123',
-    customer_name: 'John Smith',
-    call_direction: 'inbound',
-    call_status: 'completed',
-    call_duration: 245,
-    outcome: 'appointment_booked',
-    started_at: '2024-12-23T10:30:00',
-    has_transcript: true,
-  },
-  {
-    id: '2',
-    caller_phone: '+15550124',
-    customer_name: 'Emily Johnson',
-    call_direction: 'inbound',
-    call_status: 'completed',
-    call_duration: 180,
-    outcome: 'question_answered',
-    started_at: '2024-12-23T09:15:00',
-    has_transcript: true,
-  },
-  {
-    id: '3',
-    caller_phone: '+15550125',
-    customer_name: null,
-    call_direction: 'inbound',
-    call_status: 'missed',
-    call_duration: 0,
-    outcome: null,
-    started_at: '2024-12-23T08:45:00',
-    has_transcript: false,
-  },
-  {
-    id: '4',
-    caller_phone: '+15550126',
-    customer_name: 'Sarah Wilson',
-    call_direction: 'outbound',
-    call_status: 'completed',
-    call_duration: 120,
-    outcome: 'callback_scheduled',
-    started_at: '2024-12-22T16:00:00',
-    has_transcript: true,
-  },
-  {
-    id: '5',
-    caller_phone: '+15550127',
-    customer_name: 'Michael Brown',
-    call_direction: 'inbound',
-    call_status: 'completed',
-    call_duration: 320,
-    outcome: 'appointment_rescheduled',
-    started_at: '2024-12-22T14:30:00',
-    has_transcript: true,
-  },
-];
-
-const mockTranscript = [
-  { speaker: 'ai', text: "Thank you for calling Smile Dental Clinic. This is Sarah, your virtual assistant. How can I help you today?", timestamp: '0:00' },
-  { speaker: 'customer', text: "Hi, I'd like to schedule an appointment for a teeth cleaning.", timestamp: '0:08' },
-  { speaker: 'ai', text: "I'd be happy to help you schedule a teeth cleaning appointment. Could you please tell me your name?", timestamp: '0:15' },
-  { speaker: 'customer', text: "John Smith", timestamp: '0:22' },
-  { speaker: 'ai', text: "Thank you, John. I see you're an existing patient. Let me check our available times. Do you have a preference for morning or afternoon?", timestamp: '0:25' },
-  { speaker: 'customer', text: "Afternoon would be better for me.", timestamp: '0:35' },
-  { speaker: 'ai', text: "Perfect. I have availability this Friday at 2 PM or next Monday at 3 PM. Which works better for you?", timestamp: '0:40' },
-  { speaker: 'customer', text: "Friday at 2 PM sounds good.", timestamp: '0:50' },
-  { speaker: 'ai', text: "Great! I've booked you for a teeth cleaning on Friday, December 27th at 2 PM with Dr. Wilson. You'll receive a confirmation text shortly. Is there anything else I can help you with?", timestamp: '0:55' },
-  { speaker: 'customer', text: "No, that's all. Thank you!", timestamp: '1:10' },
-  { speaker: 'ai', text: "You're welcome, John! We'll see you on Friday. Have a great day!", timestamp: '1:15' },
-];
+import { useCalls, useCall, useDashboardStats } from '@/lib/api/hooks';
+import type { CallLogWithDetails } from '@/types';
 
 const outcomeLabels: Record<string, { label: string; variant: 'success' | 'primary' | 'warning' | 'default' }> = {
   appointment_booked: { label: 'Appointment Booked', variant: 'success' },
@@ -99,21 +27,81 @@ const outcomeLabels: Record<string, { label: string; variant: 'success' | 'prima
   callback_scheduled: { label: 'Callback Scheduled', variant: 'primary' },
   transferred_human: { label: 'Transferred', variant: 'warning' },
   voicemail: { label: 'Voicemail', variant: 'default' },
+  other: { label: 'Other', variant: 'default' },
 };
 
-export default function CallsPage() {
-  const [selectedCall, setSelectedCall] = useState<typeof mockCalls[0] | null>(null);
-  const [filter, setFilter] = useState('all');
-  const [isLoading] = useState(false);
+const ITEMS_PER_PAGE = 50;
 
-  const filteredCalls = filter === 'all' 
-    ? mockCalls 
-    : mockCalls.filter(call => {
-        if (filter === 'inbound') return call.call_direction === 'inbound';
-        if (filter === 'outbound') return call.call_direction === 'outbound';
-        if (filter === 'missed') return call.call_status === 'missed';
-        return true;
+export default function CallsPage() {
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const offset = (page - 1) * ITEMS_PER_PAGE;
+
+  // Fetch calls from API
+  const { data: callsResponse, isLoading } = useCalls({
+    limit: ITEMS_PER_PAGE,
+    offset,
+  });
+  
+  // Fetch dashboard stats for the stats cards
+  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+
+  const calls = callsResponse?.data || [];
+  const totalCalls = callsResponse?.total || 0;
+
+  // Filter calls client-side for quick filtering
+  const filteredCalls = calls.filter(call => {
+    if (filter === 'all') return true;
+    if (filter === 'inbound') return call.call_direction === 'inbound';
+    if (filter === 'outbound') return call.call_direction === 'outbound';
+    if (filter === 'missed') return call.call_status === 'missed';
+    return true;
+  });
+
+  // Get the selected call details
+  const selectedCall = selectedCallId ? calls.find(c => c.id === selectedCallId) : null;
+
+  // Parse transcript if available
+  const parseTranscript = (transcript: string | undefined | null) => {
+    if (!transcript) return [];
+    
+    try {
+      // Try to parse as JSON first
+      const parsed = JSON.parse(transcript);
+      if (Array.isArray(parsed)) return parsed;
+      return [];
+    } catch {
+      // If not JSON, split by speaker patterns
+      const messages: { speaker: string; text: string; timestamp: string }[] = [];
+      const lines = transcript.split('\n');
+      
+      lines.forEach((line, i) => {
+        if (line.startsWith('AI:') || line.startsWith('Assistant:')) {
+          messages.push({ speaker: 'ai', text: line.replace(/^(AI|Assistant):/, '').trim(), timestamp: '' });
+        } else if (line.startsWith('Customer:') || line.startsWith('User:')) {
+          messages.push({ speaker: 'customer', text: line.replace(/^(Customer|User):/, '').trim(), timestamp: '' });
+        } else if (line.trim()) {
+          // Append to last message if no speaker
+          if (messages.length > 0) {
+            messages[messages.length - 1].text += ' ' + line.trim();
+          }
+        }
       });
+      
+      return messages;
+    }
+  };
+
+  // Calculate stats from calls
+  const callsToday = stats?.calls_today ?? 0;
+  const missedCalls = calls.filter(c => c.call_status === 'missed').length;
+  const appointmentsBooked = calls.filter(c => c.outcome === 'appointment_booked').length;
+  const avgDuration = calls.length > 0
+    ? Math.round(calls.reduce((sum, c) => sum + (c.call_duration || 0), 0) / calls.length)
+    : 0;
 
   return (
     <PageContainer
@@ -124,29 +112,26 @@ export default function CallsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <StatsCard
           title="Calls Today"
-          value={12}
-          change={8}
+          value={callsToday}
+          change={stats?.calls_change ?? 0}
           icon={<Phone className="h-5 w-5" />}
-          loading={isLoading}
+          loading={statsLoading}
         />
         <StatsCard
           title="Avg. Duration"
-          value="3:42"
-          change={-5}
+          value={formatCallDuration(avgDuration)}
           icon={<Clock className="h-5 w-5" />}
           loading={isLoading}
         />
         <StatsCard
           title="Appointments Booked"
-          value={8}
-          change={15}
+          value={appointmentsBooked}
           icon={<Calendar className="h-5 w-5" />}
           loading={isLoading}
         />
         <StatsCard
           title="Missed Calls"
-          value={2}
-          change={-20}
+          value={missedCalls}
           icon={<PhoneMissed className="h-5 w-5" />}
           loading={isLoading}
         />
@@ -164,7 +149,12 @@ export default function CallsPage() {
         </Tabs>
 
         <div className="sm:ml-auto flex gap-2">
-          <Input placeholder="Search calls..." className="w-48" />
+          <Input 
+            placeholder="Search calls..." 
+            className="w-48" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
           <Button variant="outline" leftIcon={<Filter className="h-4 w-4" />}>
             More Filters
           </Button>
@@ -175,63 +165,82 @@ export default function CallsPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Recent Calls</CardTitle>
+            <CardTitle>Recent Calls ({filteredCalls.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {filteredCalls.map((call) => (
-                <motion.button
-                  key={call.id}
-                  onClick={() => setSelectedCall(call)}
-                  className={cn(
-                    "w-full flex items-center gap-4 p-4 text-left hover:bg-muted/50 transition-colors",
-                    selectedCall?.id === call.id && "bg-muted/50"
-                  )}
-                  whileHover={{ x: 4 }}
-                >
-                  {/* Direction Icon */}
-                  <div className={cn(
-                    "h-10 w-10 rounded-full flex items-center justify-center",
-                    call.call_status === 'missed' 
-                      ? "bg-error-100 text-error-600"
-                      : call.call_direction === 'inbound'
-                      ? "bg-success-100 text-success-600"
-                      : "bg-primary-100 text-primary-600"
-                  )}>
-                    {call.call_status === 'missed' ? (
-                      <PhoneMissed className="h-5 w-5" />
-                    ) : call.call_direction === 'inbound' ? (
-                      <PhoneIncoming className="h-5 w-5" />
-                    ) : (
-                      <PhoneOutgoing className="h-5 w-5" />
-                    )}
+            {isLoading ? (
+              <div className="divide-y divide-border">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="p-4 flex items-center gap-4">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
                   </div>
-
-                  {/* Details */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium truncate">
-                        {call.customer_name || formatPhone(call.caller_phone)}
-                      </p>
-                      {call.outcome && (
-                        <Badge variant={outcomeLabels[call.outcome]?.variant || 'default'} size="sm">
-                          {outcomeLabels[call.outcome]?.label || call.outcome}
-                        </Badge>
+                ))}
+              </div>
+            ) : filteredCalls.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Phone className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>No calls found</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+                {filteredCalls.map((call) => (
+                  <motion.button
+                    key={call.id}
+                    onClick={() => setSelectedCallId(call.id)}
+                    className={cn(
+                      "w-full flex items-center gap-4 p-4 text-left hover:bg-muted/50 transition-colors",
+                      selectedCallId === call.id && "bg-muted/50"
+                    )}
+                    whileHover={{ x: 4 }}
+                  >
+                    {/* Direction Icon */}
+                    <div className={cn(
+                      "h-10 w-10 rounded-full flex items-center justify-center",
+                      call.call_status === 'missed' 
+                        ? "bg-error-100 text-error-600 dark:bg-error-500/20 dark:text-error-400"
+                        : call.call_direction === 'inbound'
+                        ? "bg-success-100 text-success-600 dark:bg-success-500/20 dark:text-success-400"
+                        : "bg-primary-100 text-primary-600 dark:bg-primary/20"
+                    )}>
+                      {call.call_status === 'missed' ? (
+                        <PhoneMissed className="h-5 w-5" />
+                      ) : call.call_direction === 'inbound' ? (
+                        <PhoneIncoming className="h-5 w-5" />
+                      ) : (
+                        <PhoneOutgoing className="h-5 w-5" />
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(call.started_at, 'MMM d, h:mm a')}
-                      {call.call_duration > 0 && ` • ${formatCallDuration(call.call_duration)}`}
-                    </p>
-                  </div>
 
-                  {/* Transcript indicator */}
-                  {call.has_transcript && (
-                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </motion.button>
-              ))}
-            </div>
+                    {/* Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate">
+                          {call.customer_name || formatPhone(call.caller_phone)}
+                        </p>
+                        {call.outcome && (
+                          <Badge variant={outcomeLabels[call.outcome]?.variant || 'default'} size="sm">
+                            {outcomeLabels[call.outcome]?.label || call.outcome}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {formatDate(call.started_at, 'MMM d, h:mm a')}
+                        {call.call_duration && call.call_duration > 0 && ` • ${formatCallDuration(call.call_duration)}`}
+                      </p>
+                    </div>
+
+                    {/* Transcript indicator */}
+                    {call.transcript && (
+                      <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </motion.button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -246,7 +255,7 @@ export default function CallsPage() {
                     {formatDate(selectedCall.started_at, 'MMMM d, yyyy h:mm a')}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => setSelectedCall(null)}>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedCallId(null)}>
                   <X className="h-4 w-4" />
                 </Button>
               </CardHeader>
@@ -255,7 +264,7 @@ export default function CallsPage() {
                 <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-border">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{formatCallDuration(selectedCall.call_duration)}</span>
+                    <span className="text-sm">{formatCallDuration(selectedCall.call_duration || 0)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {selectedCall.call_direction === 'inbound' ? (
@@ -273,34 +282,43 @@ export default function CallsPage() {
                 </div>
 
                 {/* Transcript */}
-                {selectedCall.has_transcript ? (
+                {selectedCall.transcript ? (
                   <div className="space-y-4">
                     <h4 className="font-medium">Transcript</h4>
                     <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                      {mockTranscript.map((message, i) => (
-                        <div
-                          key={i}
-                          className={cn(
-                            "flex gap-3",
-                            message.speaker === 'ai' ? "flex-row" : "flex-row-reverse"
-                          )}
-                        >
-                          <Avatar 
-                            name={message.speaker === 'ai' ? 'AI' : 'Customer'}
-                            size="sm"
-                            color={message.speaker === 'ai' ? '#8B5CF6' : '#3B82F6'}
-                          />
-                          <div className={cn(
-                            "max-w-[80%] rounded-xl px-4 py-2",
-                            message.speaker === 'ai' 
-                              ? "bg-secondary/10" 
-                              : "bg-primary/10"
-                          )}>
-                            <p className="text-sm">{message.text}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{message.timestamp}</p>
+                      {parseTranscript(selectedCall.transcript).length > 0 ? (
+                        parseTranscript(selectedCall.transcript).map((message, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "flex gap-3",
+                              message.speaker === 'ai' ? "flex-row" : "flex-row-reverse"
+                            )}
+                          >
+                            <Avatar 
+                              name={message.speaker === 'ai' ? 'AI' : 'Customer'}
+                              size="sm"
+                              color={message.speaker === 'ai' ? '#8B5CF6' : '#3B82F6'}
+                            />
+                            <div className={cn(
+                              "max-w-[80%] rounded-xl px-4 py-2",
+                              message.speaker === 'ai' 
+                                ? "bg-secondary/10" 
+                                : "bg-primary/10"
+                            )}>
+                              <p className="text-sm">{message.text}</p>
+                              {message.timestamp && (
+                                <p className="text-xs text-muted-foreground mt-1">{message.timestamp}</p>
+                              )}
+                            </div>
                           </div>
+                        ))
+                      ) : (
+                        // Raw transcript display
+                        <div className="bg-muted/30 rounded-lg p-4">
+                          <p className="text-sm whitespace-pre-wrap">{selectedCall.transcript}</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -321,6 +339,33 @@ export default function CallsPage() {
           )}
         </Card>
       </div>
+
+      {/* Pagination */}
+      {totalCalls > ITEMS_PER_PAGE && (
+        <div className="flex items-center justify-center gap-2 mt-6">
+          <Button 
+            variant="outline" 
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
+          <span className="text-sm px-4">
+            Page {page} of {Math.ceil(totalCalls / ITEMS_PER_PAGE)}
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm"
+            disabled={page >= Math.ceil(totalCalls / ITEMS_PER_PAGE)}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Next
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      )}
     </PageContainer>
   );
 }

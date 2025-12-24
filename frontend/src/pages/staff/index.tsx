@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, MoreHorizontal, Calendar, Mail, Phone, UserCog } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,7 +10,6 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/form-elements';
 import { 
   DropdownMenu, 
@@ -19,58 +19,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-
-// Mock staff data
-const mockStaff = [
-  {
-    id: '1',
-    name: 'Dr. Sarah Wilson',
-    title: 'Senior Dentist',
-    email: 'sarah@clinic.com',
-    phone: '+15550201',
-    specialty: 'General Dentistry',
-    color_code: '#3B82F6',
-    is_active: true,
-    appointments_today: 8,
-    appointments_week: 32,
-  },
-  {
-    id: '2',
-    name: 'Dr. Michael Brown',
-    title: 'Orthodontist',
-    email: 'michael@clinic.com',
-    phone: '+15550202',
-    specialty: 'Orthodontics',
-    color_code: '#8B5CF6',
-    is_active: true,
-    appointments_today: 6,
-    appointments_week: 28,
-  },
-  {
-    id: '3',
-    name: 'Dr. Emma Lee',
-    title: 'Dental Hygienist',
-    email: 'emma@clinic.com',
-    phone: '+15550203',
-    specialty: 'Preventive Care',
-    color_code: '#06B6D4',
-    is_active: true,
-    appointments_today: 10,
-    appointments_week: 45,
-  },
-  {
-    id: '4',
-    name: 'Dr. James Taylor',
-    title: 'Periodontist',
-    email: 'james@clinic.com',
-    phone: '+15550204',
-    specialty: 'Periodontics',
-    color_code: '#F59E0B',
-    is_active: false,
-    appointments_today: 0,
-    appointments_week: 0,
-  },
-];
+import { useStaff, useCreateStaff, useDeleteStaff, useUpdateStaff } from '@/lib/api/hooks';
+import type { Staff } from '@/types';
 
 const colorOptions = [
   { value: '#3B82F6', label: 'Blue' },
@@ -84,7 +34,43 @@ const colorOptions = [
 
 export default function StaffPage() {
   const [showNewModal, setShowNewModal] = useState(false);
-  const [isLoading] = useState(false);
+  
+  // Fetch staff from API
+  const { data: staffResponse, isLoading, refetch } = useStaff();
+  const deleteStaff = useDeleteStaff();
+  const updateStaff = useUpdateStaff();
+  
+  const staffList = staffResponse?.data || [];
+
+  const handleToggleActive = async (member: Staff) => {
+    try {
+      await updateStaff.mutateAsync({
+        id: member.id,
+        data: { is_active: !member.is_active }
+      });
+      toast.success(`${member.name} ${member.is_active ? 'deactivated' : 'activated'}`);
+      refetch();
+    } catch (error) {
+      toast.error('Failed to update staff member');
+    }
+  };
+
+  const handleDelete = async (member: Staff) => {
+    if (!confirm(`Are you sure you want to delete ${member.name}?`)) return;
+    
+    try {
+      await deleteStaff.mutateAsync(member.id);
+      toast.success('Staff member deleted');
+      refetch();
+    } catch (error) {
+      toast.error('Failed to delete staff member');
+    }
+  };
+
+  const handleNewStaffSuccess = () => {
+    setShowNewModal(false);
+    refetch();
+  };
 
   if (isLoading) {
     return (
@@ -108,7 +94,7 @@ export default function StaffPage() {
         </Button>
       }
     >
-      {mockStaff.length === 0 ? (
+      {staffList.length === 0 ? (
         <EmptyState
           icon={UserCog}
           title="No staff members"
@@ -121,7 +107,7 @@ export default function StaffPage() {
         />
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {mockStaff.map((member, i) => (
+          {staffList.map((member, i) => (
             <motion.div
               key={member.id}
               initial={{ opacity: 0, y: 20 }}
@@ -130,7 +116,7 @@ export default function StaffPage() {
             >
               <Card className="overflow-hidden">
                 {/* Color Bar */}
-                <div className="h-2" style={{ backgroundColor: member.color_code }} />
+                <div className="h-2" style={{ backgroundColor: member.color_code || '#3B82F6' }} />
                 
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -148,7 +134,7 @@ export default function StaffPage() {
                         >
                           {member.name}
                         </Link>
-                        <p className="text-sm text-muted-foreground">{member.title}</p>
+                        <p className="text-sm text-muted-foreground">{member.title || 'Staff Member'}</p>
                       </div>
                     </div>
                     
@@ -162,26 +148,37 @@ export default function StaffPage() {
                         <DropdownMenuItem asChild>
                           <Link to={`/staff/${member.id}`}>View Profile</Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem>Manage Availability</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem asChild>
+                          <Link to={`/staff/${member.id}`}>Edit</Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleActive(member)}>
                           {member.is_active ? 'Deactivate' : 'Activate'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={() => handleDelete(member)}
+                        >
+                          Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
 
                   {/* Specialty */}
-                  <Badge variant="default" className="mb-4">
-                    {member.specialty}
-                  </Badge>
+                  {member.specialty && (
+                    <Badge variant="default" className="mb-4">
+                      {member.specialty}
+                    </Badge>
+                  )}
 
                   {/* Contact */}
                   <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Mail className="h-4 w-4" />
-                      <span className="truncate">{member.email}</span>
-                    </div>
+                    {member.email && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Mail className="h-4 w-4" />
+                        <span className="truncate">{member.email}</span>
+                      </div>
+                    )}
                     {member.phone && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Phone className="h-4 w-4" />
@@ -190,16 +187,13 @@ export default function StaffPage() {
                     )}
                   </div>
 
-                  {/* Stats */}
+                  {/* Status */}
                   <div className="flex gap-4 pt-4 border-t border-border">
                     <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        <span className="font-semibold">{member.appointments_today}</span> today
+                      <div className={`h-2 w-2 rounded-full ${member.is_active ? 'bg-success-500' : 'bg-muted-foreground'}`} />
+                      <span className="text-sm text-muted-foreground">
+                        {member.is_active ? 'Active' : 'Inactive'}
                       </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      <span className="font-semibold text-foreground">{member.appointments_week}</span> this week
                     </div>
                   </div>
                 </div>
@@ -215,7 +209,7 @@ export default function StaffPage() {
           <DialogHeader>
             <DialogTitle>Add New Staff Member</DialogTitle>
           </DialogHeader>
-          <NewStaffForm onSuccess={() => setShowNewModal(false)} />
+          <NewStaffForm onSuccess={handleNewStaffSuccess} />
         </DialogContent>
       </Dialog>
     </PageContainer>
@@ -224,43 +218,92 @@ export default function StaffPage() {
 
 // New Staff Form
 function NewStaffForm({ onSuccess }: { onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedColor, setSelectedColor] = useState('#3B82F6');
+  const [formData, setFormData] = useState({
+    name: '',
+    title: '',
+    email: '',
+    phone: '',
+    specialty: '',
+    color_code: '#3B82F6',
+    is_active: true,
+  });
+  
+  const createStaff = useCreateStaff();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
+    
+    if (!formData.name) {
+      toast.error('Please enter a name');
+      return;
+    }
+    
+    try {
+      await createStaff.mutateAsync({
+        name: formData.name,
+        title: formData.title || undefined,
+        email: formData.email || undefined,
+        phone: formData.phone || undefined,
+        specialty: formData.specialty || undefined,
+        color_code: formData.color_code,
+        is_active: formData.is_active,
+      });
+      toast.success('Staff member added');
+      onSuccess();
+    } catch (error) {
+      toast.error('Failed to add staff member');
+    }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Full Name *</label>
-        <Input placeholder="Dr. Jane Smith" required />
+        <Input 
+          placeholder="Dr. Jane Smith" 
+          required 
+          value={formData.name}
+          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+        />
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Title</label>
-        <Input placeholder="Senior Dentist" />
+        <Input 
+          placeholder="Senior Dentist" 
+          value={formData.title}
+          onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Email</label>
-          <Input type="email" placeholder="jane@clinic.com" />
+          <Input 
+            type="email" 
+            placeholder="jane@clinic.com" 
+            value={formData.email}
+            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+          />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Phone</label>
-          <Input type="tel" placeholder="+1 (555) 000-0000" />
+          <Input 
+            type="tel" 
+            placeholder="+1 (555) 000-0000" 
+            value={formData.phone}
+            onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+          />
         </div>
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Specialty</label>
-        <Input placeholder="General Dentistry" />
+        <Input 
+          placeholder="General Dentistry" 
+          value={formData.specialty}
+          onChange={(e) => setFormData(prev => ({ ...prev, specialty: e.target.value }))}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -270,9 +313,9 @@ function NewStaffForm({ onSuccess }: { onSuccess: () => void }) {
             <button
               key={color.value}
               type="button"
-              onClick={() => setSelectedColor(color.value)}
+              onClick={() => setFormData(prev => ({ ...prev, color_code: color.value }))}
               className={`w-8 h-8 rounded-full border-2 transition-all ${
-                selectedColor === color.value 
+                formData.color_code === color.value 
                   ? 'border-foreground scale-110' 
                   : 'border-transparent'
               }`}
@@ -288,14 +331,17 @@ function NewStaffForm({ onSuccess }: { onSuccess: () => void }) {
           <p className="font-medium">Active</p>
           <p className="text-sm text-muted-foreground">Staff member can receive appointments</p>
         </div>
-        <Switch defaultChecked />
+        <Switch 
+          checked={formData.is_active}
+          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
+        />
       </div>
 
       <div className="flex justify-end gap-3 pt-4">
         <Button type="button" variant="outline" onClick={onSuccess}>
           Cancel
         </Button>
-        <Button type="submit" loading={isLoading}>
+        <Button type="submit" loading={createStaff.isPending}>
           Add Staff Member
         </Button>
       </div>

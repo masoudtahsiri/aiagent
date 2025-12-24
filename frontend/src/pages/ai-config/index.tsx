@@ -5,26 +5,43 @@ import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { AIStatusWidget } from '@/components/ai/ai-status-widget';
-
-const configSections = [
-  {
-    title: 'AI Roles',
-    description: 'Configure AI personalities and behaviors for different scenarios',
-    icon: Sparkles,
-    href: '/ai-config/roles',
-    stats: { label: '3 Active Roles', variant: 'success' as const },
-  },
-  {
-    title: 'Knowledge Base',
-    description: 'Manage FAQs and information the AI uses to answer questions',
-    icon: BookOpen,
-    href: '/ai-config/knowledge',
-    stats: { label: '24 FAQs', variant: 'default' as const },
-  },
-];
+import { useAIRoles, useFAQs, useDashboardStats } from '@/lib/api/hooks';
 
 export default function AIConfigPage() {
+  // Fetch real data
+  const { data: roles, isLoading: rolesLoading } = useAIRoles();
+  const { data: faqs, isLoading: faqsLoading } = useFAQs();
+  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+
+  const activeRolesCount = roles?.filter(r => r.is_enabled).length || 0;
+  const totalFaqsCount = faqs?.length || 0;
+  const callsToday = stats?.calls_today || 0;
+
+  const configSections = [
+    {
+      title: 'AI Roles',
+      description: 'Configure AI personalities and behaviors for different scenarios',
+      icon: Sparkles,
+      href: '/ai-config/roles',
+      stats: { 
+        label: rolesLoading ? 'Loading...' : `${activeRolesCount} Active Role${activeRolesCount !== 1 ? 's' : ''}`, 
+        variant: 'success' as const 
+      },
+    },
+    {
+      title: 'Knowledge Base',
+      description: 'Manage FAQs and information the AI uses to answer questions',
+      icon: BookOpen,
+      href: '/ai-config/knowledge',
+      stats: { 
+        label: faqsLoading ? 'Loading...' : `${totalFaqsCount} FAQ${totalFaqsCount !== 1 ? 's' : ''}`, 
+        variant: 'default' as const 
+      },
+    },
+  ];
+
   return (
     <PageContainer
       title="AI Configuration"
@@ -32,44 +49,62 @@ export default function AIConfigPage() {
     >
       {/* AI Status */}
       <div className="mb-8">
-        <AIStatusWidget status="active" callsToday={156} />
+        <AIStatusWidget status="active" callsToday={callsToday} />
       </div>
 
       {/* Quick Stats */}
       <div className="grid gap-4 sm:grid-cols-3 mb-8">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-success-100 flex items-center justify-center">
-              <Phone className="h-5 w-5 text-success-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">156</p>
-              <p className="text-sm text-muted-foreground">Calls Handled Today</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary-100 flex items-center justify-center">
-              <Bot className="h-5 w-5 text-primary-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">94%</p>
-              <p className="text-sm text-muted-foreground">Resolution Rate</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-secondary-100 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-secondary-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">4.8</p>
-              <p className="text-sm text-muted-foreground">Avg. Satisfaction</p>
-            </div>
-          </div>
-        </Card>
+        {statsLoading ? (
+          <>
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="p-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-12" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </>
+        ) : (
+          <>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-success-100 dark:bg-success-500/20 flex items-center justify-center">
+                  <Phone className="h-5 w-5 text-success-600 dark:text-success-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{callsToday}</p>
+                  <p className="text-sm text-muted-foreground">Calls Handled Today</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary-100 dark:bg-primary/20 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-primary-600 dark:text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{activeRolesCount}</p>
+                  <p className="text-sm text-muted-foreground">Active AI Roles</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-secondary-100 dark:bg-secondary/20 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-secondary-600 dark:text-secondary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{totalFaqsCount}</p>
+                  <p className="text-sm text-muted-foreground">Knowledge Base Items</p>
+                </div>
+              </div>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Configuration Sections */}

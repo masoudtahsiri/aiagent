@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, MoreHorizontal, Clock, DollarSign, Briefcase, Edit, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/form-elements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/form-elements';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -18,55 +20,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency, formatDuration } from '@/lib/utils/format';
-
-// Mock services data
-const mockServices = [
-  {
-    id: '1',
-    name: 'General Consultation',
-    description: 'Initial consultation to assess patient needs and create a treatment plan.',
-    duration_minutes: 30,
-    price: 75,
-    category: 'consultation',
-    is_active: true,
-  },
-  {
-    id: '2',
-    name: 'Teeth Cleaning',
-    description: 'Professional teeth cleaning and oral hygiene assessment.',
-    duration_minutes: 45,
-    price: 120,
-    category: 'maintenance',
-    is_active: true,
-  },
-  {
-    id: '3',
-    name: 'Dental Filling',
-    description: 'Cavity treatment with composite or amalgam filling.',
-    duration_minutes: 60,
-    price: 200,
-    category: 'treatment',
-    is_active: true,
-  },
-  {
-    id: '4',
-    name: 'Root Canal',
-    description: 'Endodontic treatment to save an infected tooth.',
-    duration_minutes: 90,
-    price: 800,
-    category: 'treatment',
-    is_active: true,
-  },
-  {
-    id: '5',
-    name: 'Teeth Whitening',
-    description: 'Professional whitening treatment for a brighter smile.',
-    duration_minutes: 60,
-    price: 350,
-    category: 'cosmetic',
-    is_active: false,
-  },
-];
+import { useServices, useCreateService, useUpdateService, useDeleteService } from '@/lib/api/hooks';
+import type { Service } from '@/types';
 
 const categories = [
   { value: 'consultation', label: 'Consultation', color: 'primary' },
@@ -80,17 +35,66 @@ export default function ServicesPage() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
+  // Fetch services from API
+  const { data: servicesResponse, isLoading, refetch } = useServices();
+  const updateService = useUpdateService();
+  const deleteService = useDeleteService();
+  
+  const servicesList = servicesResponse?.data || [];
+
   const filteredServices = selectedCategory === 'all' 
-    ? mockServices 
-    : mockServices.filter(s => s.category === selectedCategory);
+    ? servicesList 
+    : servicesList.filter(s => s.category === selectedCategory);
 
   // Group by category
   const groupedServices = filteredServices.reduce((acc, service) => {
-    const cat = service.category;
+    const cat = service.category || 'other';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(service);
     return acc;
-  }, {} as Record<string, typeof mockServices>);
+  }, {} as Record<string, Service[]>);
+
+  const handleToggleActive = async (service: Service) => {
+    try {
+      await updateService.mutateAsync({
+        id: service.id,
+        data: { is_active: !service.is_active }
+      });
+      toast.success(`${service.name} ${service.is_active ? 'deactivated' : 'activated'}`);
+      refetch();
+    } catch (error) {
+      toast.error('Failed to update service');
+    }
+  };
+
+  const handleDelete = async (service: Service) => {
+    if (!confirm(`Are you sure you want to delete ${service.name}?`)) return;
+    
+    try {
+      await deleteService.mutateAsync(service.id);
+      toast.success('Service deleted');
+      refetch();
+    } catch (error) {
+      toast.error('Failed to delete service');
+    }
+  };
+
+  const handleNewServiceSuccess = () => {
+    setShowNewModal(false);
+    refetch();
+  };
+
+  if (isLoading) {
+    return (
+      <PageContainer title="Services" description="Manage the services your business offers">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-48 rounded-xl" />
+          ))}
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer
@@ -168,10 +172,13 @@ export default function ServicesPage() {
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleToggleActive(service)}>
                               {service.is_active ? 'Deactivate' : 'Activate'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem 
+                              className="text-destructive"
+                              onClick={() => handleDelete(service)}
+                            >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
                             </DropdownMenuItem>
@@ -184,7 +191,7 @@ export default function ServicesPage() {
                           <Clock className="h-4 w-4 text-muted-foreground" />
                           <span>{formatDuration(service.duration_minutes)}</span>
                         </div>
-                        {service.price && (
+                        {service.price != null && service.price > 0 && (
                           <div className="flex items-center gap-1.5 text-sm">
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                             <span>{formatCurrency(service.price)}</span>
@@ -215,7 +222,7 @@ export default function ServicesPage() {
           <DialogHeader>
             <DialogTitle>Add New Service</DialogTitle>
           </DialogHeader>
-          <NewServiceForm onSuccess={() => setShowNewModal(false)} />
+          <NewServiceForm onSuccess={handleNewServiceSuccess} />
         </DialogContent>
       </Dialog>
     </PageContainer>
@@ -224,32 +231,70 @@ export default function ServicesPage() {
 
 // New Service Form
 function NewServiceForm({ onSuccess }: { onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    duration_minutes: 30,
+    price: 0,
+    category: 'consultation',
+    is_active: true,
+  });
+  
+  const createService = useCreateService();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
+    
+    if (!formData.name) {
+      toast.error('Please enter a service name');
+      return;
+    }
+    
+    try {
+      await createService.mutateAsync({
+        name: formData.name,
+        description: formData.description || undefined,
+        duration_minutes: formData.duration_minutes,
+        price: formData.price || undefined,
+        category: formData.category,
+        is_active: formData.is_active,
+        requires_staff: true,
+      });
+      toast.success('Service added');
+      onSuccess();
+    } catch (error) {
+      toast.error('Failed to add service');
+    }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Service Name *</label>
-        <Input placeholder="e.g., Teeth Cleaning" required />
+        <Input 
+          placeholder="e.g., Teeth Cleaning" 
+          required 
+          value={formData.name}
+          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+        />
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Description</label>
-        <Textarea placeholder="Describe this service..." />
+        <Textarea 
+          placeholder="Describe this service..." 
+          value={formData.description}
+          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Duration *</label>
-          <Select defaultValue="30">
+          <Select 
+            value={formData.duration_minutes.toString()} 
+            onValueChange={(v) => setFormData(prev => ({ ...prev, duration_minutes: parseInt(v) }))}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -265,13 +310,23 @@ function NewServiceForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Price</label>
-          <Input type="number" placeholder="0.00" min="0" step="0.01" />
+          <Input 
+            type="number" 
+            placeholder="0.00" 
+            min="0" 
+            step="0.01" 
+            value={formData.price || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+          />
         </div>
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
-        <Select defaultValue="consultation">
+        <Select 
+          value={formData.category} 
+          onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -290,14 +345,17 @@ function NewServiceForm({ onSuccess }: { onSuccess: () => void }) {
           <p className="font-medium">Active</p>
           <p className="text-sm text-muted-foreground">Service is available for booking</p>
         </div>
-        <Switch defaultChecked />
+        <Switch 
+          checked={formData.is_active}
+          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
+        />
       </div>
 
       <div className="flex justify-end gap-3 pt-4">
         <Button type="button" variant="outline" onClick={onSuccess}>
           Cancel
         </Button>
-        <Button type="submit" loading={isLoading}>
+        <Button type="submit" loading={createService.isPending}>
           Add Service
         </Button>
       </div>

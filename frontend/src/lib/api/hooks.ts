@@ -1,0 +1,672 @@
+/**
+ * API Hooks - Centralized data fetching hooks using React Query
+ * 
+ * This file provides reusable hooks for all API operations.
+ * Each hook handles loading states, caching, and error handling.
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { get, post, put, del } from './client';
+import { useAuth } from '@/features/auth/auth-provider';
+import type {
+  Customer,
+  Staff,
+  Service,
+  Appointment,
+  AppointmentWithDetails,
+  CallLog,
+  CallLogWithDetails,
+  AIRole,
+  FAQ,
+  Business,
+  BusinessHours,
+  DashboardStats,
+  CallAnalytics,
+  PaginatedResponse,
+} from '@/types';
+
+// =============================================================================
+// QUERY KEYS - Centralized for cache management
+// =============================================================================
+
+export const queryKeys = {
+  // Dashboard
+  dashboardStats: (businessId: string) => ['dashboard', 'stats', businessId] as const,
+  dashboardAnalytics: (businessId: string) => ['dashboard', 'analytics', businessId] as const,
+  
+  // Customers
+  customers: (businessId: string) => ['customers', businessId] as const,
+  customer: (customerId: string) => ['customer', customerId] as const,
+  
+  // Staff
+  staff: (businessId: string) => ['staff', businessId] as const,
+  staffMember: (staffId: string) => ['staff', 'member', staffId] as const,
+  
+  // Services
+  services: (businessId: string) => ['services', businessId] as const,
+  service: (serviceId: string) => ['service', serviceId] as const,
+  
+  // Appointments
+  appointments: (businessId: string, params?: object) => 
+    ['appointments', businessId, params] as const,
+  appointment: (appointmentId: string) => ['appointment', appointmentId] as const,
+  availableSlots: (staffId: string, startDate: string) => 
+    ['slots', staffId, startDate] as const,
+  
+  // Calls
+  calls: (businessId: string, params?: object) => 
+    ['calls', businessId, params] as const,
+  call: (callId: string) => ['call', callId] as const,
+  
+  // AI Config
+  aiRoles: (businessId: string) => ['ai-roles', businessId] as const,
+  aiRole: (roleId: string) => ['ai-role', roleId] as const,
+  faqs: (businessId: string) => ['faqs', businessId] as const,
+  
+  // Business
+  business: (businessId: string) => ['business', businessId] as const,
+  businessHours: (businessId: string) => ['business-hours', businessId] as const,
+};
+
+// =============================================================================
+// HELPER - Get business ID from auth context
+// =============================================================================
+
+export function useBusinessId() {
+  const { user } = useAuth();
+  return user?.business_id || null;
+}
+
+// =============================================================================
+// DASHBOARD HOOKS
+// =============================================================================
+
+interface DashboardStatsResponse {
+  calls_today: number;
+  calls_yesterday: number;
+  calls_change: number;
+  appointments_today: number;
+  appointments_completed: number;
+  total_customers: number;
+  customers_this_month: number;
+  average_rating: number;
+  ratings_count: number;
+}
+
+interface RecentCall {
+  id: string;
+  caller_phone: string;
+  call_direction: 'inbound' | 'outbound';
+  call_duration: number | null;
+  outcome: string | null;
+  started_at: string;
+  customer_name?: string;
+}
+
+interface TodayAppointment {
+  id: string;
+  appointment_time: string;
+  customer_name: string;
+  service_name: string | null;
+  staff_name: string;
+  status: string;
+}
+
+export function useDashboardStats() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.dashboardStats(businessId || ''),
+    queryFn: () => get<DashboardStatsResponse>(`/api/dashboard/stats/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 2, // 2 minutes
+    refetchInterval: 1000 * 60 * 5, // Refresh every 5 minutes
+  });
+}
+
+export function useRecentCalls(limit: number = 5) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: ['recent-calls', businessId, limit],
+    queryFn: async () => {
+      const result = await get<{ data: RecentCall[]; total: number }>(
+        `/api/calls/business/${businessId}?limit=${limit}&offset=0`
+      );
+      return result.data || [];
+    },
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useTodayAppointments() {
+  const businessId = useBusinessId();
+  const today = new Date().toISOString().split('T')[0];
+  
+  return useQuery({
+    queryKey: ['today-appointments', businessId, today],
+    queryFn: () => get<AppointmentWithDetails[]>(
+      `/api/appointments/business/${businessId}?start_date=${today}&end_date=${today}`
+    ),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useCallAnalytics(days: number = 7) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.dashboardAnalytics(businessId || ''),
+    queryFn: () => get<CallAnalytics[]>(`/api/dashboard/analytics/${businessId}?days=${days}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+// =============================================================================
+// CUSTOMER HOOKS
+// =============================================================================
+
+interface CustomersResponse {
+  data: Customer[];
+  total: number;
+}
+
+export function useCustomers(search?: string, limit: number = 50, offset: number = 0) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: [...queryKeys.customers(businessId || ''), { search, limit, offset }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      params.append('limit', limit.toString());
+      params.append('offset', offset.toString());
+      
+      return get<CustomersResponse>(
+        `/api/customers/business/${businessId}?${params.toString()}`
+      );
+    },
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useCustomer(customerId: string) {
+  const { user } = useAuth();
+  
+  return useQuery({
+    queryKey: queryKeys.customer(customerId),
+    queryFn: () => get<Customer>(`/api/customers/${customerId}`),
+    enabled: !!customerId && !!user,
+  });
+}
+
+export function useCreateCustomer() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<Customer>) => 
+      post<Customer>('/api/customers', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers(businessId || '') });
+    },
+  });
+}
+
+export function useUpdateCustomer() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Customer> }) => 
+      put<Customer>(`/api/customers/${id}`, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers(businessId || '') });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customer(variables.id) });
+    },
+  });
+}
+
+export function useDeleteCustomer() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/customers/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers(businessId || '') });
+    },
+  });
+}
+
+// =============================================================================
+// STAFF HOOKS
+// =============================================================================
+
+interface StaffResponse {
+  data: Staff[];
+  total: number;
+}
+
+export function useStaff() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.staff(businessId || ''),
+    queryFn: () => get<StaffResponse>(`/api/staff/business/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useStaffMember(staffId: string) {
+  return useQuery({
+    queryKey: queryKeys.staffMember(staffId),
+    queryFn: () => get<Staff>(`/api/staff/${staffId}`),
+    enabled: !!staffId,
+  });
+}
+
+export function useCreateStaff() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<Staff>) => 
+      post<Staff>('/api/staff', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
+    },
+  });
+}
+
+export function useUpdateStaff() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Staff> }) => 
+      put<Staff>(`/api/staff/${id}`, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staffMember(variables.id) });
+    },
+  });
+}
+
+export function useDeleteStaff() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/staff/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
+    },
+  });
+}
+
+// =============================================================================
+// SERVICE HOOKS
+// =============================================================================
+
+interface ServicesResponse {
+  data: Service[];
+  total: number;
+}
+
+export function useServices() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.services(businessId || ''),
+    queryFn: () => get<ServicesResponse>(`/api/services/business/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useCreateService() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<Service>) => 
+      post<Service>('/api/services', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.services(businessId || '') });
+    },
+  });
+}
+
+export function useUpdateService() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Service> }) => 
+      put<Service>(`/api/services/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.services(businessId || '') });
+    },
+  });
+}
+
+export function useDeleteService() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/services/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.services(businessId || '') });
+    },
+  });
+}
+
+// =============================================================================
+// APPOINTMENT HOOKS
+// =============================================================================
+
+interface AppointmentFilters {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  staffId?: string;
+}
+
+export function useAppointments(filters?: AppointmentFilters) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.appointments(businessId || '', filters),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters?.startDate) params.append('start_date', filters.startDate);
+      if (filters?.endDate) params.append('end_date', filters.endDate);
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.staffId) params.append('staff_id', filters.staffId);
+      
+      return get<AppointmentWithDetails[]>(
+        `/api/appointments/business/${businessId}?${params.toString()}`
+      );
+    },
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useAppointment(appointmentId: string) {
+  return useQuery({
+    queryKey: queryKeys.appointment(appointmentId),
+    queryFn: () => get<AppointmentWithDetails>(`/api/appointments/${appointmentId}`),
+    enabled: !!appointmentId,
+  });
+}
+
+export function useAvailableSlots(staffId: string, startDate: string, endDate?: string) {
+  return useQuery({
+    queryKey: queryKeys.availableSlots(staffId, startDate),
+    queryFn: async () => {
+      const params = new URLSearchParams({ start_date: startDate });
+      if (endDate) params.append('end_date', endDate);
+      
+      return get<Array<{ date: string; time: string; is_available: boolean }>>(
+        `/api/appointments/staff/${staffId}/slots?${params.toString()}`
+      );
+    },
+    enabled: !!staffId && !!startDate,
+    staleTime: 1000 * 60 * 1,
+  });
+}
+
+export function useCreateAppointment() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<Appointment>) => 
+      post<AppointmentWithDetails>('/api/appointments', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['today-appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useUpdateAppointment() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Appointment> }) => 
+      put<AppointmentWithDetails>(`/api/appointments/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['today-appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useCancelAppointment() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => {
+      const params = reason ? `?cancellation_reason=${encodeURIComponent(reason)}` : '';
+      return del(`/api/appointments/${id}${params}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['today-appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+// =============================================================================
+// CALL LOG HOOKS
+// =============================================================================
+
+interface CallFilters {
+  startDate?: string;
+  endDate?: string;
+  direction?: 'inbound' | 'outbound';
+  outcome?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface CallsResponse {
+  data: CallLogWithDetails[];
+  total: number;
+}
+
+export function useCalls(filters?: CallFilters) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.calls(businessId || '', filters),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters?.startDate) params.append('start_date', filters.startDate);
+      if (filters?.endDate) params.append('end_date', filters.endDate);
+      params.append('limit', (filters?.limit || 50).toString());
+      params.append('offset', (filters?.offset || 0).toString());
+      
+      return get<CallsResponse>(
+        `/api/calls/business/${businessId}?${params.toString()}`
+      );
+    },
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useCall(callId: string) {
+  return useQuery({
+    queryKey: queryKeys.call(callId),
+    queryFn: () => get<CallLogWithDetails>(`/api/calls/${callId}`),
+    enabled: !!callId,
+  });
+}
+
+// =============================================================================
+// AI CONFIG HOOKS
+// =============================================================================
+
+export function useAIRoles() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.aiRoles(businessId || ''),
+    queryFn: () => get<AIRole[]>(`/api/ai-config/roles/business/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useCreateAIRole() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<AIRole>) => 
+      post<AIRole>('/api/ai-config/roles', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.aiRoles(businessId || '') });
+    },
+  });
+}
+
+export function useUpdateAIRole() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<AIRole> }) => 
+      put<AIRole>(`/api/ai-config/roles/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.aiRoles(businessId || '') });
+    },
+  });
+}
+
+export function useDeleteAIRole() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/ai-config/roles/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.aiRoles(businessId || '') });
+    },
+  });
+}
+
+export function useFAQs() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.faqs(businessId || ''),
+    queryFn: () => get<FAQ[]>(`/api/knowledge-base/business/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useCreateFAQ() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<FAQ>) => 
+      post<FAQ>('/api/knowledge-base', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.faqs(businessId || '') });
+    },
+  });
+}
+
+export function useUpdateFAQ() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<FAQ> }) => 
+      put<FAQ>(`/api/knowledge-base/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.faqs(businessId || '') });
+    },
+  });
+}
+
+export function useDeleteFAQ() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (id: string) => del(`/api/knowledge-base/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.faqs(businessId || '') });
+    },
+  });
+}
+
+// =============================================================================
+// BUSINESS HOOKS
+// =============================================================================
+
+export function useBusiness() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.business(businessId || ''),
+    queryFn: () => get<Business>(`/api/businesses/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useUpdateBusiness() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: Partial<Business>) => 
+      put<Business>(`/api/businesses/${businessId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.business(businessId || '') });
+    },
+  });
+}
+
+export function useBusinessHours() {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: queryKeys.businessHours(businessId || ''),
+    queryFn: () => get<BusinessHours[]>(`/api/business-hours/${businessId}`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useUpdateBusinessHours() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: BusinessHours[]) => 
+      put<BusinessHours[]>(`/api/business-hours/${businessId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.businessHours(businessId || '') });
+    },
+  });
+}
+

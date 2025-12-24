@@ -226,7 +226,7 @@ export interface AIRole {
   updated_at: string;
 }
 
-export type FAQCategory = 'hours' | 'pricing' | 'services' | 'policies' | 'general';
+export type FAQCategory = 'hours' | 'pricing' | 'services' | 'policies' | 'general' | 'location';
 
 export interface FAQ {
   id: string;

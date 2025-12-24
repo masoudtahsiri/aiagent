@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Search, ChevronDown, ChevronRight, Edit, Trash2, BookOpen } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -9,53 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/form-elements';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
-
-// Mock FAQs
-const mockFAQs = [
-  {
-    id: '1',
-    category: 'hours',
-    question: 'What are your business hours?',
-    answer: 'We are open Monday through Friday from 9 AM to 5 PM, and Saturday from 9 AM to 1 PM. We are closed on Sundays.',
-    keywords: ['hours', 'open', 'closed', 'schedule'],
-  },
-  {
-    id: '2',
-    category: 'hours',
-    question: 'Are you open on holidays?',
-    answer: 'We are closed on major holidays including New Year\'s Day, Memorial Day, Independence Day, Labor Day, Thanksgiving, and Christmas.',
-    keywords: ['holiday', 'closed'],
-  },
-  {
-    id: '3',
-    category: 'pricing',
-    question: 'How much does a teeth cleaning cost?',
-    answer: 'A standard teeth cleaning costs $120. We also offer deep cleaning services starting at $250 per quadrant.',
-    keywords: ['cleaning', 'price', 'cost'],
-  },
-  {
-    id: '4',
-    category: 'services',
-    question: 'Do you offer teeth whitening?',
-    answer: 'Yes! We offer both in-office whitening treatments ($350) and take-home whitening kits ($150). The in-office treatment takes about an hour.',
-    keywords: ['whitening', 'bleaching'],
-  },
-  {
-    id: '5',
-    category: 'policies',
-    question: 'What is your cancellation policy?',
-    answer: 'We require 24 hours notice for cancellations. Late cancellations or no-shows may be subject to a $50 fee.',
-    keywords: ['cancel', 'cancellation', 'reschedule'],
-  },
-  {
-    id: '6',
-    category: 'general',
-    question: 'Do you accept insurance?',
-    answer: 'Yes, we accept most major dental insurance plans including Delta Dental, Cigna, Aetna, and MetLife. Please bring your insurance card to your appointment.',
-    keywords: ['insurance', 'coverage', 'pay'],
-  },
-];
+import { useFAQs, useCreateFAQ, useUpdateFAQ, useDeleteFAQ } from '@/lib/api/hooks';
+import type { FAQ } from '@/types';
 
 const categories = [
   { value: 'hours', label: 'Business Hours', color: 'primary' },
@@ -63,6 +21,7 @@ const categories = [
   { value: 'services', label: 'Services', color: 'secondary' },
   { value: 'policies', label: 'Policies', color: 'warning' },
   { value: 'general', label: 'General', color: 'default' },
+  { value: 'location', label: 'Location', color: 'info' },
 ];
 
 export default function KnowledgeBasePage() {
@@ -70,9 +29,15 @@ export default function KnowledgeBasePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [editingFAQ, setEditingFAQ] = useState<typeof mockFAQs[0] | null>(null);
+  const [editingFAQ, setEditingFAQ] = useState<FAQ | null>(null);
+  
+  // Fetch FAQs from API
+  const { data: faqs, isLoading, refetch } = useFAQs();
+  const deleteFAQ = useDeleteFAQ();
+  
+  const faqList = faqs || [];
 
-  const filteredFAQs = mockFAQs.filter(faq => {
+  const filteredFAQs = faqList.filter(faq => {
     const matchesSearch = searchQuery === '' || 
       faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
       faq.answer.toLowerCase().includes(searchQuery.toLowerCase());
@@ -81,16 +46,60 @@ export default function KnowledgeBasePage() {
   });
 
   const groupedFAQs = filteredFAQs.reduce((acc, faq) => {
-    if (!acc[faq.category]) acc[faq.category] = [];
-    acc[faq.category].push(faq);
+    const cat = faq.category || 'general';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(faq);
     return acc;
-  }, {} as Record<string, typeof mockFAQs>);
+  }, {} as Record<string, FAQ[]>);
 
   const toggleExpanded = (id: string) => {
     setExpandedIds(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
   };
+
+  const handleDelete = async (faq: FAQ) => {
+    if (!confirm(`Are you sure you want to delete this FAQ?`)) return;
+    
+    try {
+      await deleteFAQ.mutateAsync(faq.id);
+      toast.success('FAQ deleted');
+      refetch();
+    } catch (error) {
+      toast.error('Failed to delete FAQ');
+    }
+  };
+
+  const handleSuccess = () => {
+    setShowNewModal(false);
+    setEditingFAQ(null);
+    refetch();
+  };
+
+  if (isLoading) {
+    return (
+      <PageContainer
+        title="Knowledge Base"
+        description="FAQs and information the AI uses to answer questions"
+        breadcrumbs={[
+          { label: 'AI Configuration', href: '/ai-config' },
+          { label: 'Knowledge Base' },
+        ]}
+      >
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-full max-w-md" />
+          <div className="flex gap-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-16 w-32" />
+            ))}
+          </div>
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer
@@ -135,7 +144,7 @@ export default function KnowledgeBasePage() {
       {/* Stats */}
       <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
         {categories.map((cat) => {
-          const count = mockFAQs.filter(f => f.category === cat.value).length;
+          const count = faqList.filter(f => f.category === cat.value).length;
           return (
             <Card key={cat.value} className="p-3 min-w-[140px]">
               <p className="text-2xl font-bold">{count}</p>
@@ -159,20 +168,20 @@ export default function KnowledgeBasePage() {
         />
       ) : (
         <div className="space-y-6">
-          {Object.entries(groupedFAQs).map(([category, faqs]) => (
+          {Object.entries(groupedFAQs).map(([category, categoryFaqs]) => (
             <div key={category}>
               <div className="flex items-center gap-2 mb-3">
                 <Badge variant={categories.find(c => c.value === category)?.color as any || 'default'}>
                   {categories.find(c => c.value === category)?.label || category}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  {faqs.length} {faqs.length === 1 ? 'question' : 'questions'}
+                  {categoryFaqs.length} {categoryFaqs.length === 1 ? 'question' : 'questions'}
                 </span>
               </div>
               
               <Card>
                 <div className="divide-y divide-border">
-                  {faqs.map((faq) => (
+                  {categoryFaqs.map((faq) => (
                     <div key={faq.id} className="p-4">
                       <button
                         onClick={() => toggleExpanded(faq.id)}
@@ -200,7 +209,10 @@ export default function KnowledgeBasePage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(faq);
+                            }}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -218,9 +230,9 @@ export default function KnowledgeBasePage() {
                           >
                             <div className="pt-3 pl-8">
                               <p className="text-muted-foreground">{faq.answer}</p>
-                              {faq.keywords.length > 0 && (
+                              {faq.keywords && faq.keywords.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-3">
-                                  {faq.keywords.map((keyword) => (
+                                  {faq.keywords.map((keyword: string) => (
                                     <Badge key={keyword} variant="default" size="sm">
                                       {keyword}
                                     </Badge>
@@ -256,10 +268,7 @@ export default function KnowledgeBasePage() {
           </DialogHeader>
           <FAQForm 
             faq={editingFAQ}
-            onSuccess={() => {
-              setShowNewModal(false);
-              setEditingFAQ(null);
-            }} 
+            onSuccess={handleSuccess} 
           />
         </DialogContent>
       </Dialog>
@@ -268,22 +277,79 @@ export default function KnowledgeBasePage() {
 }
 
 // FAQ Form
-function FAQForm({ faq, onSuccess }: { faq?: typeof mockFAQs[0] | null; onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
+function FAQForm({ faq, onSuccess }: { faq?: FAQ | null; onSuccess: () => void }) {
+  const [formData, setFormData] = useState({
+    category: 'general',
+    question: '',
+    answer: '',
+    keywords: '',
+  });
+  
+  const createFAQ = useCreateFAQ();
+  const updateFAQ = useUpdateFAQ();
+
+  useEffect(() => {
+    if (faq) {
+      setFormData({
+        category: faq.category || 'general',
+        question: faq.question,
+        answer: faq.answer,
+        keywords: faq.keywords?.join(', ') || '',
+      });
+    }
+  }, [faq]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
+    
+    if (!formData.question || !formData.answer) {
+      toast.error('Please fill in question and answer');
+      return;
+    }
+
+    const keywords = formData.keywords
+      .split(',')
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+    
+    try {
+      if (faq) {
+        await updateFAQ.mutateAsync({
+          id: faq.id,
+          data: {
+            category: formData.category,
+            question: formData.question,
+            answer: formData.answer,
+            keywords,
+          }
+        });
+        toast.success('FAQ updated');
+      } else {
+        await createFAQ.mutateAsync({
+          category: formData.category,
+          question: formData.question,
+          answer: formData.answer,
+          keywords,
+          is_active: true,
+        });
+        toast.success('FAQ added');
+      }
+      onSuccess();
+    } catch (error) {
+      toast.error(faq ? 'Failed to update FAQ' : 'Failed to add FAQ');
+    }
   };
+
+  const isLoading = createFAQ.isPending || updateFAQ.isPending;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category *</label>
-        <Select defaultValue={faq?.category || 'general'}>
+        <Select 
+          value={formData.category}
+          onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -301,7 +367,8 @@ function FAQForm({ faq, onSuccess }: { faq?: typeof mockFAQs[0] | null; onSucces
         <label className="text-sm font-medium">Question *</label>
         <Input 
           placeholder="e.g., What are your business hours?"
-          defaultValue={faq?.question}
+          value={formData.question}
+          onChange={(e) => setFormData(prev => ({ ...prev, question: e.target.value }))}
           required
         />
       </div>
@@ -310,7 +377,8 @@ function FAQForm({ faq, onSuccess }: { faq?: typeof mockFAQs[0] | null; onSucces
         <label className="text-sm font-medium">Answer *</label>
         <Textarea 
           placeholder="Enter the answer..."
-          defaultValue={faq?.answer}
+          value={formData.answer}
+          onChange={(e) => setFormData(prev => ({ ...prev, answer: e.target.value }))}
           required
         />
       </div>
@@ -319,7 +387,8 @@ function FAQForm({ faq, onSuccess }: { faq?: typeof mockFAQs[0] | null; onSucces
         <label className="text-sm font-medium">Keywords</label>
         <Input 
           placeholder="hours, open, schedule (comma separated)"
-          defaultValue={faq?.keywords.join(', ')}
+          value={formData.keywords}
+          onChange={(e) => setFormData(prev => ({ ...prev, keywords: e.target.value }))}
         />
         <p className="text-xs text-muted-foreground">
           Keywords help the AI match questions to answers

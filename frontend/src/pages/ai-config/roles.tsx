@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, MoreHorizontal, Bot, Volume2, Edit, Trash2, Copy, Play } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/form-elements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/form-elements';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -17,46 +19,15 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/shared/empty-state';
-
-// Mock AI roles
-const mockRoles = [
-  {
-    id: '1',
-    ai_name: 'Sarah',
-    role_type: 'receptionist',
-    voice_style: 'professional_female',
-    greeting_message: "Thank you for calling Smile Dental Clinic. This is Sarah, your virtual assistant. How can I help you today?",
-    is_enabled: true,
-    priority: 1,
-    calls_handled: 1250,
-  },
-  {
-    id: '2',
-    ai_name: 'Mike',
-    role_type: 'sales',
-    voice_style: 'friendly_male',
-    greeting_message: "Hi there! Thanks for calling. I'm Mike, and I'd love to tell you about our services. What brings you in today?",
-    is_enabled: true,
-    priority: 2,
-    calls_handled: 430,
-  },
-  {
-    id: '3',
-    ai_name: 'Emma',
-    role_type: 'support',
-    voice_style: 'friendly_female',
-    greeting_message: "Hello! This is Emma from customer support. I'm here to help you with any questions or concerns.",
-    is_enabled: false,
-    priority: 3,
-    calls_handled: 890,
-  },
-];
+import { useAIRoles, useCreateAIRole, useUpdateAIRole, useDeleteAIRole } from '@/lib/api/hooks';
+import type { AIRole } from '@/types';
 
 const roleTypes = [
   { value: 'receptionist', label: 'Receptionist', color: 'primary' },
   { value: 'sales', label: 'Sales', color: 'success' },
   { value: 'support', label: 'Support', color: 'secondary' },
   { value: 'billing', label: 'Billing', color: 'warning' },
+  { value: 'marketing', label: 'Marketing', color: 'info' },
 ];
 
 const voiceStyles = [
@@ -69,7 +40,62 @@ const voiceStyles = [
 
 export default function AIRolesPage() {
   const [showNewModal, setShowNewModal] = useState(false);
-  const [editingRole, setEditingRole] = useState<typeof mockRoles[0] | null>(null);
+  const [editingRole, setEditingRole] = useState<AIRole | null>(null);
+  
+  // Fetch roles from API
+  const { data: roles, isLoading, refetch } = useAIRoles();
+  const updateRole = useUpdateAIRole();
+  const deleteRole = useDeleteAIRole();
+
+  const handleToggleEnabled = async (role: AIRole) => {
+    try {
+      await updateRole.mutateAsync({
+        id: role.id,
+        data: { is_enabled: !role.is_enabled }
+      });
+      toast.success(`${role.ai_name} ${role.is_enabled ? 'disabled' : 'enabled'}`);
+      refetch();
+    } catch (error) {
+      toast.error('Failed to update role');
+    }
+  };
+
+  const handleDelete = async (role: AIRole) => {
+    if (!confirm(`Are you sure you want to delete ${role.ai_name}?`)) return;
+    
+    try {
+      await deleteRole.mutateAsync(role.id);
+      toast.success('Role deleted');
+      refetch();
+    } catch (error) {
+      toast.error('Failed to delete role');
+    }
+  };
+
+  const handleSuccess = () => {
+    setShowNewModal(false);
+    setEditingRole(null);
+    refetch();
+  };
+
+  if (isLoading) {
+    return (
+      <PageContainer
+        title="AI Roles"
+        description="Configure different AI personalities for various scenarios"
+        breadcrumbs={[
+          { label: 'AI Configuration', href: '/ai-config' },
+          { label: 'AI Roles' },
+        ]}
+      >
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-64 rounded-xl" />
+          ))}
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer
@@ -85,7 +111,7 @@ export default function AIRolesPage() {
         </Button>
       }
     >
-      {mockRoles.length === 0 ? (
+      {!roles || roles.length === 0 ? (
         <EmptyState
           icon={Bot}
           title="No AI roles configured"
@@ -98,7 +124,7 @@ export default function AIRolesPage() {
         />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {mockRoles.map((role, i) => (
+          {roles.map((role, i) => (
             <motion.div
               key={role.id}
               initial={{ opacity: 0, y: 20 }}
@@ -135,15 +161,10 @@ export default function AIRolesPage() {
                           <Edit className="h-4 w-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
+                        <DropdownMenuItem onClick={() => handleToggleEnabled(role)}>
+                          {role.is_enabled ? 'Disable' : 'Enable'}
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Play className="h-4 w-4 mr-2" />
-                          Test Call
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(role)}>
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
                         </DropdownMenuItem>
@@ -156,24 +177,24 @@ export default function AIRolesPage() {
                   <div className="flex items-center gap-2 text-sm">
                     <Volume2 className="h-4 w-4 text-muted-foreground" />
                     <span className="capitalize">
-                      {role.voice_style.replace('_', ' ')}
+                      {role.voice_style?.replace('_', ' ') || 'Default'}
                     </span>
                   </div>
 
                   {/* Greeting Preview */}
                   <div className="p-3 rounded-lg bg-muted/50 text-sm">
                     <p className="text-muted-foreground line-clamp-3">
-                      "{role.greeting_message}"
+                      "{role.greeting_message || 'No greeting set'}"
                     </p>
                   </div>
 
                   {/* Stats */}
                   <div className="flex items-center justify-between pt-4 border-t border-border">
                     <span className="text-sm text-muted-foreground">
-                      {role.calls_handled.toLocaleString()} calls handled
+                      {(role.calls_handled || 0).toLocaleString()} calls handled
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      Priority: {role.priority}
+                      Priority: {role.priority || 1}
                     </span>
                   </div>
                 </CardContent>
@@ -199,10 +220,7 @@ export default function AIRolesPage() {
           </DialogHeader>
           <RoleForm 
             role={editingRole}
-            onSuccess={() => {
-              setShowNewModal(false);
-              setEditingRole(null);
-            }} 
+            onSuccess={handleSuccess} 
           />
         </DialogContent>
       </Dialog>
@@ -211,16 +229,60 @@ export default function AIRolesPage() {
 }
 
 // Role Form Component
-function RoleForm({ role, onSuccess }: { role?: typeof mockRoles[0] | null; onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
+function RoleForm({ role, onSuccess }: { role?: AIRole | null; onSuccess: () => void }) {
+  const [formData, setFormData] = useState({
+    ai_name: '',
+    role_type: 'receptionist' as AIRole['role_type'],
+    voice_style: 'professional_female' as AIRole['voice_style'],
+    greeting_message: '',
+    system_prompt: '',
+    is_enabled: true,
+    priority: 1,
+  });
+  
+  const createRole = useCreateAIRole();
+  const updateRole = useUpdateAIRole();
+
+  useEffect(() => {
+    if (role) {
+      setFormData({
+        ai_name: role.ai_name,
+        role_type: role.role_type,
+        voice_style: role.voice_style,
+        greeting_message: role.greeting_message,
+        system_prompt: role.system_prompt || '',
+        is_enabled: role.is_enabled,
+        priority: role.priority,
+      });
+    }
+  }, [role]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
+    
+    if (!formData.ai_name) {
+      toast.error('Please enter an AI name');
+      return;
+    }
+    
+    try {
+      if (role) {
+        await updateRole.mutateAsync({
+          id: role.id,
+          data: formData
+        });
+        toast.success('Role updated');
+      } else {
+        await createRole.mutateAsync(formData);
+        toast.success('Role created');
+      }
+      onSuccess();
+    } catch (error) {
+      toast.error(role ? 'Failed to update role' : 'Failed to create role');
+    }
   };
+
+  const isLoading = createRole.isPending || updateRole.isPending;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -230,13 +292,17 @@ function RoleForm({ role, onSuccess }: { role?: typeof mockRoles[0] | null; onSu
           <label className="text-sm font-medium">AI Name *</label>
           <Input 
             placeholder="e.g., Sarah" 
-            defaultValue={role?.ai_name}
+            value={formData.ai_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, ai_name: e.target.value }))}
             required 
           />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Role Type *</label>
-          <Select defaultValue={role?.role_type || 'receptionist'}>
+          <Select 
+            value={formData.role_type}
+            onValueChange={(v) => setFormData(prev => ({ ...prev, role_type: v as AIRole['role_type'] }))}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -253,7 +319,10 @@ function RoleForm({ role, onSuccess }: { role?: typeof mockRoles[0] | null; onSu
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Voice Style *</label>
-        <Select defaultValue={role?.voice_style || 'professional_female'}>
+        <Select 
+          value={formData.voice_style}
+          onValueChange={(v) => setFormData(prev => ({ ...prev, voice_style: v as AIRole['voice_style'] }))}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -271,7 +340,8 @@ function RoleForm({ role, onSuccess }: { role?: typeof mockRoles[0] | null; onSu
         <label className="text-sm font-medium">Greeting Message *</label>
         <Textarea 
           placeholder="Enter the greeting the AI will use..."
-          defaultValue={role?.greeting_message}
+          value={formData.greeting_message}
+          onChange={(e) => setFormData(prev => ({ ...prev, greeting_message: e.target.value }))}
           required
         />
         <p className="text-xs text-muted-foreground">
@@ -284,10 +354,31 @@ function RoleForm({ role, onSuccess }: { role?: typeof mockRoles[0] | null; onSu
         <Textarea 
           placeholder="Define the AI's personality and behavior guidelines..."
           className="min-h-[150px] font-mono text-sm"
+          value={formData.system_prompt}
+          onChange={(e) => setFormData(prev => ({ ...prev, system_prompt: e.target.value }))}
         />
         <p className="text-xs text-muted-foreground">
           This defines how the AI should behave and respond to callers
         </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Priority</label>
+        <Select 
+          value={formData.priority.toString()}
+          onValueChange={(v) => setFormData(prev => ({ ...prev, priority: parseInt(v) }))}
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[1, 2, 3, 4, 5].map((p) => (
+              <SelectItem key={p} value={p.toString()}>
+                {p} {p === 1 ? '(Highest)' : p === 5 ? '(Lowest)' : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
@@ -297,7 +388,10 @@ function RoleForm({ role, onSuccess }: { role?: typeof mockRoles[0] | null; onSu
             This role will handle incoming calls when enabled
           </p>
         </div>
-        <Switch defaultChecked={role?.is_enabled ?? true} />
+        <Switch 
+          checked={formData.is_enabled}
+          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_enabled: checked }))}
+        />
       </div>
 
       <div className="flex justify-end gap-3 pt-4">

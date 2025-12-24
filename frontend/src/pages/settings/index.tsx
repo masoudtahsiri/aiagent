@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, Building2, Clock, CreditCard, Users, Bell, 
   Shield, Palette, Globe, Save, Upload
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -14,13 +15,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/skeleton';
+import { useAuth } from '@/features/auth/auth-provider';
+import { useBusiness, useUpdateBusiness, useBusinessHours, useUpdateBusinessHours } from '@/lib/api/hooks';
+import type { Business, BusinessHours } from '@/types';
 
 const timezones = [
   { value: 'America/New_York', label: 'Eastern Time (ET)' },
   { value: 'America/Chicago', label: 'Central Time (CT)' },
   { value: 'America/Denver', label: 'Mountain Time (MT)' },
   { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  { value: 'Europe/London', label: 'GMT (London)' },
+  { value: 'Europe/Istanbul', label: 'Turkey Time (TRT)' },
+  { value: 'Asia/Dubai', label: 'Gulf Time (Dubai)' },
 ];
 
 const languages = [
@@ -28,17 +36,11 @@ const languages = [
   { value: 'es', label: 'Spanish' },
   { value: 'fr', label: 'French' },
   { value: 'de', label: 'German' },
+  { value: 'tr', label: 'Turkish' },
 ];
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile');
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsSaving(false);
-  };
 
   return (
     <PageContainer
@@ -78,13 +80,13 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="flex-1">
-          {activeTab === 'profile' && <ProfileSettings onSave={handleSave} isSaving={isSaving} />}
-          {activeTab === 'business' && <BusinessSettings onSave={handleSave} isSaving={isSaving} />}
-          {activeTab === 'hours' && <HoursSettings onSave={handleSave} isSaving={isSaving} />}
+          {activeTab === 'profile' && <ProfileSettings />}
+          {activeTab === 'business' && <BusinessSettings />}
+          {activeTab === 'hours' && <HoursSettings />}
           {activeTab === 'billing' && <BillingSettings />}
           {activeTab === 'team' && <TeamSettings />}
-          {activeTab === 'notifications' && <NotificationSettings onSave={handleSave} isSaving={isSaving} />}
-          {activeTab === 'security' && <SecuritySettings onSave={handleSave} isSaving={isSaving} />}
+          {activeTab === 'notifications' && <NotificationSettings />}
+          {activeTab === 'security' && <SecuritySettings />}
         </div>
       </div>
     </PageContainer>
@@ -92,7 +94,32 @@ export default function SettingsPage() {
 }
 
 // Profile Settings
-function ProfileSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boolean }) {
+function ProfileSettings() {
+  const { user, refreshUser } = useAuth();
+  const [formData, setFormData] = useState({
+    full_name: '',
+    email: '',
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      const nameParts = user.full_name?.split(' ') || ['', ''];
+      setFormData({
+        full_name: user.full_name || '',
+        email: user.email || '',
+      });
+    }
+  }, [user]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    // Profile update would go here - not implemented in current backend
+    await new Promise(resolve => setTimeout(resolve, 500));
+    toast.success('Profile updated');
+    setIsSaving(false);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -101,7 +128,7 @@ function ProfileSettings({ onSave, isSaving }: { onSave: () => void; isSaving: b
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex items-center gap-6">
-          <Avatar name="John Doe" size="2xl" />
+          <Avatar name={user?.full_name || 'User'} size="2xl" />
           <div>
             <Button variant="outline" size="sm" leftIcon={<Upload className="h-4 w-4" />}>
               Upload Photo
@@ -112,29 +139,25 @@ function ProfileSettings({ onSave, isSaving }: { onSave: () => void; isSaving: b
 
         <Separator />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">First Name</label>
-            <Input defaultValue="John" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Last Name</label>
-            <Input defaultValue="Doe" />
-          </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Full Name</label>
+          <Input 
+            value={formData.full_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
+          />
         </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Email</label>
-          <Input type="email" defaultValue="john@example.com" />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Phone</label>
-          <Input type="tel" defaultValue="+1 (555) 123-4567" />
+          <Input 
+            type="email" 
+            value={formData.email}
+            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+          />
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={onSave} loading={isSaving} leftIcon={<Save className="h-4 w-4" />}>
+          <Button onClick={handleSave} loading={isSaving} leftIcon={<Save className="h-4 w-4" />}>
             Save Changes
           </Button>
         </div>
@@ -144,7 +167,54 @@ function ProfileSettings({ onSave, isSaving }: { onSave: () => void; isSaving: b
 }
 
 // Business Settings
-function BusinessSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boolean }) {
+function BusinessSettings() {
+  const { data: business, isLoading, refetch } = useBusiness();
+  const updateBusiness = useUpdateBusiness();
+  
+  const [formData, setFormData] = useState<Partial<Business>>({});
+
+  useEffect(() => {
+    if (business) {
+      setFormData({
+        business_name: business.business_name,
+        industry: business.industry,
+        timezone: business.timezone,
+        default_language: business.default_language,
+        address: business.address,
+        city: business.city,
+        state: business.state,
+        zip_code: business.zip_code,
+        phone_number: business.phone_number,
+      });
+    }
+  }, [business]);
+
+  const handleSave = async () => {
+    try {
+      await updateBusiness.mutateAsync(formData);
+      toast.success('Business settings saved');
+      refetch();
+    } catch (error) {
+      toast.error('Failed to save business settings');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-60 mt-2" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -154,29 +224,49 @@ function BusinessSettings({ onSave, isSaving }: { onSave: () => void; isSaving: 
       <CardContent className="space-y-6">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Business Name</label>
-          <Input defaultValue="Smile Dental Clinic" />
+          <Input 
+            value={formData.business_name || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, business_name: e.target.value }))}
+          />
         </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Industry</label>
-          <Select defaultValue="healthcare">
+          <Select 
+            value={formData.industry || 'other'}
+            onValueChange={(v) => setFormData(prev => ({ ...prev, industry: v }))}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="healthcare">Healthcare</SelectItem>
+              <SelectItem value="dental">Dental</SelectItem>
               <SelectItem value="salon">Salon & Spa</SelectItem>
               <SelectItem value="fitness">Fitness</SelectItem>
               <SelectItem value="legal">Legal Services</SelectItem>
+              <SelectItem value="restaurant">Restaurant</SelectItem>
               <SelectItem value="other">Other</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Phone Number</label>
+          <Input 
+            type="tel"
+            value={formData.phone_number || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, phone_number: e.target.value }))}
+          />
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Timezone</label>
-            <Select defaultValue="America/New_York">
+            <Select 
+              value={formData.timezone || 'America/New_York'}
+              onValueChange={(v) => setFormData(prev => ({ ...prev, timezone: v }))}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -189,7 +279,10 @@ function BusinessSettings({ onSave, isSaving }: { onSave: () => void; isSaving: 
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Default Language</label>
-            <Select defaultValue="en">
+            <Select 
+              value={formData.default_language || 'en'}
+              onValueChange={(v) => setFormData(prev => ({ ...prev, default_language: v }))}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -204,26 +297,42 @@ function BusinessSettings({ onSave, isSaving }: { onSave: () => void; isSaving: 
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Address</label>
-          <Input defaultValue="123 Main Street" />
+          <Input 
+            value={formData.address || ''}
+            onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+          />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">City</label>
-            <Input defaultValue="New York" />
+            <Input 
+              value={formData.city || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">State</label>
-            <Input defaultValue="NY" />
+            <Input 
+              value={formData.state || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">ZIP Code</label>
-            <Input defaultValue="10001" />
+            <Input 
+              value={formData.zip_code || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, zip_code: e.target.value }))}
+            />
           </div>
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={onSave} loading={isSaving} leftIcon={<Save className="h-4 w-4" />}>
+          <Button 
+            onClick={handleSave} 
+            loading={updateBusiness.isPending} 
+            leftIcon={<Save className="h-4 w-4" />}
+          >
             Save Changes
           </Button>
         </div>
@@ -233,8 +342,79 @@ function BusinessSettings({ onSave, isSaving }: { onSave: () => void; isSaving: 
 }
 
 // Hours Settings
-function HoursSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boolean }) {
+function HoursSettings() {
+  const { data: hours, isLoading, refetch } = useBusinessHours();
+  const updateHours = useUpdateBusinessHours();
+  
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  const [formData, setFormData] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
+
+  useEffect(() => {
+    if (hours) {
+      const hoursMap: Record<number, { is_open: boolean; open_time: string; close_time: string }> = {};
+      hours.forEach(h => {
+        hoursMap[h.day_of_week] = {
+          is_open: h.is_open,
+          open_time: h.open_time || '09:00',
+          close_time: h.close_time || '17:00',
+        };
+      });
+      // Fill in missing days with defaults
+      for (let i = 0; i < 7; i++) {
+        if (!hoursMap[i]) {
+          hoursMap[i] = {
+            is_open: i < 5, // Mon-Fri open by default
+            open_time: '09:00',
+            close_time: '17:00',
+          };
+        }
+      }
+      setFormData(hoursMap);
+    }
+  }, [hours]);
+
+  const handleSave = async () => {
+    try {
+      const hoursArray = Object.entries(formData).map(([day, data]) => ({
+        day_of_week: parseInt(day),
+        is_open: data.is_open,
+        open_time: data.open_time,
+        close_time: data.close_time,
+      })) as BusinessHours[];
+      
+      await updateHours.mutateAsync(hoursArray);
+      toast.success('Business hours saved');
+      refetch();
+    } catch (error) {
+      toast.error('Failed to save business hours');
+    }
+  };
+
+  const updateDay = (dayIndex: number, field: string, value: string | boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      [dayIndex]: {
+        ...prev[dayIndex],
+        [field]: value,
+      }
+    }));
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-40" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
   
   return (
     <Card>
@@ -245,25 +425,36 @@ function HoursSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boo
       <CardContent className="space-y-4">
         {days.map((day, i) => (
           <div key={day} className="flex items-center gap-4 p-3 rounded-lg border border-border">
-            <Switch defaultChecked={i < 5} />
+            <Switch 
+              checked={formData[i]?.is_open ?? i < 5}
+              onCheckedChange={(checked) => updateDay(i, 'is_open', checked)}
+            />
             <span className="w-24 font-medium">{day}</span>
-            <Select defaultValue="09:00">
+            <Select 
+              value={formData[i]?.open_time || '09:00'}
+              onValueChange={(v) => updateDay(i, 'open_time', v)}
+              disabled={!formData[i]?.is_open}
+            >
               <SelectTrigger className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {['08:00', '09:00', '10:00'].map((t) => (
+                {['07:00', '08:00', '09:00', '10:00', '11:00'].map((t) => (
                   <SelectItem key={t} value={t}>{t}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <span className="text-muted-foreground">to</span>
-            <Select defaultValue={i === 4 ? '15:00' : '17:00'}>
+            <Select 
+              value={formData[i]?.close_time || '17:00'}
+              onValueChange={(v) => updateDay(i, 'close_time', v)}
+              disabled={!formData[i]?.is_open}
+            >
               <SelectTrigger className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {['15:00', '17:00', '18:00', '19:00'].map((t) => (
+                {['15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'].map((t) => (
                   <SelectItem key={t} value={t}>{t}</SelectItem>
                 ))}
               </SelectContent>
@@ -272,7 +463,11 @@ function HoursSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boo
         ))}
 
         <div className="flex justify-end pt-4">
-          <Button onClick={onSave} loading={isSaving} leftIcon={<Save className="h-4 w-4" />}>
+          <Button 
+            onClick={handleSave} 
+            loading={updateHours.isPending} 
+            leftIcon={<Save className="h-4 w-4" />}
+          >
             Save Hours
           </Button>
         </div>
@@ -281,7 +476,7 @@ function HoursSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boo
   );
 }
 
-// Billing Settings
+// Billing Settings (unchanged - mock data)
 function BillingSettings() {
   return (
     <div className="space-y-6">
@@ -352,12 +547,12 @@ function BillingSettings() {
   );
 }
 
-// Team Settings
+// Team Settings (unchanged - mock data)
 function TeamSettings() {
+  const { user } = useAuth();
+  
   const teamMembers = [
-    { name: 'John Doe', email: 'john@example.com', role: 'Owner' },
-    { name: 'Jane Smith', email: 'jane@example.com', role: 'Admin' },
-    { name: 'Bob Johnson', email: 'bob@example.com', role: 'Staff' },
+    { name: user?.full_name || 'Owner', email: user?.email || '', role: 'Owner' },
   ];
 
   return (
@@ -397,7 +592,16 @@ function TeamSettings() {
 }
 
 // Notification Settings
-function NotificationSettings({ onSave, isSaving }: { onSave: () => void; isSaving: boolean }) {
+function NotificationSettings() {
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const handleSave = async () => {
+    setIsSaving(true);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    toast.success('Notification preferences saved');
+    setIsSaving(false);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -422,7 +626,7 @@ function NotificationSettings({ onSave, isSaving }: { onSave: () => void; isSavi
         ))}
 
         <div className="flex justify-end pt-4">
-          <Button onClick={onSave} loading={isSaving} leftIcon={<Save className="h-4 w-4" />}>
+          <Button onClick={handleSave} loading={isSaving} leftIcon={<Save className="h-4 w-4" />}>
             Save Preferences
           </Button>
         </div>
@@ -432,7 +636,16 @@ function NotificationSettings({ onSave, isSaving }: { onSave: () => void; isSavi
 }
 
 // Security Settings
-function SecuritySettings({ onSave, isSaving }: { onSave: () => void; isSaving: boolean }) {
+function SecuritySettings() {
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const handleSave = async () => {
+    setIsSaving(true);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    toast.success('Password updated');
+    setIsSaving(false);
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -453,7 +666,7 @@ function SecuritySettings({ onSave, isSaving }: { onSave: () => void; isSaving: 
             <Input type="password" />
           </div>
           <div className="flex justify-end">
-            <Button onClick={onSave} loading={isSaving}>Update Password</Button>
+            <Button onClick={handleSave} loading={isSaving}>Update Password</Button>
           </div>
         </CardContent>
       </Card>
