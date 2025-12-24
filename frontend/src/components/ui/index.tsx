@@ -34,7 +34,7 @@ const buttonVariants = cva(
   }
 );
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   loading?: boolean;
 }
 
@@ -61,7 +61,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = 'Button';
 
 // Card Component
-interface CardProps {
+export interface CardProps {
   children: React.ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
@@ -97,17 +97,18 @@ const CardComponent: React.FC<CardProps> = ({ children, className, padding = 'md
 };
 
 // Create Card with sub-components using a more explicit pattern
-const CardWithSubComponents = CardComponent as typeof CardComponent & {
-  Header: typeof CardHeaderComponent;
-  Body: typeof CardBodyComponent;
-  Footer: typeof CardFooterComponent;
+type CardType = React.FC<CardProps> & {
+  Header: React.FC<CardSubComponentProps>;
+  Body: React.FC<CardSubComponentProps>;
+  Footer: React.FC<CardSubComponentProps>;
 };
 
+const CardWithSubComponents = CardComponent as CardType;
 CardWithSubComponents.Header = CardHeaderComponent;
 CardWithSubComponents.Body = CardBodyComponent;
 CardWithSubComponents.Footer = CardFooterComponent;
 
-export const Card = CardWithSubComponents;
+export const Card: CardType = CardWithSubComponents;
 
 // Aliases for shadcn-like API
 export const CardHeader = Card.Header;
@@ -142,9 +143,10 @@ const badgeVariants = cva('inline-flex items-center rounded-full font-medium', {
   },
 });
 
-interface BadgeProps extends VariantProps<typeof badgeVariants> {
+export interface BadgeProps extends VariantProps<typeof badgeVariants> {
   children: React.ReactNode;
   className?: string;
+  variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'error' | 'info' | 'secondary' | 'outline' | null | undefined;
 }
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant, size, className }) => (
@@ -192,7 +194,7 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', classNam
 };
 
 // Skeleton Component
-interface SkeletonProps {
+export interface SkeletonProps {
   className?: string;
   variant?: 'text' | 'circular' | 'rectangular' | string;
   width?: string | number;
@@ -219,7 +221,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className, variant = 'text',
 };
 
 // Input Component
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   helperText?: string;
@@ -258,7 +260,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 Input.displayName = 'Input';
 
 // Native Select Component (for forms with onChange/label)
-interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
+export interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
   label?: string;
   error?: string;
   options?: { value: string; label: string }[];
@@ -303,12 +305,13 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
 );
 NativeSelect.displayName = 'NativeSelect';
 
-// Export as Select for backward compatibility (but this will conflict with Radix Select)
-// Files should import NativeSelect directly or use Radix Select from @/components/ui/select
-export const Select = NativeSelect;
+// Export as Select for backward compatibility
+// Note: This is the native HTML select, not the Radix UI Select
+// For Radix Select, import from '@/components/ui/select'
+export const Select: typeof NativeSelect = NativeSelect;
 
 // Textarea Component
-interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
 }
@@ -344,7 +347,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 Textarea.displayName = 'Textarea';
 
 // Modal Component
-interface ModalProps {
+export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
@@ -385,7 +388,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 };
 
 // Empty State Component
-interface EmptyStateProps {
+export interface EmptyStateProps {
   icon?: React.ReactNode;
   title: string;
   description?: string;
@@ -413,7 +416,7 @@ export const Spinner: React.FC<{ size?: 'sm' | 'md' | 'lg'; className?: string }
 };
 
 // Table Component
-interface TableProps {
+export interface TableProps {
   children: React.ReactNode;
   className?: string;
 }
@@ -447,7 +450,7 @@ Table.Cell = ({ children, className }) => (
 );
 
 // Tabs Component
-interface TabsProps {
+export interface TabsProps {
   tabs: { id: string; label: string; count?: number }[];
   activeTab: string;
   onChange: (id: string) => void;
