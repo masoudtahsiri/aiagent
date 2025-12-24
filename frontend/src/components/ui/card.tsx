@@ -1,63 +1,32 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  padding?: 'none' | 'sm' | 'md' | 'lg';
-}
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      'rounded-xl border bg-card text-card-foreground shadow-sm',
+      className
+    )}
+    {...props}
+  />
+));
+Card.displayName = 'Card';
 
-const CardComponent = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, padding = 'md', ...props }, ref) => {
-    const paddingClasses = {
-      none: '',
-      sm: 'p-3',
-      md: 'p-4',
-      lg: 'p-6',
-    };
-    return (
-      <div
-        ref={ref}
-        className={cn(
-          'rounded-xl border bg-card text-card-foreground shadow-sm',
-          paddingClasses[padding],
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-CardComponent.displayName = 'Card';
-
-interface CardSubComponentProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-const CardHeaderComponent = React.forwardRef<HTMLDivElement, CardSubComponentProps>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn('border-b border-gray-200 pb-4 mb-4', className)}
-      {...props}
-    />
-  )
-);
-CardHeaderComponent.displayName = 'CardHeader';
-
-const CardBodyComponent = React.forwardRef<HTMLDivElement, CardSubComponentProps>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={className} {...props} />
-  )
-);
-CardBodyComponent.displayName = 'CardBody';
-
-const CardFooterComponent = React.forwardRef<HTMLDivElement, CardSubComponentProps>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn('border-t border-gray-200 pt-4 mt-4', className)}
-      {...props}
-    />
-  )
-);
-CardFooterComponent.displayName = 'CardFooter';
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn('flex flex-col space-y-1.5 p-6', className)}
+    {...props}
+  />
+));
+CardHeader.displayName = 'CardHeader';
 
 const CardTitle = React.forwardRef<
   HTMLParagraphElement,
@@ -86,24 +55,24 @@ const CardDescription = React.forwardRef<
 ));
 CardDescription.displayName = 'CardDescription';
 
-const CardContent = CardBodyComponent;
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+));
+CardContent.displayName = 'CardContent';
 
-// Create Card with sub-components
-const CardWithSubComponents = CardComponent as typeof CardComponent & {
-  Header: typeof CardHeaderComponent;
-  Body: typeof CardBodyComponent;
-  Footer: typeof CardFooterComponent;
-};
+const CardFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn('flex items-center p-6 pt-0', className)}
+    {...props}
+  />
+));
+CardFooter.displayName = 'CardFooter';
 
-CardWithSubComponents.Header = CardHeaderComponent;
-CardWithSubComponents.Body = CardBodyComponent;
-CardWithSubComponents.Footer = CardFooterComponent;
-
-export { 
-  CardWithSubComponents as Card, 
-  CardHeaderComponent as CardHeader, 
-  CardFooterComponent as CardFooter, 
-  CardTitle, 
-  CardDescription, 
-  CardContent 
-};
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };

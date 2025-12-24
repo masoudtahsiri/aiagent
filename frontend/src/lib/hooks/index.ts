@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // Debounce hook
 export function useDebounce<T>(value: T, delay: number): T {
@@ -123,7 +123,7 @@ export function useKeyboardShortcut(
 export function useClickOutside<T extends HTMLElement>(
   callback: () => void
 ): React.RefObject<T> {
-  const ref = useRef<T>(null);
+  const ref = React.useRef<T>(null);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -138,3 +138,5 @@ export function useClickOutside<T extends HTMLElement>(
 
   return ref;
 }
+
+import React from 'react';
