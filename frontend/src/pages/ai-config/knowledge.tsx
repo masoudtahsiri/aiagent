@@ -353,7 +353,7 @@ function FAQForm({ faq, onSuccess }: { faq?: FAQ | null; onSuccess: () => void }
         <label className="text-sm font-medium">Category *</label>
         <Select 
           value={formData.category}
-          onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
+          onValueChange={(v) => setFormData(prev => ({ ...prev, category: v as FAQ['category'] }))}
         >
           <SelectTrigger>
             <SelectValue />
