@@ -124,3 +124,4 @@ class BulkAvailabilityCreate(BaseModel):
 
 
 
+

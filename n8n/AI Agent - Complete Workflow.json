@@ -423,7 +423,7 @@
       "name": "Parse Push Headers",
       "type": "n8n-nodes-base.code",
       "position": [
-        9536,
+        9472,
         -3216
       ],
       "typeVersion": 2
@@ -454,7 +454,7 @@
       "name": "Valid Push?",
       "type": "n8n-nodes-base.if",
       "position": [
-        9712,
+        9664,
         -3216
       ],
       "typeVersion": 2
@@ -973,8 +973,8 @@
       "name": "Note - Reminders",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        13040,
-        -3232
+        12688,
+        -3280
       ],
       "typeVersion": 1,
       "disabled": true
@@ -993,8 +993,8 @@
       "name": "Every Hour (Reminders)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "position": [
-        13584,
-        -3184
+        13232,
+        -3232
       ],
       "typeVersion": 1.1,
       "disabled": true
@@ -1010,8 +1010,8 @@
       "name": "Get Upcoming Appointments (Reminders)",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        13808,
-        -3184
+        13456,
+        -3232
       ],
       "typeVersion": 4.1,
       "disabled": true
@@ -1024,8 +1024,8 @@
       "name": "Filter Needing Reminders",
       "type": "n8n-nodes-base.code",
       "position": [
-        14016,
-        -3184
+        13664,
+        -3232
       ],
       "typeVersion": 2,
       "disabled": true
@@ -1057,8 +1057,8 @@
       "name": "Has Reminders?",
       "type": "n8n-nodes-base.if",
       "position": [
-        14224,
-        -3184
+        13872,
+        -3232
       ],
       "typeVersion": 2,
       "disabled": true
@@ -1071,8 +1071,8 @@
       "name": "Process Each Reminder",
       "type": "n8n-nodes-base.splitInBatches",
       "position": [
-        14432,
-        -3184
+        14080,
+        -3232
       ],
       "typeVersion": 3,
       "disabled": true
@@ -1092,8 +1092,8 @@
       "name": "Schedule Reminder Call",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        14992,
-        -3088
+        14640,
+        -3136
       ],
       "typeVersion": 4.1,
       "disabled": true
@@ -1113,8 +1113,8 @@
       "name": "Send SMS Reminder",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        14992,
-        -3408
+        14640,
+        -3456
       ],
       "typeVersion": 4.1,
       "disabled": true
@@ -1125,8 +1125,8 @@
       "name": "No Reminders",
       "type": "n8n-nodes-base.noOp",
       "position": [
-        14416,
-        -2832
+        14064,
+        -2880
       ],
       "typeVersion": 1,
       "disabled": true
@@ -1141,8 +1141,8 @@
       "name": "Note - Email",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        13024,
-        -2368
+        12672,
+        -2416
       ],
       "typeVersion": 1,
       "disabled": true
@@ -1158,8 +1158,8 @@
       "name": "Send Email Webhook",
       "type": "n8n-nodes-base.webhook",
       "position": [
-        13568,
-        -2320
+        13216,
+        -2368
       ],
       "typeVersion": 1.1,
       "webhookId": "send-email-webhook",
@@ -1210,8 +1210,8 @@
       "name": "Validate Email Data",
       "type": "n8n-nodes-base.if",
       "position": [
-        13808,
-        -2320
+        13456,
+        -2368
       ],
       "typeVersion": 2,
       "disabled": true
@@ -1228,8 +1228,8 @@
       "name": "Respond Email Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
-        14016,
-        -2160
+        13664,
+        -2208
       ],
       "typeVersion": 1,
       "disabled": true
@@ -1242,8 +1242,8 @@
       "name": "Prepare Email Content",
       "type": "n8n-nodes-base.code",
       "position": [
-        14016,
-        -2432
+        13664,
+        -2480
       ],
       "typeVersion": 2,
       "disabled": true
@@ -1262,8 +1262,8 @@
       "name": "Send via SMTP",
       "type": "n8n-nodes-base.emailSend",
       "position": [
-        14208,
-        -2432
+        13856,
+        -2480
       ],
       "typeVersion": 2.1,
       "webhookId": "682c0d6a-3a9c-448a-9616-bf84f0abe82d",
@@ -1284,8 +1284,8 @@
       "name": "Log Email to Database",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        14416,
-        -2432
+        14064,
+        -2480
       ],
       "typeVersion": 4.1,
       "disabled": true
@@ -1300,8 +1300,8 @@
       "name": "Respond Email Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
-        14640,
-        -2432
+        14288,
+        -2480
       ],
       "typeVersion": 1,
       "disabled": true
@@ -1324,6 +1324,7 @@
     },
     {
       "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
         "options": {
           "temperature": 0.3
         }
@@ -1331,8 +1332,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
       "position": [
-        9632,
-        -4080
+        9600,
+        -4064
       ],
       "id": "7fd1b0a2-864b-4ce4-8a8a-7e08b88a29dd",
       "name": "Gemini for Memory Analysis",
@@ -1418,7 +1419,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
         9600,
-        -3872
+        -3856
       ],
       "typeVersion": 1
     },
@@ -1431,30 +1432,30 @@
       "type": "n8n-nodes-base.code",
       "position": [
         9808,
-        -4176
+        -4080
       ],
       "typeVersion": 2
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst memories = input.analysis.memories || [];\nreturn memories.map(mem => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    memory_type: mem.type || 'note',\n    content: mem.content,\n    importance: mem.importance || 5,\n    source_type: 'call',\n    source_id: input.call_log_id\n  }\n}));"
+        "jsCode": "const input = $input.first().json;\nconst analysis = input.analysis || {};\n\nreturn [{\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    call_log_id: input.call_log_id,\n    analysis: {\n      long_term_memory: analysis.long_term_memory || {},\n      short_term_memory: analysis.short_term_memory || {}\n    }\n  }\n}];"
       },
       "id": "c555bd7e-09c9-4e60-a28a-952129694a7d",
       "name": "Prepare Memories",
       "type": "n8n-nodes-base.code",
       "position": [
         10256,
-        -4272
+        -4080
       ],
       "typeVersion": 2
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/memory/save",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/memory/consolidated/merge-from-call\n",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ $json }}",
         "options": {}
       },
       "id": "86000e57-e2dc-447c-b2f5-0b54860550ed",
@@ -1462,48 +1463,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [
         10480,
-        -4272
+        -4080
       ],
       "typeVersion": 4.1
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $('Analysis Valid?').first().json;\nconst preferences = input.analysis.preferences || [];\nreturn preferences.map(pref => ({\n  json: {\n    customer_id: input.customer_id,\n    business_id: input.business_id,\n    category: pref.category || 'general',\n    preference_key: pref.key,\n    preference_value: pref.value,\n    confidence: pref.confidence || 0.7\n  }\n}));"
-      },
-      "id": "cccf8f58-4a36-4040-96d7-1934e3fd3ca1",
-      "name": "Prepare Preferences",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        10256,
-        -4080
-      ],
-      "typeVersion": 2
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/memory/preference",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {}
-      },
-      "id": "9fde7a7d-e197-47b9-aa9c-fb788c0a43bd",
-      "name": "Save Preferences",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        10480,
-        -4080
-      ],
-      "typeVersion": 4.1,
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "fjR9QfUq7nkiIOgD",
-          "name": "Header Auth account"
-        }
-      }
     },
     {
       "parameters": {
@@ -1529,8 +1491,8 @@
       "name": "Update Customer Summary",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        10288,
-        -4544
+        10256,
+        -4288
       ],
       "typeVersion": 4.1,
       "credentials": {
@@ -1550,25 +1512,8 @@
       "name": "Respond Memory Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "position": [
-        10688,
+        10720,
         -4080
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={ \"success\": false, \"reason\": \"Analysis failed or invalid data\" }",
-        "options": {
-          "responseCode": 400
-        }
-      },
-      "id": "66810d85-f9d9-4646-a475-1f86688ba05b",
-      "name": "Respond Analysis Error",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "position": [
-        10032,
-        -3872
       ],
       "typeVersion": 1
     },
@@ -1597,14 +1542,105 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        10032,
-        -4176
+        10016,
+        -4080
       ],
       "id": "6092b88c-7a3b-4661-8fee-992d3b923fb5",
       "name": "Analysis Valid?"
     }
   ],
-  "pinData": {},
+  "pinData": {
+    "Call Ended Webhook": [
+      {
+        "json": {
+          "headers": {
+            "connection": "Keep-Alive",
+            "accept": "*/*",
+            "host": "n8n.algorityai.com",
+            "user-agent": "pg_net/0.19.5",
+            "content-type": "application/json",
+            "cf-ray": "9b0c81aaeaaa229f-SJC",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "2600:1f1c:f9:4d09:b80f:bccb:9781:f5fe",
+            "cf-ipcountry": "US",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "x-forwarded-proto": "https",
+            "content-length": "5217",
+            "x-forwarded-for": "2600:1f1c:f9:4d09:b80f:bccb:9781:f5fe",
+            "accept-encoding": "gzip, br"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "type": "UPDATE",
+            "table": "call_logs",
+            "record": {
+              "id": "278516ea-2a38-4fcc-bdb0-384d909dca61",
+              "cost": null,
+              "outcome": "general_inquiry",
+              "call_sid": null,
+              "ended_at": "2025-12-20T04:28:00.517141",
+              "sentiment": null,
+              "created_at": "2025-12-20T04:26:41.489951",
+              "started_at": null,
+              "tools_used": [],
+              "transcript": "[04:26:49] AI: **Offering Initial Greeting**\n\nHello Masoud! Thank you for calling Bright Smile Dental Clinic. How can I help you today?\n\n\nHello Masoud! Thank you for calling Bright Smile Dental Clinic. How can I help you today?\n[04:27:01] Customer: Tüm çeviriyor musun?\n[04:27:01] AI: **Analyzing Language Switch**\n\nI've registered the user's shift to Turkish. My immediate action is to respond in kind, addressing their question directly. Afterward, I'll subtly guide the dialogue back toward English, respecting the original conversational guidelines. This approach balances responsiveness with adherence to my operational parameters.\n\n\n**Addressing the Translation Request**\n\nNow, I'm composing my reply to the user's Turkish query. I will confirm my translation capabilities in Turkish, responding directly to their question. Afterward, I plan a gradual return to English to ensure clarity and adhere to the initial language setup. I'm keen to observe the user's continued preference.\n\n\nEvet, sizin için çeviri yapabilirim. Size nasıl yardımcı olabilirim bugün? İngilizce devam edebiliriz.\n[04:27:09] Customer: Hi, uh, efem'de konuşabilir misiniz?\n[04:27:12] Customer: 아닌지. 아.\n[04:27:15] Customer: हेलो\n[04:27:23] Customer: Hallo. Wie gehst du jetzt der?\n[04:27:23] AI: **Adjusting Communication Strategy**\n\nIch habe die aktuelle Sprachsituation erkannt und passe meine Kommunikationsstrategie entsprechend an. Ich werde nun auf Deutsch antworten, um ein freundliches und professionelles Gespräch zu führen. Mein Hauptziel ist es, das Kundenservice-Anliegen von Bright Smile Dental Clinic zu behandeln.\n\n\nMir geht es sehr gut, danke der Nachfrage! Wie kann ich Ihnen heute helfen?\n[04:27:36] Customer: .\n[04:27:36] AI: Tschüss! Auf Wiedersehen",
+              "business_id": "f84049dc-c45f-447a-b372-29d4f54fda09",
+              "call_status": null,
+              "customer_id": "fa37b382-740c-472d-b619-e975caaf7343",
+              "is_outbound": false,
+              "call_summary": null,
+              "caller_phone": "+905397293667",
+              "call_duration": 80,
+              "language_code": null,
+              "recording_url": null,
+              "role_switches": 0,
+              "call_direction": "inbound",
+              "current_role_id": "1347ae34-413b-4db9-87fe-f23044bd174d",
+              "language_source": null,
+              "phone_number_id": null,
+              "outbound_call_id": null,
+              "customer_satisfaction": null
+            },
+            "schema": "public",
+            "old_record": {
+              "id": "278516ea-2a38-4fcc-bdb0-384d909dca61",
+              "cost": null,
+              "outcome": "general_inquiry",
+              "call_sid": null,
+              "ended_at": "2025-12-20T04:28:00.517141",
+              "sentiment": null,
+              "created_at": "2025-12-20T04:26:41.489951",
+              "started_at": null,
+              "tools_used": [],
+              "transcript": "[04:26:49] AI: **Offering Initial Greeting**\n\nHello Masoud! Thank you for calling Bright Smile Dental Clinic. How can I help you today?\n\n\nHello Masoud! Thank you for calling Bright Smile Dental Clinic. How can I help you today?\n[04:27:01] Customer: Tüm çeviriyor musun?\n[04:27:01] AI: **Analyzing Language Switch**\n\nI've registered the user's shift to Turkish. My immediate action is to respond in kind, addressing their question directly. Afterward, I'll subtly guide the dialogue back toward English, respecting the original conversational guidelines. This approach balances responsiveness with adherence to my operational parameters.\n\n\n**Addressing the Translation Request**\n\nNow, I'm composing my reply to the user's Turkish query. I will confirm my translation capabilities in Turkish, responding directly to their question. Afterward, I plan a gradual return to English to ensure clarity and adhere to the initial language setup. I'm keen to observe the user's continued preference.\n\n\nEvet, sizin için çeviri yapabilirim. Size nasıl yardımcı olabilirim bugün? İngilizce devam edebiliriz.\n[04:27:09] Customer: Hi, uh, efem'de konuşabilir misiniz?\n[04:27:12] Customer: 아닌지. 아.\n[04:27:15] Customer: हेलो\n[04:27:23] Customer: Hallo. Wie gehst du jetzt der?\n[04:27:23] AI: **Adjusting Communication Strategy**\n\nIch habe die aktuelle Sprachsituation erkannt und passe meine Kommunikationsstrategie entsprechend an. Ich werde nun auf Deutsch antworten, um ein freundliches und professionelles Gespräch zu führen. Mein Hauptziel ist es, das Kundenservice-Anliegen von Bright Smile Dental Clinic zu behandeln.\n\n\nMir geht es sehr gut, danke der Nachfrage! Wie kann ich Ihnen heute helfen?\n[04:27:36] Customer: .\n[04:27:36] AI: Tschüss! Auf Wiedersehen!",
+              "business_id": "f84049dc-c45f-447a-b372-29d4f54fda09",
+              "call_status": null,
+              "customer_id": "fa37b382-740c-472d-b619-e975caaf7343",
+              "is_outbound": false,
+              "call_summary": null,
+              "caller_phone": "+905397293667",
+              "call_duration": 80,
+              "language_code": null,
+              "recording_url": null,
+              "role_switches": 0,
+              "call_direction": "inbound",
+              "current_role_id": "1347ae34-413b-4db9-87fe-f23044bd174d",
+              "language_source": null,
+              "phone_number_id": null,
+              "outbound_call_id": null,
+              "customer_satisfaction": null
+            }
+          },
+          "webhookUrl": "https://n8n.algorityai.com/webhook/call-ended",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
   "connections": {
     "Database Webhook": {
       "main": [
@@ -2265,17 +2301,6 @@
         ]
       ]
     },
-    "Prepare Preferences": {
-      "main": [
-        [
-          {
-            "node": "Save Preferences",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Analyze with Gemini": {
       "main": [
         [
@@ -2296,11 +2321,6 @@
             "index": 0
           },
           {
-            "node": "Prepare Preferences",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Update Customer Summary",
             "type": "main",
             "index": 0
@@ -2314,11 +2334,11 @@
     "executionOrder": "v1",
     "timeSavedMode": "fixed",
     "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": true,
+    "availableInMCP": false,
     "saveExecutionProgress": true,
     "errorWorkflow": "ZkQplwjtccGdKYZd"
   },
-  "versionId": "0c2bddac-f90a-46a4-9a43-d3cfb847fa52",
+  "versionId": "18a34f50-dfdc-4745-86fb-051d690254f2",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "6bffb0e0b31b4d744a3d67a5188397c17f15bfefa2e284777375c509005eb35b"
