@@ -29,7 +29,7 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: http://185.8.130.155:8000
+          VITE_API_URL: ''
       
       # ============================================
       # Upload Frontend Build to Server
