@@ -32,14 +32,178 @@ const industries = [
   { value: 'fitness', label: 'Fitness & Wellness' },
   { value: 'legal', label: 'Legal Services' },
   { value: 'consulting', label: 'Consulting' },
+  { value: 'airlines', label: 'Airlines / Aviation' },
+  { value: 'hotel', label: 'Hotels / Hospitality' },
+  { value: 'restaurant', label: 'Restaurants / Food Service' },
+  { value: 'retail', label: 'Retail / E-commerce' },
+  { value: 'real_estate', label: 'Real Estate' },
+  { value: 'automotive', label: 'Automotive / Car Dealership' },
+  { value: 'insurance', label: 'Insurance' },
+  { value: 'financial', label: 'Financial Services / Banking' },
+  { value: 'education', label: 'Education / Schools' },
+  { value: 'veterinary', label: 'Veterinary / Pet Care' },
+  { value: 'home_services', label: 'Home Services / Contractors' },
+  { value: 'beauty', label: 'Beauty / Cosmetics' },
+  { value: 'travel', label: 'Travel / Tourism' },
+  { value: 'event_planning', label: 'Event Planning / Catering' },
+  { value: 'nonprofit', label: 'Nonprofit / Charity' },
+  { value: 'technology', label: 'Technology / IT Services' },
   { value: 'other', label: 'Other' },
 ];
 
+// Get server timezone (defaults to UTC if not available)
+const getServerTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return 'UTC';
+  }
+};
+
+// Comprehensive worldwide timezones
 const timezones = [
-  { value: 'America/New_York', label: 'Eastern Time (ET)' },
-  { value: 'America/Chicago', label: 'Central Time (CT)' },
-  { value: 'America/Denver', label: 'Mountain Time (MT)' },
-  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  // Americas
+  { value: 'America/New_York', label: 'Eastern Time (ET) - New York' },
+  { value: 'America/Chicago', label: 'Central Time (CT) - Chicago' },
+  { value: 'America/Denver', label: 'Mountain Time (MT) - Denver' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (PT) - Los Angeles' },
+  { value: 'America/Phoenix', label: 'Mountain Time (MST) - Phoenix' },
+  { value: 'America/Anchorage', label: 'Alaska Time (AKT) - Anchorage' },
+  { value: 'America/Honolulu', label: 'Hawaii Time (HST) - Honolulu' },
+  { value: 'America/Toronto', label: 'Eastern Time - Toronto' },
+  { value: 'America/Vancouver', label: 'Pacific Time - Vancouver' },
+  { value: 'America/Mexico_City', label: 'Central Time - Mexico City' },
+  { value: 'America/Sao_Paulo', label: 'Brasília Time - São Paulo' },
+  { value: 'America/Buenos_Aires', label: 'Argentina Time - Buenos Aires' },
+  { value: 'America/Lima', label: 'Peru Time - Lima' },
+  { value: 'America/Santiago', label: 'Chile Time - Santiago' },
+  // Europe
+  { value: 'Europe/London', label: 'GMT - London' },
+  { value: 'Europe/Paris', label: 'CET - Paris' },
+  { value: 'Europe/Berlin', label: 'CET - Berlin' },
+  { value: 'Europe/Rome', label: 'CET - Rome' },
+  { value: 'Europe/Madrid', label: 'CET - Madrid' },
+  { value: 'Europe/Amsterdam', label: 'CET - Amsterdam' },
+  { value: 'Europe/Brussels', label: 'CET - Brussels' },
+  { value: 'Europe/Vienna', label: 'CET - Vienna' },
+  { value: 'Europe/Zurich', label: 'CET - Zurich' },
+  { value: 'Europe/Stockholm', label: 'CET - Stockholm' },
+  { value: 'Europe/Oslo', label: 'CET - Oslo' },
+  { value: 'Europe/Copenhagen', label: 'CET - Copenhagen' },
+  { value: 'Europe/Helsinki', label: 'EET - Helsinki' },
+  { value: 'Europe/Warsaw', label: 'CET - Warsaw' },
+  { value: 'Europe/Prague', label: 'CET - Prague' },
+  { value: 'Europe/Budapest', label: 'CET - Budapest' },
+  { value: 'Europe/Bucharest', label: 'EET - Bucharest' },
+  { value: 'Europe/Athens', label: 'EET - Athens' },
+  { value: 'Europe/Istanbul', label: 'TRT - Istanbul' },
+  { value: 'Europe/Moscow', label: 'MSK - Moscow' },
+  { value: 'Europe/Dublin', label: 'GMT - Dublin' },
+  { value: 'Europe/Lisbon', label: 'WET - Lisbon' },
+  // Asia
+  { value: 'Asia/Dubai', label: 'GST - Dubai' },
+  { value: 'Asia/Riyadh', label: 'AST - Riyadh' },
+  { value: 'Asia/Tehran', label: 'IRST - Tehran' },
+  { value: 'Asia/Karachi', label: 'PKT - Karachi' },
+  { value: 'Asia/Dhaka', label: 'BST - Dhaka' },
+  { value: 'Asia/Kolkata', label: 'IST - Mumbai / New Delhi' },
+  { value: 'Asia/Colombo', label: 'IST - Colombo' },
+  { value: 'Asia/Kathmandu', label: 'NPT - Kathmandu' },
+  { value: 'Asia/Yangon', label: 'MMT - Yangon' },
+  { value: 'Asia/Bangkok', label: 'ICT - Bangkok' },
+  { value: 'Asia/Ho_Chi_Minh', label: 'ICT - Ho Chi Minh' },
+  { value: 'Asia/Jakarta', label: 'WIB - Jakarta' },
+  { value: 'Asia/Manila', label: 'PHT - Manila' },
+  { value: 'Asia/Singapore', label: 'SGT - Singapore' },
+  { value: 'Asia/Kuala_Lumpur', label: 'MYT - Kuala Lumpur' },
+  { value: 'Asia/Hong_Kong', label: 'HKT - Hong Kong' },
+  { value: 'Asia/Shanghai', label: 'CST - Shanghai / Beijing' },
+  { value: 'Asia/Taipei', label: 'CST - Taipei' },
+  { value: 'Asia/Seoul', label: 'KST - Seoul' },
+  { value: 'Asia/Tokyo', label: 'JST - Tokyo' },
+  { value: 'Asia/Ulaanbaatar', label: 'ULAT - Ulaanbaatar' },
+  // Oceania
+  { value: 'Australia/Sydney', label: 'AEDT - Sydney' },
+  { value: 'Australia/Melbourne', label: 'AEDT - Melbourne' },
+  { value: 'Australia/Brisbane', label: 'AEST - Brisbane' },
+  { value: 'Australia/Perth', label: 'AWST - Perth' },
+  { value: 'Australia/Adelaide', label: 'ACDT - Adelaide' },
+  { value: 'Pacific/Auckland', label: 'NZDT - Auckland' },
+  { value: 'Pacific/Honolulu', label: 'HST - Honolulu' },
+  // Africa
+  { value: 'Africa/Cairo', label: 'EET - Cairo' },
+  { value: 'Africa/Johannesburg', label: 'SAST - Johannesburg' },
+  { value: 'Africa/Lagos', label: 'WAT - Lagos' },
+  { value: 'Africa/Nairobi', label: 'EAT - Nairobi' },
+  { value: 'Africa/Casablanca', label: 'WET - Casablanca' },
+  // UTC
+  { value: 'UTC', label: 'UTC - Coordinated Universal Time' },
+];
+
+// Phone number country codes
+const countryCodes = [
+  { value: '+90', label: '🇹🇷 Turkey (+90)', default: true },
+  { value: '+1', label: '🇺🇸 United States / Canada (+1)' },
+  { value: '+44', label: '🇬🇧 United Kingdom (+44)' },
+  { value: '+49', label: '🇩🇪 Germany (+49)' },
+  { value: '+33', label: '🇫🇷 France (+33)' },
+  { value: '+39', label: '🇮🇹 Italy (+39)' },
+  { value: '+34', label: '🇪🇸 Spain (+34)' },
+  { value: '+31', label: '🇳🇱 Netherlands (+31)' },
+  { value: '+32', label: '🇧🇪 Belgium (+32)' },
+  { value: '+41', label: '🇨🇭 Switzerland (+41)' },
+  { value: '+43', label: '🇦🇹 Austria (+43)' },
+  { value: '+46', label: '🇸🇪 Sweden (+46)' },
+  { value: '+47', label: '🇳🇴 Norway (+47)' },
+  { value: '+45', label: '🇩🇰 Denmark (+45)' },
+  { value: '+358', label: '🇫🇮 Finland (+358)' },
+  { value: '+48', label: '🇵🇱 Poland (+48)' },
+  { value: '+420', label: '🇨🇿 Czech Republic (+420)' },
+  { value: '+36', label: '🇭🇺 Hungary (+36)' },
+  { value: '+40', label: '🇷🇴 Romania (+40)' },
+  { value: '+30', label: '🇬🇷 Greece (+30)' },
+  { value: '+7', label: '🇷🇺 Russia (+7)' },
+  { value: '+353', label: '🇮🇪 Ireland (+353)' },
+  { value: '+351', label: '🇵🇹 Portugal (+351)' },
+  { value: '+971', label: '🇦🇪 UAE (+971)' },
+  { value: '+966', label: '🇸🇦 Saudi Arabia (+966)' },
+  { value: '+974', label: '🇶🇦 Qatar (+974)' },
+  { value: '+965', label: '🇰🇼 Kuwait (+965)' },
+  { value: '+973', label: '🇧🇭 Bahrain (+973)' },
+  { value: '+968', label: '🇴🇲 Oman (+968)' },
+  { value: '+961', label: '🇱🇧 Lebanon (+961)' },
+  { value: '+962', label: '🇯🇴 Jordan (+962)' },
+  { value: '+972', label: '🇮🇱 Israel (+972)' },
+  { value: '+98', label: '🇮🇷 Iran (+98)' },
+  { value: '+92', label: '🇵🇰 Pakistan (+92)' },
+  { value: '+880', label: '🇧🇩 Bangladesh (+880)' },
+  { value: '+91', label: '🇮🇳 India (+91)' },
+  { value: '+94', label: '🇱🇰 Sri Lanka (+94)' },
+  { value: '+977', label: '🇳🇵 Nepal (+977)' },
+  { value: '+95', label: '🇲🇲 Myanmar (+95)' },
+  { value: '+66', label: '🇹🇭 Thailand (+66)' },
+  { value: '+84', label: '🇻🇳 Vietnam (+84)' },
+  { value: '+62', label: '🇮🇩 Indonesia (+62)' },
+  { value: '+63', label: '🇵🇭 Philippines (+63)' },
+  { value: '+65', label: '🇸🇬 Singapore (+65)' },
+  { value: '+60', label: '🇲🇾 Malaysia (+60)' },
+  { value: '+852', label: '🇭🇰 Hong Kong (+852)' },
+  { value: '+86', label: '🇨🇳 China (+86)' },
+  { value: '+886', label: '🇹🇼 Taiwan (+886)' },
+  { value: '+82', label: '🇰🇷 South Korea (+82)' },
+  { value: '+81', label: '🇯🇵 Japan (+81)' },
+  { value: '+61', label: '🇦🇺 Australia (+61)' },
+  { value: '+64', label: '🇳🇿 New Zealand (+64)' },
+  { value: '+20', label: '🇪🇬 Egypt (+20)' },
+  { value: '+27', label: '🇿🇦 South Africa (+27)' },
+  { value: '+234', label: '🇳🇬 Nigeria (+234)' },
+  { value: '+254', label: '🇰🇪 Kenya (+254)' },
+  { value: '+212', label: '🇲🇦 Morocco (+212)' },
+  { value: '+55', label: '🇧🇷 Brazil (+55)' },
+  { value: '+52', label: '🇲🇽 Mexico (+52)' },
+  { value: '+54', label: '🇦🇷 Argentina (+54)' },
+  { value: '+51', label: '🇵🇪 Peru (+51)' },
+  { value: '+56', label: '🇨🇱 Chile (+56)' },
 ];
 
 const voiceStyles = [
@@ -53,6 +217,7 @@ interface OnboardingFormData {
   // Step 1: Business Info
   business_name: string;
   industry: string;
+  phone_country_code: string;
   phone_number: string;
   timezone: string;
   
@@ -87,8 +252,9 @@ export default function OnboardingPage() {
     defaultValues: {
       business_name: '',
       industry: '',
+      phone_country_code: '+90', // Turkey default
       phone_number: '',
-      timezone: 'America/New_York',
+      timezone: getServerTimezone(),
       hours: [
         { day_of_week: 1, is_open: true, open_time: '09:00', close_time: '17:00' }, // Monday
         { day_of_week: 2, is_open: true, open_time: '09:00', close_time: '17:00' }, // Tuesday
@@ -116,10 +282,18 @@ export default function OnboardingPage() {
 
       setIsLoading(true);
       try {
+        // Combine country code and phone number
+        let fullPhoneNumber = null;
+        if (formData.phone_number) {
+          // Remove spaces and any leading +, then add selected country code
+          const cleanNumber = formData.phone_number.replace(/\s+/g, '').replace(/^\+/, '');
+          fullPhoneNumber = `${formData.phone_country_code}${cleanNumber}`;
+        }
+        
         const business = await post('/api/businesses', {
           business_name: formData.business_name,
           industry: formData.industry,
-          phone_number: formData.phone_number || null,
+          phone_number: fullPhoneNumber,
           timezone: formData.timezone,
           owner_email: user?.email,
         });
@@ -363,17 +537,44 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
           )}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Phone Number</label>
-            <Controller
-              name="phone_number"
-              control={control}
-              render={({ field }) => (
-                <Input type="tel" placeholder="+1 (555) 000-0000" {...field} />
-              )}
-            />
+            <div className="flex gap-2">
+              <Controller
+                name="phone_country_code"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {countryCodes.map((code) => (
+                        <SelectItem key={`${code.value}-${code.label}`} value={code.value}>
+                          {code.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <Controller
+                name="phone_number"
+                control={control}
+                render={({ field }) => (
+                  <Input 
+                    type="tel" 
+                    placeholder="555 123 4567" 
+                    className="flex-1"
+                    {...field} 
+                  />
+                )}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Optional - for business contact</p>
           </div>
+          
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Timezone *</label>
             <Controller
@@ -384,7 +585,7 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[400px]">
                     {timezones.map((tz) => (
                       <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
                     ))}
