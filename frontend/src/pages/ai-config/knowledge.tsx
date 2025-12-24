@@ -278,7 +278,12 @@ export default function KnowledgeBasePage() {
 
 // FAQ Form
 function FAQForm({ faq, onSuccess }: { faq?: FAQ | null; onSuccess: () => void }) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    category: FAQ['category'];
+    question: string;
+    answer: string;
+    keywords: string;
+  }>({
     category: 'general',
     question: '',
     answer: '',
