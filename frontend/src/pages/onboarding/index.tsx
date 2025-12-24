@@ -523,15 +523,15 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
             rules={{ required: 'Industry is required' }}
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your industry" />
-                </SelectTrigger>
-                <SelectContent>
-                  {industries.map((ind) => (
-                    <SelectItem key={ind.value} value={ind.value}>{ind.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <SelectTrigger>
+              <SelectValue placeholder="Select your industry" />
+            </SelectTrigger>
+            <SelectContent>
+              {industries.map((ind) => (
+                <SelectItem key={ind.value} value={ind.value}>{ind.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
             )}
           />
           {errors.industry && (
@@ -584,15 +584,15 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
               control={control}
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
                   <SelectContent className="max-h-[400px]">
-                    {timezones.map((tz) => (
-                      <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {timezones.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
               )}
             />
           </div>
@@ -620,7 +620,7 @@ function HoursStep({ control, watch }: { control: any; watch: any }) {
   });
 
   const hours = watch('hours') || [];
-
+  
   return (
     <div className="space-y-6">
       <div>
@@ -651,35 +651,35 @@ function HoursStep({ control, watch }: { control: any; watch: any }) {
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange} disabled={!isOpen}>
-                    <SelectTrigger className="w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
                       {timeOptions.map((t) => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
                 )}
               />
-              <span className="text-muted-foreground">to</span>
+            <span className="text-muted-foreground">to</span>
               <Controller
                 name={`hours.${day.value}.close_time`}
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange} disabled={!isOpen}>
-                    <SelectTrigger className="w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
                       {timeOptions.map((t) => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
                 )}
               />
-            </div>
+          </div>
           );
         })}
       </div>
@@ -795,21 +795,21 @@ function AISetupStep({ control, watch }: { control: any; watch: any }) {
                   <button
                     type="button"
                     onClick={() => field.onChange(voice.value)}
-                    className={cn(
-                      'p-4 rounded-lg border-2 text-left transition-all',
-                      selectedVoice === voice.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{voice.label}</span>
-                      {selectedVoice === voice.value && (
-                        <Check className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{voice.description}</p>
-                  </button>
+                className={cn(
+                  'p-4 rounded-lg border-2 text-left transition-all',
+                  selectedVoice === voice.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{voice.label}</span>
+                  {selectedVoice === voice.value && (
+                    <Check className="h-5 w-5 text-primary" />
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">{voice.description}</p>
+              </button>
                 )}
               />
             ))}
@@ -822,8 +822,8 @@ function AISetupStep({ control, watch }: { control: any; watch: any }) {
             name="greeting_message"
             control={control}
             render={({ field }) => (
-              <textarea
-                className="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
+          <textarea
+            className="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
                 placeholder={`Thank you for calling ${businessName}. This is ${aiName}, your virtual assistant. How can I help you today?`}
                 {...field}
               />

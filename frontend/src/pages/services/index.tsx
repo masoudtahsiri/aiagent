@@ -1,306 +1,303 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Plus, MoreHorizontal, Clock, DollarSign, Briefcase, Edit, Trash2 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/page-container';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/form-elements';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/form-elements';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu';
-import { EmptyState } from '@/components/shared/empty-state';
-import { formatCurrency, formatDuration } from '@/lib/utils/format';
+import { Plus, Edit, Trash2, Clock, DollarSign, Tag } from 'lucide-react';
+import { PageContainer } from '@/components/layout';
+import { Button, Card, Modal, Input, Textarea, Badge, Skeleton, EmptyState } from '@/components/ui';
+import { useServices, useCreateService, useUpdateService, useDeleteService, useCurrentBusiness } from '@/lib/api';
+import type { Service } from '@/types';
 
-// Mock services data
-const mockServices = [
-  {
-    id: '1',
-    name: 'General Consultation',
-    description: 'Initial consultation to assess patient needs and create a treatment plan.',
-    duration_minutes: 30,
-    price: 75,
-    category: 'consultation',
-    is_active: true,
-  },
-  {
-    id: '2',
-    name: 'Teeth Cleaning',
-    description: 'Professional teeth cleaning and oral hygiene assessment.',
-    duration_minutes: 45,
-    price: 120,
-    category: 'maintenance',
-    is_active: true,
-  },
-  {
-    id: '3',
-    name: 'Dental Filling',
-    description: 'Cavity treatment with composite or amalgam filling.',
-    duration_minutes: 60,
-    price: 200,
-    category: 'treatment',
-    is_active: true,
-  },
-  {
-    id: '4',
-    name: 'Root Canal',
-    description: 'Endodontic treatment to save an infected tooth.',
-    duration_minutes: 90,
-    price: 800,
-    category: 'treatment',
-    is_active: true,
-  },
-  {
-    id: '5',
-    name: 'Teeth Whitening',
-    description: 'Professional whitening treatment for a brighter smile.',
-    duration_minutes: 60,
-    price: 350,
-    category: 'cosmetic',
-    is_active: false,
-  },
-];
+interface ServiceFormData {
+  name: string;
+  description: string;
+  duration_minutes: number;
+  price: number;
+  category: string;
+  is_active: boolean;
+  requires_staff: boolean;
+}
 
-const categories = [
-  { value: 'consultation', label: 'Consultation', color: 'primary' },
-  { value: 'treatment', label: 'Treatment', color: 'secondary' },
-  { value: 'maintenance', label: 'Maintenance', color: 'success' },
-  { value: 'cosmetic', label: 'Cosmetic', color: 'warning' },
-  { value: 'emergency', label: 'Emergency', color: 'error' },
-];
+const initialFormData: ServiceFormData = {
+  name: '',
+  description: '',
+  duration_minutes: 60,
+  price: 0,
+  category: '',
+  is_active: true,
+  requires_staff: true,
+};
+
+function formatDuration(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins}min`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}min`;
+}
 
 export default function ServicesPage() {
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const { data: business } = useCurrentBusiness();
+  const businessId = business?.id || '';
+  
+  const { data: services, isLoading } = useServices(businessId);
+  
+  const createService = useCreateService();
+  const updateService = useUpdateService();
+  const deleteService = useDeleteService();
 
-  const filteredServices = selectedCategory === 'all' 
-    ? mockServices 
-    : mockServices.filter(s => s.category === selectedCategory);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
+  const [formData, setFormData] = useState<ServiceFormData>(initialFormData);
 
-  // Group by category
-  const groupedServices = filteredServices.reduce((acc, service) => {
-    const cat = service.category;
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(service);
-    return acc;
-  }, {} as Record<string, typeof mockServices>);
+  const handleOpenCreate = () => {
+    setEditingService(null);
+    setFormData(initialFormData);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (service: Service) => {
+    setEditingService(service);
+    setFormData({
+      name: service.name,
+      description: service.description || '',
+      duration_minutes: service.duration_minutes,
+      price: service.price || 0,
+      category: service.category || '',
+      is_active: service.is_active,
+      requires_staff: service.requires_staff,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const data = {
+      name: formData.name,
+      description: formData.description || undefined,
+      duration_minutes: formData.duration_minutes,
+      price: formData.price || undefined,
+      category: formData.category || undefined,
+      is_active: formData.is_active,
+      requires_staff: formData.requires_staff,
+      business_id: businessId,
+    };
+
+    if (editingService) {
+      await updateService.mutateAsync({ id: editingService.id, data });
+    } else {
+      await createService.mutateAsync(data);
+    }
+    
+    setIsModalOpen(false);
+    setFormData(initialFormData);
+  };
+
+  const handleDelete = async () => {
+    if (serviceToDelete) {
+      await deleteService.mutateAsync(serviceToDelete.id);
+      setIsDeleteModalOpen(false);
+      setServiceToDelete(null);
+    }
+  };
+
+  const confirmDelete = (service: Service) => {
+    setServiceToDelete(service);
+    setIsDeleteModalOpen(true);
+  };
+
+  if (isLoading) {
+    return (
+      <PageContainer title="Services" description="Manage your service offerings">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} variant="rectangular" className="h-48" />
+          ))}
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer
       title="Services"
-      description="Manage the services your business offers"
+      description="Manage your service offerings"
       actions={
-        <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
+        <Button onClick={handleOpenCreate}>
+          <Plus className="h-4 w-4 mr-2" />
           Add Service
         </Button>
       }
     >
-      {/* Category Filter */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-        <Button 
-          variant={selectedCategory === 'all' ? 'default' : 'outline'} 
-          size="sm"
-          onClick={() => setSelectedCategory('all')}
-        >
-          All
-        </Button>
-        {categories.map((cat) => (
-          <Button
-            key={cat.value}
-            variant={selectedCategory === cat.value ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedCategory(cat.value)}
-          >
-            {cat.label}
-          </Button>
-        ))}
-      </div>
-
-      {filteredServices.length === 0 ? (
+      {!services || services.length === 0 ? (
         <EmptyState
-          icon={Briefcase}
-          title="No services found"
-          description="Add services that your business offers"
+          title="No services"
+          description="Add your first service to get started."
           action={
-            <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4 mr-2" />
               Add Service
             </Button>
           }
         />
       ) : (
-        <div className="space-y-8">
-          {Object.entries(groupedServices).map(([category, services]) => (
-            <div key={category}>
-              <h3 className="text-lg font-semibold mb-4 capitalize">{category}</h3>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {services.map((service, i) => (
-                  <motion.div
-                    key={service.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {services.map((service) => (
+            <Card key={service.id} className="relative group">
+              <Card.Body>
+                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleOpenEdit(service)}
                   >
-                    <Card className={`p-5 ${!service.is_active && 'opacity-60'}`}>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="font-semibold">{service.name}</h4>
-                          {service.description && (
-                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                              {service.description}
-                            </p>
-                          )}
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              {service.is_active ? 'Deactivate' : 'Activate'}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => confirmDelete(service)}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
 
-                      <div className="flex items-center gap-4 mt-4">
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span>{formatDuration(service.duration_minutes)}</span>
-                        </div>
-                        {service.price && (
-                          <div className="flex items-center gap-1.5 text-sm">
-                            <DollarSign className="h-4 w-4 text-muted-foreground" />
-                            <span>{formatCurrency(service.price)}</span>
-                          </div>
-                        )}
-                      </div>
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Tag className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                    {service.category && (
+                      <span className="text-sm text-gray-500">{service.category}</span>
+                    )}
+                  </div>
+                  <Badge variant={service.is_active ? 'success' : 'default'} size="sm">
+                    {service.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </div>
 
-                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                        <Badge 
-                          variant={service.is_active ? 'success' : 'default'}
-                          size="sm"
-                        >
-                          {service.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
+                {service.description && (
+                  <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                    {service.description}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Clock className="h-4 w-4" />
+                    <span>{formatDuration(service.duration_minutes)}</span>
+                  </div>
+                  {service.price !== undefined && service.price > 0 && (
+                    <div className="flex items-center gap-1 text-gray-600">
+                      <DollarSign className="h-4 w-4" />
+                      <span>${service.price.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </Card.Body>
+            </Card>
           ))}
         </div>
       )}
 
-      {/* New Service Modal */}
-      <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add New Service</DialogTitle>
-          </DialogHeader>
-          <NewServiceForm onSuccess={() => setShowNewModal(false)} />
-        </DialogContent>
-      </Dialog>
+      {/* Create/Edit Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingService ? 'Edit Service' : 'Add Service'}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            label="Service Name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="e.g., Haircut, Massage"
+            required
+          />
+          <Textarea
+            label="Description"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            rows={3}
+          />
+          <Input
+            label="Category"
+            value={formData.category}
+            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            placeholder="e.g., Hair, Nails, Wellness"
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Duration (minutes)"
+              type="number"
+              value={formData.duration_minutes}
+              onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 0 })}
+              min={5}
+              step={5}
+              required
+            />
+            <Input
+              label="Price ($)"
+              type="number"
+              value={formData.price}
+              onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+              min={0}
+              step={0.01}
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="is_active"
+                checked={formData.is_active}
+                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                className="rounded"
+              />
+              <label htmlFor="is_active" className="text-sm text-gray-700">Active</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="requires_staff"
+                checked={formData.requires_staff}
+                onChange={(e) => setFormData({ ...formData, requires_staff: e.target.checked })}
+                className="rounded"
+              />
+              <label htmlFor="requires_staff" className="text-sm text-gray-700">Requires Staff</label>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={createService.isPending || updateService.isPending}>
+              {editingService ? 'Save Changes' : 'Add Service'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Service"
+        size="sm"
+      >
+        <p className="text-gray-600 mb-6">
+          Are you sure you want to delete <strong>{serviceToDelete?.name}</strong>? This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={handleDelete} loading={deleteService.isPending}>
+            Delete
+          </Button>
+        </div>
+      </Modal>
     </PageContainer>
-  );
-}
-
-// New Service Form
-function NewServiceForm({ onSuccess }: { onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Service Name *</label>
-        <Input placeholder="e.g., Teeth Cleaning" required />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Description</label>
-        <Textarea placeholder="Describe this service..." />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Duration *</label>
-          <Select defaultValue="30">
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="15">15 minutes</SelectItem>
-              <SelectItem value="30">30 minutes</SelectItem>
-              <SelectItem value="45">45 minutes</SelectItem>
-              <SelectItem value="60">1 hour</SelectItem>
-              <SelectItem value="90">1.5 hours</SelectItem>
-              <SelectItem value="120">2 hours</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Price</label>
-          <Input type="number" placeholder="0.00" min="0" step="0.01" />
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Category</label>
-        <Select defaultValue="consultation">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((cat) => (
-              <SelectItem key={cat.value} value={cat.value}>
-                {cat.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-        <div>
-          <p className="font-medium">Active</p>
-          <p className="text-sm text-muted-foreground">Service is available for booking</p>
-        </div>
-        <Switch defaultChecked />
-      </div>
-
-      <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onSuccess}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={isLoading}>
-          Add Service
-        </Button>
-      </div>
-    </form>
   );
 }

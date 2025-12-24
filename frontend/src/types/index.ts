@@ -2,9 +2,8 @@
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
+  limit: number;
+  offset: number;
 }
 
 // Auth types
@@ -34,6 +33,7 @@ export interface SignupRequest {
   email: string;
   password: string;
   full_name: string;
+  business_name?: string;
 }
 
 // Business types
@@ -77,6 +77,7 @@ export interface Staff {
   bio?: string;
   color_code: string;
   is_active: boolean;
+  google_calendar_connected?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +89,8 @@ export interface AvailabilityTemplate {
   start_time: string;
   end_time: string;
   slot_duration_minutes: number;
+  break_start?: string;
+  break_end?: string;
 }
 
 export interface TimeSlot {
@@ -186,13 +189,16 @@ export type CallOutcome =
   | 'voicemail'
   | 'other';
 
+export type CallStatus = 'ringing' | 'in_progress' | 'completed' | 'missed' | 'failed';
+export type CallDirection = 'inbound' | 'outbound';
+
 export interface CallLog {
   id: string;
   business_id: string;
   customer_id?: string;
   caller_phone: string;
-  call_direction: 'inbound' | 'outbound';
-  call_status: 'ringing' | 'in_progress' | 'completed' | 'missed' | 'failed';
+  call_direction: CallDirection;
+  call_status: CallStatus;
   call_duration?: number;
   transcript?: string;
   outcome?: CallOutcome;
@@ -204,6 +210,7 @@ export interface CallLog {
 export interface CallLogWithDetails extends CallLog {
   customer_name?: string;
   customer_email?: string;
+  has_transcript?: boolean;
 }
 
 // AI config types
@@ -242,13 +249,14 @@ export interface FAQ {
 
 // Dashboard types
 export interface DashboardStats {
-  callsToday: number;
-  callsChange: number;
-  appointmentsToday: number;
-  appointmentsCompleted: number;
-  totalCustomers: number;
-  averageRating: number;
-  ratingsCount: number;
+  calls_today: number;
+  calls_change: number;
+  appointments_today: number;
+  appointments_completed: number;
+  total_customers: number;
+  customers_change: number;
+  average_rating: number;
+  ratings_count: number;
 }
 
 export interface CallAnalytics {
@@ -261,4 +269,33 @@ export interface CallOutcomeStats {
   outcome: string;
   count: number;
   percentage: number;
+}
+
+// Messaging types
+export interface Message {
+  id: string;
+  business_id: string;
+  customer_id?: string;
+  customer_name?: string;
+  customer_phone: string;
+  type: 'sms' | 'email' | 'whatsapp';
+  direction: 'inbound' | 'outbound';
+  content: string;
+  subject?: string;
+  status: 'pending' | 'sent' | 'delivered' | 'failed' | 'received';
+  sent_at?: string;
+  created_at: string;
+}
+
+export interface MessageTemplate {
+  id: string;
+  business_id: string;
+  name: string;
+  type: 'sms' | 'email';
+  subject?: string;
+  content: string;
+  variables: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }

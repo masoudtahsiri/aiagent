@@ -1,99 +1,119 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Plus, MoreHorizontal, Calendar, Mail, Phone, UserCog } from 'lucide-react';
-import { PageContainer } from '@/components/layout/page-container';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Avatar } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/form-elements';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu';
-import { EmptyState } from '@/components/shared/empty-state';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Edit, Trash2, Mail, Phone } from 'lucide-react';
+import { PageContainer } from '@/components/layout';
+import { Button, Card, Modal, Input, Badge, Skeleton, EmptyState, Table } from '@/components/ui';
+import { useStaff, useCreateStaff, useUpdateStaff, useDeleteStaff, useCurrentBusiness } from '@/lib/api';
+import type { Staff } from '@/types';
 
-// Mock staff data
-const mockStaff = [
-  {
-    id: '1',
-    name: 'Dr. Sarah Wilson',
-    title: 'Senior Dentist',
-    email: 'sarah@clinic.com',
-    phone: '+15550201',
-    specialty: 'General Dentistry',
-    color_code: '#3B82F6',
-    is_active: true,
-    appointments_today: 8,
-    appointments_week: 32,
-  },
-  {
-    id: '2',
-    name: 'Dr. Michael Brown',
-    title: 'Orthodontist',
-    email: 'michael@clinic.com',
-    phone: '+15550202',
-    specialty: 'Orthodontics',
-    color_code: '#8B5CF6',
-    is_active: true,
-    appointments_today: 6,
-    appointments_week: 28,
-  },
-  {
-    id: '3',
-    name: 'Dr. Emma Lee',
-    title: 'Dental Hygienist',
-    email: 'emma@clinic.com',
-    phone: '+15550203',
-    specialty: 'Preventive Care',
-    color_code: '#06B6D4',
-    is_active: true,
-    appointments_today: 10,
-    appointments_week: 45,
-  },
-  {
-    id: '4',
-    name: 'Dr. James Taylor',
-    title: 'Periodontist',
-    email: 'james@clinic.com',
-    phone: '+15550204',
-    specialty: 'Periodontics',
-    color_code: '#F59E0B',
-    is_active: false,
-    appointments_today: 0,
-    appointments_week: 0,
-  },
-];
+interface StaffFormData {
+  name: string;
+  email: string;
+  phone: string;
+  title: string;
+  specialty: string;
+  bio: string;
+  color_code: string;
+  is_active: boolean;
+}
 
-const colorOptions = [
-  { value: '#3B82F6', label: 'Blue' },
-  { value: '#8B5CF6', label: 'Purple' },
-  { value: '#06B6D4', label: 'Teal' },
-  { value: '#22C55E', label: 'Green' },
-  { value: '#F59E0B', label: 'Amber' },
-  { value: '#EF4444', label: 'Red' },
-  { value: '#EC4899', label: 'Pink' },
-];
+const initialFormData: StaffFormData = {
+  name: '',
+  email: '',
+  phone: '',
+  title: '',
+  specialty: '',
+  bio: '',
+  color_code: '#3B82F6',
+  is_active: true,
+};
 
 export default function StaffPage() {
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [isLoading] = useState(false);
+  const { data: business } = useCurrentBusiness();
+  const businessId = business?.id || '';
+  
+  const { data: staff, isLoading } = useStaff(businessId);
+  
+  const createStaff = useCreateStaff();
+  const updateStaff = useUpdateStaff();
+  const deleteStaff = useDeleteStaff();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null);
+  const [formData, setFormData] = useState<StaffFormData>(initialFormData);
+
+  const handleOpenCreate = () => {
+    setEditingStaff(null);
+    setFormData(initialFormData);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (staffMember: Staff) => {
+    setEditingStaff(staffMember);
+    setFormData({
+      name: staffMember.name,
+      email: staffMember.email || '',
+      phone: staffMember.phone || '',
+      title: staffMember.title || '',
+      specialty: staffMember.specialty || '',
+      bio: staffMember.bio || '',
+      color_code: staffMember.color_code,
+      is_active: staffMember.is_active,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const data = {
+      name: formData.name,
+      email: formData.email || undefined,
+      phone: formData.phone || undefined,
+      title: formData.title || undefined,
+      specialty: formData.specialty || undefined,
+      bio: formData.bio || undefined,
+      color_code: formData.color_code,
+      is_active: formData.is_active,
+      business_id: businessId,
+    };
+
+    if (editingStaff) {
+      await updateStaff.mutateAsync({ id: editingStaff.id, data });
+    } else {
+      await createStaff.mutateAsync(data);
+    }
+    
+    setIsModalOpen(false);
+    setFormData(initialFormData);
+  };
+
+  const handleDelete = async () => {
+    if (staffToDelete) {
+      await deleteStaff.mutateAsync(staffToDelete.id);
+      setIsDeleteModalOpen(false);
+      setStaffToDelete(null);
+    }
+  };
+
+  const confirmDelete = (staffMember: Staff) => {
+    setStaffToDelete(staffMember);
+    setIsDeleteModalOpen(true);
+  };
 
   if (isLoading) {
     return (
-      <PageContainer title="Staff" description="Manage your team">
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-64 rounded-xl" />
-          ))}
-        </div>
+      <PageContainer title="Staff" description="Manage your team members">
+        <Card>
+          <Card.Body>
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} variant="rectangular" className="h-16 w-full" />
+              ))}
+            </div>
+          </Card.Body>
+        </Card>
       </PageContainer>
     );
   }
@@ -101,204 +121,185 @@ export default function StaffPage() {
   return (
     <PageContainer
       title="Staff"
-      description="Manage your team members and their availability"
+      description="Manage your team members"
       actions={
-        <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
+        <Button onClick={handleOpenCreate}>
+          <Plus className="h-4 w-4 mr-2" />
           Add Staff
         </Button>
       }
     >
-      {mockStaff.length === 0 ? (
+      {!staff || staff.length === 0 ? (
         <EmptyState
-          icon={UserCog}
           title="No staff members"
-          description="Add your first staff member to start scheduling appointments"
+          description="Add your first team member to get started."
           action={
-            <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4 mr-2" />
               Add Staff
             </Button>
           }
         />
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {mockStaff.map((member, i) => (
-            <motion.div
-              key={member.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Card className="overflow-hidden">
-                {/* Color Bar */}
-                <div className="h-2" style={{ backgroundColor: member.color_code }} />
-                
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
+        <Card>
+          <Table>
+            <Table.Head>
+              <Table.Row>
+                <Table.Header>Name</Table.Header>
+                <Table.Header>Contact</Table.Header>
+                <Table.Header>Title</Table.Header>
+                <Table.Header>Specialty</Table.Header>
+                <Table.Header>Status</Table.Header>
+                <Table.Header className="w-20">Actions</Table.Header>
+              </Table.Row>
+            </Table.Head>
+            <Table.Body>
+              {staff.map((member) => (
+                <Table.Row key={member.id}>
+                  <Table.Cell>
                     <div className="flex items-center gap-3">
-                      <Avatar 
-                        name={member.name} 
-                        color={member.color_code}
-                        size="lg"
-                        status={member.is_active ? 'online' : 'offline'}
-                      />
-                      <div>
-                        <Link 
-                          to={`/staff/${member.id}`}
-                          className="font-semibold hover:text-primary transition-colors"
-                        >
-                          {member.name}
-                        </Link>
-                        <p className="text-sm text-muted-foreground">{member.title}</p>
+                      <div 
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium"
+                        style={{ backgroundColor: member.color_code }}
+                      >
+                        {member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                       </div>
+                      <span className="font-medium">{member.name}</span>
                     </div>
-                    
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link to={`/staff/${member.id}`}>View Profile</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem>Manage Availability</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
-                          {member.is_active ? 'Deactivate' : 'Activate'}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Specialty */}
-                  <Badge variant="default" className="mb-4">
-                    {member.specialty}
-                  </Badge>
-
-                  {/* Contact */}
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Mail className="h-4 w-4" />
-                      <span className="truncate">{member.email}</span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="space-y-1">
+                      {member.email && (
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Mail className="h-3 w-3" />
+                          {member.email}
+                        </div>
+                      )}
+                      {member.phone && (
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Phone className="h-3 w-3" />
+                          {member.phone}
+                        </div>
+                      )}
                     </div>
-                    {member.phone && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Phone className="h-4 w-4" />
-                        <span>{member.phone}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="flex gap-4 pt-4 border-t border-border">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        <span className="font-semibold">{member.appointments_today}</span> today
-                      </span>
+                  </Table.Cell>
+                  <Table.Cell>{member.title || '-'}</Table.Cell>
+                  <Table.Cell>{member.specialty || '-'}</Table.Cell>
+                  <Table.Cell>
+                    <Badge variant={member.is_active ? 'success' : 'default'}>
+                      {member.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenEdit(member)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => confirmDelete(member)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      <span className="font-semibold text-foreground">{member.appointments_week}</span> this week
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        </Card>
       )}
 
-      {/* New Staff Modal */}
-      <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add New Staff Member</DialogTitle>
-          </DialogHeader>
-          <NewStaffForm onSuccess={() => setShowNewModal(false)} />
-        </DialogContent>
-      </Dialog>
-    </PageContainer>
-  );
-}
-
-// New Staff Form
-function NewStaffForm({ onSuccess }: { onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedColor, setSelectedColor] = useState('#3B82F6');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Full Name *</label>
-        <Input placeholder="Dr. Jane Smith" required />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Title</label>
-        <Input placeholder="Senior Dentist" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Email</label>
-          <Input type="email" placeholder="jane@clinic.com" />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Phone</label>
-          <Input type="tel" placeholder="+1 (555) 000-0000" />
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Specialty</label>
-        <Input placeholder="General Dentistry" />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Calendar Color</label>
-        <div className="flex gap-2">
-          {colorOptions.map((color) => (
-            <button
-              key={color.value}
-              type="button"
-              onClick={() => setSelectedColor(color.value)}
-              className={`w-8 h-8 rounded-full border-2 transition-all ${
-                selectedColor === color.value 
-                  ? 'border-foreground scale-110' 
-                  : 'border-transparent'
-              }`}
-              style={{ backgroundColor: color.value }}
-              title={color.label}
+      {/* Create/Edit Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingStaff ? 'Edit Staff Member' : 'Add Staff Member'}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            label="Name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          />
+          <Input
+            label="Phone"
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+          />
+          <Input
+            label="Title"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            placeholder="e.g., Senior Stylist, Manager"
+          />
+          <Input
+            label="Specialty"
+            value={formData.specialty}
+            onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+            placeholder="e.g., Hair Coloring, Massage"
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+            <input
+              type="color"
+              value={formData.color_code}
+              onChange={(e) => setFormData({ ...formData, color_code: e.target.value })}
+              className="h-10 w-20 rounded border cursor-pointer"
             />
-          ))}
-        </div>
-      </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={formData.is_active}
+              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+              className="rounded"
+            />
+            <label htmlFor="is_active" className="text-sm text-gray-700">Active</label>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={createStaff.isPending || updateStaff.isPending}>
+              {editingStaff ? 'Save Changes' : 'Add Staff'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
-      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-        <div>
-          <p className="font-medium">Active</p>
-          <p className="text-sm text-muted-foreground">Staff member can receive appointments</p>
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Staff Member"
+        size="sm"
+      >
+        <p className="text-gray-600 mb-6">
+          Are you sure you want to delete <strong>{staffToDelete?.name}</strong>? This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={handleDelete} loading={deleteStaff.isPending}>
+            Delete
+          </Button>
         </div>
-        <Switch defaultChecked />
-      </div>
-
-      <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onSuccess}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={isLoading}>
-          Add Staff Member
-        </Button>
-      </div>
-    </form>
+      </Modal>
+    </PageContainer>
   );
 }
