@@ -369,7 +369,7 @@ function CompleteStep() {
           {
             icon: Phone,
             title: 'Get Your Number',
-            description: 'We'll assign a phone number for your AI',
+            description: "We'll assign a phone number for your AI",
           },
           {
             icon: Bot,
