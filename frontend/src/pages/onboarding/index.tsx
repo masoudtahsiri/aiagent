@@ -53,13 +53,14 @@ const industries = [
 ];
 
 // Get server timezone (defaults to UTC if not available)
-const getServerTimezone = () => {
+// Calculate once outside component to avoid calling during render
+const DEFAULT_TIMEZONE = (() => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
     return 'UTC';
   }
-};
+})();
 
 // Comprehensive worldwide timezones
 const timezones = [
@@ -255,7 +256,7 @@ export default function OnboardingPage() {
       industry: '',
       phone_country_code: '+90', // Turkey default
       phone_number: '',
-      timezone: getServerTimezone(),
+      timezone: DEFAULT_TIMEZONE,
       hours: [
         { day_of_week: 1, is_open: true, open_time: '09:00', close_time: '17:00' }, // Monday
         { day_of_week: 2, is_open: true, open_time: '09:00', close_time: '17:00' }, // Tuesday
@@ -456,7 +457,7 @@ export default function OnboardingPage() {
               {currentStep === 1 && <BusinessInfoStep control={control} errors={errors} />}
               {currentStep === 2 && <HoursStep control={control} watch={watch} />}
               {currentStep === 3 && <StaffStep control={control} setValue={setValue} watch={watch} />}
-              {currentStep === 4 && <AISetupStep control={control} watch={watch} businessName={watch('business_name')} />}
+              {currentStep === 4 && <AISetupStep control={control} watch={watch} />}
               {currentStep === 5 && <CompleteStep />}
             </motion.div>
           </AnimatePresence>
@@ -757,8 +758,10 @@ function StaffStep({ control, setValue, watch }: { control: any; setValue: any; 
 }
 
 // Step 4: AI Setup
-function AISetupStep({ control, watch, businessName }: { control: any; watch: any; businessName: string }) {
+function AISetupStep({ control, watch }: { control: any; watch: any }) {
   const selectedVoice = watch('voice_style') || 'professional_female';
+  const businessName = watch('business_name') || '[Business Name]';
+  const aiName = watch('ai_name') || 'Sarah';
 
   return (
     <div className="space-y-6">
@@ -821,7 +824,7 @@ function AISetupStep({ control, watch, businessName }: { control: any; watch: an
             render={({ field }) => (
               <textarea
                 className="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
-                placeholder={`Thank you for calling ${businessName || '[Business Name]'}. This is ${watch('ai_name') || 'Sarah'}, your virtual assistant. How can I help you today?`}
+                placeholder={`Thank you for calling ${businessName}. This is ${aiName}, your virtual assistant. How can I help you today?`}
                 {...field}
               />
             )}
