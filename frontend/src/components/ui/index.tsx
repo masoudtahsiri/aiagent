@@ -67,11 +67,22 @@ interface CardProps {
   padding?: 'none' | 'sm' | 'md' | 'lg';
 }
 
-export const Card: React.FC<CardProps> & {
-  Header: React.FC<{ children: React.ReactNode; className?: string }>;
-  Body: React.FC<{ children: React.ReactNode; className?: string }>;
-  Footer: React.FC<{ children: React.ReactNode; className?: string }>;
-} = ({ children, className, padding = 'md' }) => {
+interface CardSubComponentProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+const CardHeaderComponent: React.FC<CardSubComponentProps> = ({ children, className }) => (
+  <div className={clsx('border-b border-gray-200 pb-4 mb-4', className)}>{children}</div>
+);
+
+const CardBodyComponent: React.FC<CardSubComponentProps> = ({ children, className }) => <div className={className}>{children}</div>;
+
+const CardFooterComponent: React.FC<CardSubComponentProps> = ({ children, className }) => (
+  <div className={clsx('border-t border-gray-200 pt-4 mt-4', className)}>{children}</div>
+);
+
+const CardComponent: React.FC<CardProps> = ({ children, className, padding = 'md' }) => {
   const paddingClasses = {
     none: '',
     sm: 'p-3',
@@ -85,13 +96,18 @@ export const Card: React.FC<CardProps> & {
   );
 };
 
-Card.Header = ({ children, className }) => (
-  <div className={clsx('border-b border-gray-200 pb-4 mb-4', className)}>{children}</div>
-);
-Card.Body = ({ children, className }) => <div className={className}>{children}</div>;
-Card.Footer = ({ children, className }) => (
-  <div className={clsx('border-t border-gray-200 pt-4 mt-4', className)}>{children}</div>
-);
+// Create Card with sub-components using a more explicit pattern
+const CardWithSubComponents = CardComponent as typeof CardComponent & {
+  Header: typeof CardHeaderComponent;
+  Body: typeof CardBodyComponent;
+  Footer: typeof CardFooterComponent;
+};
+
+CardWithSubComponents.Header = CardHeaderComponent;
+CardWithSubComponents.Body = CardBodyComponent;
+CardWithSubComponents.Footer = CardFooterComponent;
+
+export const Card = CardWithSubComponents;
 
 // Aliases for shadcn-like API
 export const CardHeader = Card.Header;
@@ -178,21 +194,25 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', classNam
 // Skeleton Component
 interface SkeletonProps {
   className?: string;
-  variant?: 'text' | 'circular' | 'rectangular';
+  variant?: 'text' | 'circular' | 'rectangular' | string;
   width?: string | number;
   height?: string | number;
 }
 
 export const Skeleton: React.FC<SkeletonProps> = ({ className, variant = 'text', width, height }) => {
-  const variantClasses = {
+  const variantClasses: Record<string, string> = {
     text: 'rounded h-4',
     circular: 'rounded-full',
     rectangular: 'rounded-lg',
   };
 
+  const variantClass = typeof variant === 'string' && variant in variantClasses 
+    ? variantClasses[variant] 
+    : variantClasses.text;
+
   return (
     <div
-      className={clsx('animate-pulse bg-gray-200', variantClasses[variant], className)}
+      className={clsx('animate-pulse bg-gray-200', variantClass, className)}
       style={{ width, height }}
     />
   );
@@ -237,16 +257,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 );
 Input.displayName = 'Input';
 
-// Select Component
-interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+// Native Select Component (for forms with onChange/label)
+interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
   label?: string;
   error?: string;
   options?: { value: string; label: string }[];
   children?: React.ReactNode;
+  onChange?: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 }
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, options, children, className, id, ...props }, ref) => {
+export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
+  ({ label, error, options, children, className, id, onChange, ...props }, ref) => {
     const selectId = id || label?.toLowerCase().replace(/\s+/g, '-');
     return (
       <div className="space-y-1">
@@ -266,6 +287,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200',
             className
           )}
+          onChange={onChange}
           {...props}
         >
           {options ? options.map((opt) => (
@@ -279,7 +301,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     );
   }
 );
-Select.displayName = 'Select';
+NativeSelect.displayName = 'NativeSelect';
+
+// Export as Select for backward compatibility (but this will conflict with Radix Select)
+// Files should import NativeSelect directly or use Radix Select from @/components/ui/select
+export const Select = NativeSelect;
 
 // Textarea Component
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
