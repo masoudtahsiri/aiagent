@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -33,9 +33,13 @@ export default function SignupPage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<SignupForm>({
     resolver: zodResolver(signupSchema),
+    defaultValues: {
+      terms: false,
+    },
   });
 
   const onSubmit = async (data: SignupForm) => {
@@ -142,7 +146,17 @@ export default function SignupPage() {
             </div>
 
             <label className="flex items-start gap-2 cursor-pointer">
-              <Checkbox {...register('terms')} className="mt-0.5" />
+              <Controller
+                control={control}
+                name="terms"
+                render={({ field }) => (
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
+                    className="mt-0.5"
+                  />
+                )}
+              />
               <span className="text-sm text-muted-foreground">
                 I agree to the{' '}
                 <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
