@@ -159,7 +159,7 @@ jobs:
                 listen 80;
                 server_name _;
                 
-                ${NGINX_DIRECTIVE} /opt/aiagent/frontend/dist;
+                ${NGINX_DIRECTIVE} /opt/aiagent/frontend;
                 index index.html;
                 
                 location / {
@@ -188,6 +188,10 @@ jobs:
             
             # Remove default site if exists
             rm -f /etc/nginx/sites-enabled/default
+            
+            # Fix frontend file permissions
+            chown -R www-data:www-data /opt/aiagent/frontend/
+            chmod -R 755 /opt/aiagent/frontend/
             
             # Test and start/reload nginx
             nginx -t
