@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { post } from '@/lib/api/client';
 import { useAuth } from '@/features/auth/auth-provider';
 import { toast } from 'sonner';
+import type { Business } from '@/types';
 
 const steps = [
   { id: 1, title: 'Business Info', icon: Building2 },
@@ -290,7 +291,7 @@ export default function OnboardingPage() {
           fullPhoneNumber = `${formData.phone_country_code}${cleanNumber}`;
         }
         
-        const business = await post('/api/businesses', {
+        const business = await post<Business>('/api/businesses', {
           business_name: formData.business_name,
           industry: formData.industry,
           phone_number: fullPhoneNumber,
