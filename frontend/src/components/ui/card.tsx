@@ -99,4 +99,11 @@ CardWithSubComponents.Header = CardHeaderComponent;
 CardWithSubComponents.Body = CardBodyComponent;
 CardWithSubComponents.Footer = CardFooterComponent;
 
-export { CardWithSubComponents as Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
+export { 
+  CardWithSubComponents as Card, 
+  CardHeaderComponent as CardHeader, 
+  CardFooterComponent as CardFooter, 
+  CardTitle, 
+  CardDescription, 
+  CardContent 
+};

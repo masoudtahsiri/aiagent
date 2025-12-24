@@ -95,9 +95,11 @@ export interface BadgeProps {
   size?: 'sm' | 'md';
 }
 
-export const Badge: React.FC<BadgeProps> = ({ children, variant, size, className }) => (
-  <span className={clsx(badgeVariants({ variant, size }), className)}>{children}</span>
-);
+export function Badge({ children, variant, size, className }: BadgeProps) {
+  return (
+    <span className={clsx(badgeVariants({ variant, size }), className)}>{children}</span>
+  );
+}
 
 // Avatar Component
 interface AvatarProps {
@@ -147,7 +149,7 @@ export interface SkeletonProps {
   height?: string | number;
 }
 
-export const Skeleton: React.FC<SkeletonProps> = ({ className, variant = 'text', width, height }) => {
+export function Skeleton({ className, variant = 'text', width, height }: SkeletonProps) {
   const variantClasses: Record<string, string> = {
     text: 'rounded h-4',
     circular: 'rounded-full',
@@ -164,7 +166,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className, variant = 'text',
       style={{ width, height }}
     />
   );
-};
+}
 
 // Input Component
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -301,7 +303,7 @@ export interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -331,7 +333,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       </div>
     </div>
   );
-};
+}
 
 // Empty State Component
 export interface EmptyStateProps {
@@ -341,14 +343,16 @@ export interface EmptyStateProps {
   action?: React.ReactNode;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description, action }) => (
-  <div className="flex flex-col items-center justify-center py-12 text-center">
-    {icon && <div className="mb-4 text-gray-400">{icon}</div>}
-    <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-    {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
-    {action && <div className="mt-4">{action}</div>}
-  </div>
-);
+export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      {icon && <div className="mb-4 text-gray-400">{icon}</div>}
+      <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+      {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
 
 // Spinner Component
 export const Spinner: React.FC<{ size?: 'sm' | 'md' | 'lg'; className?: string }> = ({ size = 'md', className }) => {
@@ -367,33 +371,46 @@ export interface TableProps {
   className?: string;
 }
 
-export const Table: React.FC<TableProps> & {
-  Head: React.FC<{ children: React.ReactNode }>;
-  Body: React.FC<{ children: React.ReactNode }>;
-  Row: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }>;
-  Header: React.FC<{ children: React.ReactNode; className?: string }>;
-  Cell: React.FC<{ children: React.ReactNode; className?: string }>;
-} = ({ children, className }) => (
-  <div className={clsx('overflow-x-auto', className)}>
-    <table className="min-w-full divide-y divide-gray-200">{children}</table>
-  </div>
-);
+function TableComponent({ children, className }: TableProps) {
+  return (
+    <div className={clsx('overflow-x-auto', className)}>
+      <table className="min-w-full divide-y divide-gray-200">{children}</table>
+    </div>
+  );
+}
 
-Table.Head = ({ children }) => <thead className="bg-gray-50">{children}</thead>;
-Table.Body = ({ children }) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>;
-Table.Row = ({ children, className, onClick }) => (
+const TableHead: React.FC<{ children: React.ReactNode }> = ({ children }) => <thead className="bg-gray-50">{children}</thead>;
+const TableBody: React.FC<{ children: React.ReactNode }> = ({ children }) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>;
+const TableRow: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className, onClick }) => (
   <tr className={clsx(onClick && 'cursor-pointer hover:bg-gray-50', className)} onClick={onClick}>
     {children}
   </tr>
 );
-Table.Header = ({ children, className }) => (
+const TableHeader: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <th className={clsx('px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider', className)}>
     {children}
   </th>
 );
-Table.Cell = ({ children, className }) => (
+const TableCell: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <td className={clsx('px-4 py-4 whitespace-nowrap text-sm', className)}>{children}</td>
 );
+
+type TableType = typeof TableComponent & {
+  Head: typeof TableHead;
+  Body: typeof TableBody;
+  Row: typeof TableRow;
+  Header: typeof TableHeader;
+  Cell: typeof TableCell;
+};
+
+const TableWithSubComponents = TableComponent as TableType;
+TableWithSubComponents.Head = TableHead;
+TableWithSubComponents.Body = TableBody;
+TableWithSubComponents.Row = TableRow;
+TableWithSubComponents.Header = TableHeader;
+TableWithSubComponents.Cell = TableCell;
+
+export const Table: TableType = TableWithSubComponents;
 
 // Tabs Component
 export interface TabsProps {
