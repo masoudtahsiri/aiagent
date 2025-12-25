@@ -1,290 +1,373 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Mail, Phone, Send, Search, Plus } from 'lucide-react';
+import { 
+  MessageSquare, Mail, Phone, Search, Send, User, Plus,
+  Clock, CheckCircle, AlertCircle, Filter
+} from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/form-elements';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { useDebounce } from '@/lib/utils/hooks';
 import { formatDate, formatPhone } from '@/lib/utils/format';
-
-// Mock messages
-const mockMessages = [
-  {
-    id: '1',
-    customer_name: 'John Smith',
-    customer_phone: '+15550123',
-    type: 'sms',
-    direction: 'outbound',
-    content: 'Reminder: Your appointment is tomorrow at 2 PM with Dr. Wilson.',
-    sent_at: '2024-12-23T09:00:00',
-    status: 'delivered',
-  },
-  {
-    id: '2',
-    customer_name: 'Emily Johnson',
-    customer_phone: '+15550124',
-    type: 'sms',
-    direction: 'inbound',
-    content: 'Yes, I confirm my appointment for Friday.',
-    sent_at: '2024-12-22T14:30:00',
-    status: 'received',
-  },
-  {
-    id: '3',
-    customer_name: 'Robert Davis',
-    customer_phone: '+15550125',
-    type: 'email',
-    direction: 'outbound',
-    content: 'Thank you for visiting Smile Dental Clinic...',
-    sent_at: '2024-12-22T11:00:00',
-    status: 'delivered',
-  },
-];
-
-const templates = [
-  { id: '1', name: 'Appointment Confirmation', type: 'sms' },
-  { id: '2', name: 'Appointment Reminder', type: 'sms' },
-  { id: '3', name: 'Follow-up Email', type: 'email' },
-  { id: '4', name: 'Cancellation Notice', type: 'sms' },
-];
+import { 
+  useCustomers, 
+  useMessageTemplates, 
+  useMessageHistory,
+  useSendSMS, 
+  useSendEmail,
+  useSendWhatsApp 
+} from '@/lib/api/hooks';
 
 export default function MessagingPage() {
-  const [activeTab, setActiveTab] = useState('inbox');
-  const [showComposeModal, setShowComposeModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'compose' | 'history'>('compose');
+  const [selectedChannel, setSelectedChannel] = useState<'sms' | 'email' | 'whatsapp'>('sms');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [messageContent, setMessageContent] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Fetch customers
+  const { data: customersData, isLoading: customersLoading } = useCustomers({
+    search: debouncedSearch,
+    limit: 50,
+  });
+  const customers = customersData?.data || [];
+
+  // Fetch templates
+  const { data: templates, isLoading: templatesLoading } = useMessageTemplates(undefined, selectedChannel);
+
+  // Fetch message history for selected customer
+  const { data: messageHistory, isLoading: historyLoading } = useMessageHistory(selectedCustomerId);
+
+  // Send mutations
+  const sendSMS = useSendSMS();
+  const sendEmail = useSendEmail();
+  const sendWhatsApp = useSendWhatsApp();
+
+  const selectedCustomer = useMemo(() => {
+    return customers.find(c => c.id === selectedCustomerId);
+  }, [customers, selectedCustomerId]);
+
+  const handleSendMessage = async () => {
+    if (!selectedCustomerId || !messageContent.trim()) return;
+
+    try {
+      if (selectedChannel === 'sms') {
+        await sendSMS.mutateAsync({
+          customer_id: selectedCustomerId,
+          message: messageContent,
+        });
+      } else if (selectedChannel === 'email') {
+        await sendEmail.mutateAsync({
+          customer_id: selectedCustomerId,
+          subject: emailSubject || 'Message from your business',
+          message: messageContent,
+        });
+      } else if (selectedChannel === 'whatsapp') {
+        await sendWhatsApp.mutateAsync({
+          customer_id: selectedCustomerId,
+          message: messageContent,
+        });
+      }
+      
+      // Clear form on success
+      setMessageContent('');
+      setEmailSubject('');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
+  };
+
+  const handleTemplateSelect = (templateId: string) => {
+    const template = templates?.find(t => t.id === templateId);
+    if (template) {
+      setMessageContent(template.body);
+      if (template.subject) {
+        setEmailSubject(template.subject);
+      }
+    }
+  };
+
+  const isSending = sendSMS.isPending || sendEmail.isPending || sendWhatsApp.isPending;
 
   return (
     <PageContainer
       title="Messaging"
-      description="Send SMS, emails, and manage customer communications"
-      actions={
-        <Button onClick={() => setShowComposeModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          New Message
-        </Button>
-      }
+      description="Send SMS, WhatsApp, and email messages to your customers"
     >
-      {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary-100 flex items-center justify-center">
-              <MessageSquare className="h-5 w-5 text-primary-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">142</p>
-              <p className="text-sm text-muted-foreground">SMS Sent Today</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-secondary-100 flex items-center justify-center">
-              <Mail className="h-5 w-5 text-secondary-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">38</p>
-              <p className="text-sm text-muted-foreground">Emails Sent Today</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-success-100 flex items-center justify-center">
-              <Phone className="h-5 w-5 text-success-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">98%</p>
-              <p className="text-sm text-muted-foreground">Delivery Rate</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'compose' | 'history')}>
+        <TabsList className="mb-6">
+          <TabsTrigger value="compose" className="flex items-center gap-2">
+            <Send className="h-4 w-4" />
+            Compose
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            History
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Message List */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle>Messages</CardTitle>
-                <div className="relative">
+        <TabsContent value="compose">
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Customer Selection */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Select Customer
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative mb-4">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search..." className="pl-9 w-48" inputSize="sm" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <div className="px-4 border-b border-border">
-                  <TabsList className="h-auto p-0 bg-transparent">
-                    <TabsTrigger value="inbox" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-                      All Messages
-                    </TabsTrigger>
-                    <TabsTrigger value="sms" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-                      SMS
-                    </TabsTrigger>
-                    <TabsTrigger value="email" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-                      Email
-                    </TabsTrigger>
-                  </TabsList>
+                  <Input
+                    placeholder="Search customers..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
 
-                <TabsContent value="inbox" className="m-0">
-                  <MessageList messages={mockMessages} />
-                </TabsContent>
-                <TabsContent value="sms" className="m-0">
-                  <MessageList messages={mockMessages.filter(m => m.type === 'sms')} />
-                </TabsContent>
-                <TabsContent value="email" className="m-0">
-                  <MessageList messages={mockMessages.filter(m => m.type === 'email')} />
-                </TabsContent>
-              </Tabs>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {customersLoading ? (
+                    [1, 2, 3, 4, 5].map((i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))
+                  ) : customers.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">
+                      No customers found
+                    </p>
+                  ) : (
+                    customers.map((customer) => {
+                      const name = `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown';
+                      const isSelected = selectedCustomerId === customer.id;
+                      
+                      return (
+                        <motion.div
+                          key={customer.id}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <button
+                            onClick={() => setSelectedCustomerId(customer.id)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                              isSelected 
+                                ? 'border-primary bg-primary/10' 
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <Avatar name={name} size="sm" />
+                            <div className="text-left">
+                              <p className="font-medium">{name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatPhone(customer.phone)}
+                              </p>
+                            </div>
+                          </button>
+                        </motion.div>
+                      );
+                    })
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Message Composer */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Compose Message
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Channel Selection */}
+                <div className="flex gap-2 mb-6">
+                  {[
+                    { id: 'sms', label: 'SMS', icon: Phone },
+                    { id: 'email', label: 'Email', icon: Mail },
+                    { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
+                  ].map(({ id, label, icon: Icon }) => (
+                    <Button
+                      key={id}
+                      variant={selectedChannel === id ? 'default' : 'outline'}
+                      onClick={() => setSelectedChannel(id as 'sms' | 'email' | 'whatsapp')}
+                      leftIcon={<Icon className="h-4 w-4" />}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Selected Customer Display */}
+                {selectedCustomer && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 mb-4">
+                    <Avatar name={`${selectedCustomer.first_name} ${selectedCustomer.last_name}`} size="sm" />
+                    <div>
+                      <p className="font-medium">
+                        {selectedCustomer.first_name} {selectedCustomer.last_name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedChannel === 'email' 
+                          ? (selectedCustomer.email || 'No email') 
+                          : formatPhone(selectedCustomer.phone)
+                        }
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Template Selection */}
+                {templates && templates.length > 0 && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Use Template</label>
+                    <Select onValueChange={handleTemplateSelect}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a template..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates.map((template) => (
+                          <SelectItem key={template.id} value={template.id}>
+                            {template.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Email Subject (for email only) */}
+                {selectedChannel === 'email' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Subject</label>
+                    <Input
+                      placeholder="Email subject..."
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {/* Message Content */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">Message</label>
+                  <textarea
+                    className="w-full h-40 px-3 py-2 rounded-lg border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Type your message..."
+                    value={messageContent}
+                    onChange={(e) => setMessageContent(e.target.value)}
+                  />
+                  {selectedChannel === 'sms' && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {messageContent.length} characters
+                    </p>
+                  )}
+                </div>
+
+                {/* Send Button */}
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!selectedCustomerId || !messageContent.trim() || isSending}
+                  loading={isSending}
+                  leftIcon={<Send className="h-4 w-4" />}
+                  className="w-full"
+                >
+                  Send {selectedChannel.toUpperCase()}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>Message History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!selectedCustomerId ? (
+                <EmptyState
+                  icon={<MessageSquare className="h-12 w-12" />}
+                  title="Select a customer"
+                  description="Choose a customer from the compose tab to view their message history"
+                />
+              ) : historyLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : !messageHistory?.length ? (
+                <EmptyState
+                  icon={<MessageSquare className="h-12 w-12" />}
+                  title="No messages yet"
+                  description="No messages have been sent to this customer"
+                />
+              ) : (
+                <div className="space-y-4">
+                  {messageHistory.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-start gap-4 p-4 rounded-lg border border-border"
+                    >
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                        message.channel === 'sms' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                        message.channel === 'email' ? 'bg-green-100 dark:bg-green-900/30' :
+                        'bg-purple-100 dark:bg-purple-900/30'
+                      }`}>
+                        {message.channel === 'sms' ? (
+                          <Phone className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        ) : message.channel === 'email' ? (
+                          <Mail className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        ) : (
+                          <MessageSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Badge>{message.channel.toUpperCase()}</Badge>
+                            <Badge variant={message.status === 'sent' ? 'success' : 'destructive'}>
+                              {message.status === 'sent' ? (
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                              ) : (
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                              )}
+                              {message.status}
+                            </Badge>
+                          </div>
+                          <span className="text-sm text-muted-foreground">
+                            {formatDate(message.sent_at || message.created_at, 'MMM d, h:mm a')}
+                          </span>
+                        </div>
+                        {message.subject && (
+                          <p className="font-medium mb-1">{message.subject}</p>
+                        )}
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {message.body}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          To: {message.to_address}
+                        </p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-        </div>
-
-        {/* Templates Sidebar */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Templates</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {templates.map((template) => (
-              <motion.button
-                key={template.id}
-                className="w-full p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/50 transition-all text-left"
-                whileHover={{ scale: 1.01 }}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{template.name}</span>
-                  <Badge variant="default" size="sm">{template.type.toUpperCase()}</Badge>
-                </div>
-              </motion.button>
-            ))}
-            <Button variant="outline" className="w-full" leftIcon={<Plus className="h-4 w-4" />}>
-              Create Template
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Compose Modal */}
-      <Dialog open={showComposeModal} onOpenChange={setShowComposeModal}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Message</DialogTitle>
-          </DialogHeader>
-          <ComposeForm onSuccess={() => setShowComposeModal(false)} />
-        </DialogContent>
-      </Dialog>
+        </TabsContent>
+      </Tabs>
     </PageContainer>
-  );
-}
-
-// Message List
-function MessageList({ messages }: { messages: typeof mockMessages }) {
-  return (
-    <div className="divide-y divide-border">
-      {messages.map((message) => (
-        <div key={message.id} className="p-4 hover:bg-muted/50 transition-colors cursor-pointer">
-          <div className="flex items-start gap-3">
-            <Avatar name={message.customer_name} size="sm" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-medium truncate">{message.customer_name}</p>
-                <span className="text-xs text-muted-foreground">
-                  {formatDate(message.sent_at, 'MMM d, h:mm a')}
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground truncate">{message.content}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant={message.type === 'sms' ? 'primary' : 'secondary'} size="sm">
-                  {message.type.toUpperCase()}
-                </Badge>
-                <Badge 
-                  variant={message.status === 'delivered' ? 'success' : 'default'} 
-                  size="sm"
-                >
-                  {message.status}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Compose Form
-function ComposeForm({ onSuccess }: { onSuccess: () => void }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [messageType, setMessageType] = useState('sms');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    onSuccess();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Message Type</label>
-        <Select value={messageType} onValueChange={setMessageType}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sms">SMS</SelectItem>
-            <SelectItem value="email">Email</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">
-          {messageType === 'sms' ? 'Phone Number' : 'Email Address'} *
-        </label>
-        <Input 
-          placeholder={messageType === 'sms' ? '+1 (555) 000-0000' : 'customer@example.com'}
-          required 
-        />
-      </div>
-
-      {messageType === 'email' && (
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Subject *</label>
-          <Input placeholder="Enter email subject..." required />
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Message *</label>
-        <Textarea 
-          placeholder="Type your message..."
-          required
-        />
-        {messageType === 'sms' && (
-          <p className="text-xs text-muted-foreground">160 characters remaining</p>
-        )}
-      </div>
-
-      <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onSuccess}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={isLoading} leftIcon={<Send className="h-4 w-4" />}>
-          Send Message
-        </Button>
-      </div>
-    </form>
   );
 }

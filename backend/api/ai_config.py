@@ -497,3 +497,38 @@ async def update_ai_role(
         "is_enabled": updated_role["is_enabled"],
         "priority": updated_role.get("priority", 0)
     }
+
+
+@router.delete("/roles/{role_id}")
+async def delete_ai_role(
+    role_id: str,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Delete an AI role"""
+    db = get_db()
+    
+    # Get the role first to verify ownership and get business_id for cache invalidation
+    role_result = db.table("ai_roles").select("*").eq("id", role_id).execute()
+    
+    if not role_result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI role not found")
+    
+    role = role_result.data[0]
+    
+    # Verify user has access to this business
+    user_result = db.table("users").select("business_id").eq("id", current_user["id"]).execute()
+    
+    if not user_result.data or user_result.data[0].get("business_id") != role["business_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    
+    # Delete the role
+    db.table("ai_roles").delete().eq("id", role_id).execute()
+    
+    # Invalidate cache (both Redis and in-memory)
+    biz_result = db.table("businesses").select("ai_phone_number").eq("id", role["business_id"]).execute()
+    if biz_result.data and biz_result.data[0].get("ai_phone_number"):
+        phone = biz_result.data[0]['ai_phone_number']
+        RedisCache.invalidate_business(phone)
+        _config_cache.invalidate(f"biz_phone:{phone}")
+    
+    return {"message": "AI role deleted successfully"}

@@ -13,90 +13,22 @@ import { Badge, AppointmentStatusBadge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, formatPhone, formatTime } from '@/lib/utils/format';
-
-// Mock customer data
-const mockCustomer = {
-  id: '1',
-  first_name: 'John',
-  last_name: 'Smith',
-  phone: '+15550123',
-  email: 'john.smith@email.com',
-  date_of_birth: '1985-06-15',
-  preferred_contact_method: 'phone',
-  language: 'en',
-  accommodations: 'Prefers afternoon appointments',
-  notes: 'VIP customer, always punctual',
-  total_appointments: 12,
-  total_spent: 2450,
-  last_visit_date: '2024-12-20',
-  customer_since: '2024-01-15',
-};
-
-const mockAppointments = [
-  {
-    id: '1',
-    appointment_date: '2024-12-20',
-    appointment_time: '14:00',
-    service_name: 'General Consultation',
-    staff_name: 'Dr. Sarah Wilson',
-    status: 'completed',
-    duration_minutes: 30,
-  },
-  {
-    id: '2',
-    appointment_date: '2024-12-28',
-    appointment_time: '10:00',
-    service_name: 'Follow-up',
-    staff_name: 'Dr. Sarah Wilson',
-    status: 'scheduled',
-    duration_minutes: 30,
-  },
-];
-
-const mockCallHistory = [
-  {
-    id: '1',
-    started_at: '2024-12-19T10:30:00',
-    call_duration: 245,
-    outcome: 'appointment_booked',
-  },
-  {
-    id: '2',
-    started_at: '2024-12-15T14:15:00',
-    call_duration: 180,
-    outcome: 'question_answered',
-  },
-];
-
-const mockMemories = [
-  {
-    id: '1',
-    memory_type: 'preference',
-    content: 'Prefers afternoon appointments after 2 PM',
-    created_at: '2024-12-19',
-  },
-  {
-    id: '2',
-    memory_type: 'fact',
-    content: 'Has a dog named Max',
-    created_at: '2024-12-15',
-  },
-  {
-    id: '3',
-    memory_type: 'preference',
-    content: 'Likes to receive appointment reminders via SMS',
-    created_at: '2024-12-10',
-  },
-];
+import { useCustomer, useCustomerAppointments, useCustomerCalls } from '@/lib/api/hooks';
 
 export default function CustomerDetailPage() {
   const { id } = useParams();
   const [activeTab, setActiveTab] = useState('overview');
-  const [isLoading] = useState(false);
 
-  const customer = mockCustomer;
+  // Fetch customer data
+  const { data: customer, isLoading: customerLoading } = useCustomer(id || '');
+  
+  // Fetch customer appointments
+  const { data: appointments, isLoading: appointmentsLoading } = useCustomerAppointments(id || '');
+  
+  // Fetch customer call history
+  const { data: calls, isLoading: callsLoading } = useCustomerCalls(id || '');
 
-  if (isLoading) {
+  if (customerLoading) {
     return (
       <PageContainer title="Loading...">
         <div className="space-y-6">
@@ -107,12 +39,29 @@ export default function CustomerDetailPage() {
     );
   }
 
+  if (!customer) {
+    return (
+      <PageContainer title="Customer Not Found">
+        <Card className="p-8 text-center">
+          <p className="text-muted-foreground">Customer not found or you don't have access.</p>
+          <Link to="/customers">
+            <Button variant="outline" className="mt-4">
+              Back to Customers
+            </Button>
+          </Link>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  const customerName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown';
+
   return (
     <PageContainer
-      title={`${customer.first_name} ${customer.last_name}`}
+      title={customerName}
       breadcrumbs={[
         { label: 'Customers', href: '/customers' },
-        { label: `${customer.first_name} ${customer.last_name}` },
+        { label: customerName },
       ]}
     >
       {/* Header Card */}
@@ -120,7 +69,7 @@ export default function CustomerDetailPage() {
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row gap-6">
             <Avatar 
-              name={`${customer.first_name} ${customer.last_name}`} 
+              name={customerName} 
               size="2xl" 
             />
             
@@ -128,7 +77,7 @@ export default function CustomerDetailPage() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h1 className="text-2xl font-bold font-display">
-                    {customer.first_name} {customer.last_name}
+                    {customerName}
                   </h1>
                   <p className="text-muted-foreground">
                     Customer since {formatDate(customer.customer_since)}
@@ -161,11 +110,11 @@ export default function CustomerDetailPage() {
               {/* Stats */}
               <div className="flex gap-6">
                 <div>
-                  <p className="text-2xl font-bold">{customer.total_appointments}</p>
+                  <p className="text-2xl font-bold">{customer.total_appointments || 0}</p>
                   <p className="text-sm text-muted-foreground">Total Visits</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">${customer.total_spent}</p>
+                  <p className="text-2xl font-bold">${customer.total_spent || 0}</p>
                   <p className="text-sm text-muted-foreground">Total Spent</p>
                 </div>
                 <div>
@@ -186,7 +135,6 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
           <TabsTrigger value="calls">Call History</TabsTrigger>
-          <TabsTrigger value="memory">AI Memory</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -203,7 +151,7 @@ export default function CustomerDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Preferred Contact</span>
-                  <Badge>{customer.preferred_contact_method}</Badge>
+                  <Badge>{customer.preferred_contact_method || 'phone'}</Badge>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Language</span>
@@ -245,28 +193,47 @@ export default function CustomerDetailPage() {
               </CardContent>
             </Card>
 
-            {/* AI Memory Preview */}
+            {/* Recent Appointments Preview */}
             <Card className="md:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5 text-secondary" />
-                  AI Memory
+                  <Calendar className="h-5 w-5 text-primary" />
+                  Recent Appointments
                 </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setActiveTab('memory')}>
+                <Button variant="ghost" size="sm" onClick={() => setActiveTab('appointments')}>
                   View All
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {mockMemories.slice(0, 3).map((memory) => (
-                    <div key={memory.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                      <Badge variant={memory.memory_type === 'preference' ? 'primary' : 'default'} size="sm">
-                        {memory.memory_type}
-                      </Badge>
-                      <p className="text-sm flex-1">{memory.content}</p>
-                    </div>
-                  ))}
-                </div>
+                {appointmentsLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : !appointments?.length ? (
+                  <p className="text-muted-foreground text-center py-4">No appointments found</p>
+                ) : (
+                  <div className="space-y-3">
+                    {appointments.slice(0, 3).map((apt) => (
+                      <div key={apt.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <div className="text-center min-w-[50px]">
+                            <p className="text-lg font-bold">{formatDate(apt.appointment_date, 'd')}</p>
+                            <p className="text-xs text-muted-foreground">{formatDate(apt.appointment_date, 'MMM')}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium">{apt.service_name || 'Appointment'}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {formatTime(apt.appointment_time)} • {apt.staff_name}
+                            </p>
+                          </div>
+                        </div>
+                        <AppointmentStatusBadge status={apt.status} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -281,25 +248,38 @@ export default function CustomerDetailPage() {
               </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {mockAppointments.map((apt) => (
-                  <div key={apt.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
-                    <div className="flex items-center gap-4">
-                      <div className="text-center">
-                        <p className="text-2xl font-bold">{formatDate(apt.appointment_date, 'd')}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(apt.appointment_date, 'MMM')}</p>
+              {appointmentsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : !appointments?.length ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p>No appointments found for this customer</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {appointments.map((apt) => (
+                    <div key={apt.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <p className="text-2xl font-bold">{formatDate(apt.appointment_date, 'd')}</p>
+                          <p className="text-sm text-muted-foreground">{formatDate(apt.appointment_date, 'MMM')}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium">{apt.service_name || 'Appointment'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatTime(apt.appointment_time)} • {apt.duration_minutes} min • {apt.staff_name}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">{apt.service_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatTime(apt.appointment_time)} • {apt.duration_minutes} min • {apt.staff_name}
-                        </p>
-                      </div>
+                      <AppointmentStatusBadge status={apt.status} />
                     </div>
-                    <AppointmentStatusBadge status={apt.status} />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -310,63 +290,39 @@ export default function CustomerDetailPage() {
               <CardTitle>Call History</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {mockCallHistory.map((call) => (
-                  <div key={call.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Phone className="h-5 w-5 text-primary" />
+              {callsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : !calls?.length ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Phone className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p>No call history found for this customer</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {calls.map((call) => (
+                    <div key={call.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Phone className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{formatDate(call.started_at, 'MMM d, yyyy h:mm a')}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Duration: {call.call_duration ? `${Math.floor(call.call_duration / 60)}:${(call.call_duration % 60).toString().padStart(2, '0')}` : '0:00'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">{formatDate(call.started_at, 'MMM d, yyyy h:mm a')}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Duration: {Math.floor(call.call_duration / 60)}:{(call.call_duration % 60).toString().padStart(2, '0')}
-                        </p>
-                      </div>
+                      <Badge variant={call.outcome === 'appointment_booked' ? 'success' : 'default'}>
+                        {call.outcome?.replace(/_/g, ' ') || 'Call'}
+                      </Badge>
                     </div>
-                    <Badge variant="success">{call.outcome.replace('_', ' ')}</Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="memory">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-secondary" />
-                AI Memory
-              </CardTitle>
-              <Button size="sm" leftIcon={<Plus className="h-4 w-4" />}>
-                Add Memory
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                These are facts and preferences the AI has learned about this customer from conversations.
-              </p>
-              <div className="space-y-3">
-                {mockMemories.map((memory) => (
-                  <motion.div
-                    key={memory.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-start gap-3 p-4 rounded-lg border border-border"
-                  >
-                    <Badge variant={memory.memory_type === 'preference' ? 'primary' : 'default'}>
-                      {memory.memory_type}
-                    </Badge>
-                    <div className="flex-1">
-                      <p className="text-sm">{memory.content}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Added {formatDate(memory.created_at)}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

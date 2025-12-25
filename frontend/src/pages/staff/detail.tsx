@@ -1,82 +1,105 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
-  Edit, Calendar, Mail, Phone, Clock, Plus, 
-  Trash2, Link2, Check
+  ArrowLeft, Mail, Phone, Calendar, Clock, Edit,
+  Check, X, Briefcase, User, Plus
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { Badge, AppointmentStatusBadge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Switch } from '@/components/ui/form-elements';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-// Mock staff member data
-const mockStaffMember = {
-  id: '1',
-  name: 'Dr. Sarah Wilson',
-  title: 'Senior Dentist',
-  email: 'sarah@clinic.com',
-  phone: '+15550201',
-  specialty: 'General Dentistry',
-  bio: 'Dr. Sarah Wilson has over 15 years of experience in general dentistry. She specializes in preventive care and cosmetic procedures.',
-  color_code: '#3B82F6',
-  is_active: true,
-  google_calendar_connected: true,
-};
-
-const mockAvailability = [
-  { day: 'Monday', enabled: true, start: '09:00', end: '17:00', break_start: '12:00', break_end: '13:00' },
-  { day: 'Tuesday', enabled: true, start: '09:00', end: '17:00', break_start: '12:00', break_end: '13:00' },
-  { day: 'Wednesday', enabled: true, start: '09:00', end: '17:00', break_start: '12:00', break_end: '13:00' },
-  { day: 'Thursday', enabled: true, start: '09:00', end: '17:00', break_start: '12:00', break_end: '13:00' },
-  { day: 'Friday', enabled: true, start: '09:00', end: '15:00', break_start: '12:00', break_end: '13:00' },
-  { day: 'Saturday', enabled: false, start: '09:00', end: '13:00', break_start: null, break_end: null },
-  { day: 'Sunday', enabled: false, start: '09:00', end: '13:00', break_start: null, break_end: null },
-];
-
-const mockServices = [
-  { id: '1', name: 'General Consultation', duration: 30, assigned: true },
-  { id: '2', name: 'Teeth Cleaning', duration: 45, assigned: true },
-  { id: '3', name: 'Filling', duration: 60, assigned: true },
-  { id: '4', name: 'Root Canal', duration: 90, assigned: false },
-  { id: '5', name: 'Teeth Whitening', duration: 60, assigned: true },
-];
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatDate, formatTime } from '@/lib/utils/format';
+import { useStaffMember, useStaffAppointments, useServices } from '@/lib/api/hooks';
 
 export default function StaffDetailPage() {
   const { id } = useParams();
-  const [activeTab, setActiveTab] = useState('schedule');
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Fetch staff data
+  const { data: staffMember, isLoading: staffLoading } = useStaffMember(id || '');
   
-  const staff = mockStaffMember;
+  // Fetch staff appointments
+  const { data: appointments, isLoading: appointmentsLoading } = useStaffAppointments(id || '');
+  
+  // Fetch services to show which ones are assigned
+  const { data: servicesData, isLoading: servicesLoading } = useServices();
+  const services = servicesData?.data || [];
+
+  if (staffLoading) {
+    return (
+      <PageContainer title="Loading...">
+        <div className="space-y-6">
+          <Skeleton className="h-40 rounded-xl" />
+          <Skeleton className="h-96 rounded-xl" />
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (!staffMember) {
+    return (
+      <PageContainer title="Staff Not Found">
+        <Card className="p-8 text-center">
+          <p className="text-muted-foreground">Staff member not found or you don't have access.</p>
+          <Link to="/staff">
+            <Button variant="outline" className="mt-4">
+              Back to Staff
+            </Button>
+          </Link>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  const staffName = staffMember.name || 'Unknown';
+  const assignedServices = services.filter(s => 
+    staffMember.service_ids?.includes(s.id)
+  );
+
+  // Parse availability from JSON if available
+  const availability = staffMember.availability 
+    ? (typeof staffMember.availability === 'string' 
+        ? JSON.parse(staffMember.availability) 
+        : staffMember.availability)
+    : null;
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   return (
     <PageContainer
-      title={staff.name}
+      title={staffName}
       breadcrumbs={[
         { label: 'Staff', href: '/staff' },
-        { label: staff.name },
+        { label: staffName },
       ]}
     >
       {/* Header Card */}
-      <Card className="mb-6 overflow-hidden">
-        <div className="h-2" style={{ backgroundColor: staff.color_code }} />
+      <Card className="mb-6">
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row gap-6">
             <Avatar 
-              name={staff.name}
-              color={staff.color_code}
-              size="2xl"
-              status={staff.is_active ? 'online' : 'offline'}
+              name={staffName}
+              src={staffMember.avatar_url}
+              size="2xl" 
             />
             
             <div className="flex-1">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h1 className="text-2xl font-bold font-display">{staff.name}</h1>
-                  <p className="text-muted-foreground">{staff.title}</p>
+                  <h1 className="text-2xl font-bold font-display flex items-center gap-2">
+                    {staffName}
+                    {staffMember.is_active && (
+                      <Badge variant="success">Active</Badge>
+                    )}
+                  </h1>
+                  <p className="text-muted-foreground flex items-center gap-2">
+                    <Briefcase className="h-4 w-4" />
+                    {staffMember.role}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" leftIcon={<Edit className="h-4 w-4" />}>
@@ -87,23 +110,31 @@ export default function StaffDetailPage() {
 
               {/* Contact Info */}
               <div className="flex flex-wrap gap-4 mb-4">
-                <div className="flex items-center gap-2 text-sm">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{staff.email}</span>
-                </div>
-                {staff.phone && (
+                {staffMember.phone && (
                   <div className="flex items-center gap-2 text-sm">
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{staff.phone}</span>
+                    <span>{staffMember.phone}</span>
+                  </div>
+                )}
+                {staffMember.email && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span>{staffMember.email}</span>
                   </div>
                 )}
               </div>
 
-              <Badge variant="primary">{staff.specialty}</Badge>
-
-              {staff.bio && (
-                <p className="mt-4 text-sm text-muted-foreground">{staff.bio}</p>
-              )}
+              {/* Stats */}
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-2xl font-bold">{appointments?.length || 0}</p>
+                  <p className="text-sm text-muted-foreground">Appointments</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{assignedServices.length}</p>
+                  <p className="text-sm text-muted-foreground">Services</p>
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -112,173 +143,201 @@ export default function StaffDetailPage() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="services">Services</TabsTrigger>
-          <TabsTrigger value="calendar">Calendar Sync</TabsTrigger>
+          <TabsTrigger value="appointments">Appointments</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Services Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="h-5 w-5" />
+                  Assigned Services
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {servicesLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : assignedServices.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-4">
+                    No services assigned
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {assignedServices.map((service) => (
+                      <div 
+                        key={service.id} 
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      >
+                        <div>
+                          <p className="font-medium">{service.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {service.duration_minutes} min • ${service.price}
+                          </p>
+                        </div>
+                        <Badge>{service.category}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Today's Schedule Preview */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  Today's Appointments
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setActiveTab('appointments')}>
+                  View All
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {appointmentsLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-14 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  (() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const todayAppointments = (appointments || []).filter(
+                      apt => apt.appointment_date === today
+                    );
+                    
+                    if (todayAppointments.length === 0) {
+                      return (
+                        <p className="text-muted-foreground text-center py-4">
+                          No appointments today
+                        </p>
+                      );
+                    }
+                    
+                    return (
+                      <div className="space-y-2">
+                        {todayAppointments.slice(0, 5).map((apt) => (
+                          <div 
+                            key={apt.id} 
+                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                          >
+                            <div>
+                              <p className="font-medium">{apt.customer_name || 'Customer'}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatTime(apt.appointment_time)} • {apt.service_name}
+                              </p>
+                            </div>
+                            <AppointmentStatusBadge status={apt.status} />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
         <TabsContent value="schedule">
           <Card>
             <CardHeader>
-              <CardTitle>Weekly Schedule</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Weekly Availability
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {mockAvailability.map((day) => (
-                  <div 
-                    key={day.day}
-                    className="flex items-center gap-4 p-4 rounded-lg border border-border"
-                  >
-                    <Switch checked={day.enabled} />
-                    <span className="w-24 font-medium">{day.day}</span>
+              {availability ? (
+                <div className="space-y-3">
+                  {dayNames.map((day, idx) => {
+                    const dayKey = day.toLowerCase();
+                    const daySchedule = availability[dayKey];
+                    const isWorking = daySchedule && !daySchedule.closed;
                     
-                    {day.enabled ? (
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Select defaultValue={day.start}>
-                            <SelectTrigger className="w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {['08:00', '09:00', '10:00', '11:00'].map((time) => (
-                                <SelectItem key={time} value={time}>{time}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <span className="text-muted-foreground">to</span>
-                          <Select defaultValue={day.end}>
-                            <SelectTrigger className="w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {['15:00', '16:00', '17:00', '18:00', '19:00'].map((time) => (
-                                <SelectItem key={time} value={time}>{time}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        {day.break_start && (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            Break: {day.break_start} - {day.break_end}
+                    return (
+                      <div 
+                        key={day}
+                        className="flex items-center justify-between p-3 rounded-lg border border-border"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                            isWorking ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
+                          }`}>
+                            {isWorking ? (
+                              <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            ) : (
+                              <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+                            )}
                           </div>
-                        )}
+                          <span className="font-medium">{day}</span>
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          {isWorking 
+                            ? `${daySchedule.start} - ${daySchedule.end}`
+                            : 'Off'
+                          }
+                        </span>
                       </div>
-                    ) : (
-                      <span className="text-muted-foreground">Not working</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 flex justify-end">
-                <Button>Save Schedule</Button>
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">
+                  No availability schedule set
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="services">
+        <TabsContent value="appointments">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Assigned Services</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {mockServices.filter(s => s.assigned).length} of {mockServices.length} services
-              </p>
+              <CardTitle>All Appointments</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {mockServices.map((service) => (
-                  <div 
-                    key={service.id}
-                    className="flex items-center justify-between p-4 rounded-lg border border-border"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Switch checked={service.assigned} />
-                      <div>
-                        <p className="font-medium">{service.name}</p>
-                        <p className="text-sm text-muted-foreground">{service.duration} minutes</p>
-                      </div>
-                    </div>
-                    {service.assigned && (
-                      <Badge variant="success">
-                        <Check className="h-3 w-3 mr-1" />
-                        Assigned
-                      </Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="calendar">
-          <Card>
-            <CardHeader>
-              <CardTitle>Calendar Integration</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Google Calendar */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border">
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-lg bg-white border border-border flex items-center justify-center">
-                      <svg viewBox="0 0 24 24" className="h-8 w-8">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-medium">Google Calendar</p>
-                      <p className="text-sm text-muted-foreground">
-                        {staff.google_calendar_connected 
-                          ? 'Connected • Syncing appointments' 
-                          : 'Not connected'}
-                      </p>
-                    </div>
-                  </div>
-                  {staff.google_calendar_connected ? (
-                    <Button variant="outline" size="sm">
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button size="sm" leftIcon={<Link2 className="h-4 w-4" />}>
-                      Connect
-                    </Button>
-                  )}
+              {appointmentsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
                 </div>
-
-                {/* Sync Settings */}
-                {staff.google_calendar_connected && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Sync Settings</h4>
-                    
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Two-way sync</p>
-                        <p className="text-sm text-muted-foreground">
-                          Changes in Google Calendar will update here
-                        </p>
+              ) : !appointments?.length ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p>No appointments found for this staff member</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {appointments.map((apt) => (
+                    <div key={apt.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <p className="text-2xl font-bold">{formatDate(apt.appointment_date, 'd')}</p>
+                          <p className="text-sm text-muted-foreground">{formatDate(apt.appointment_date, 'MMM')}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium">{apt.customer_name || 'Customer'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatTime(apt.appointment_time)} • {apt.duration_minutes} min • {apt.service_name}
+                          </p>
+                        </div>
                       </div>
-                      <Switch defaultChecked />
+                      <AppointmentStatusBadge status={apt.status} />
                     </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Block busy times</p>
-                        <p className="text-sm text-muted-foreground">
-                          Prevent bookings during Google Calendar events
-                        </p>
-                      </div>
-                      <Switch defaultChecked />
-                    </div>
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

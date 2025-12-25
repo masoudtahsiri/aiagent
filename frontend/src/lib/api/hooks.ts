@@ -243,6 +243,44 @@ export function useDeleteCustomer() {
   });
 }
 
+export function useCustomerAppointments(customerId: string) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: ['customer-appointments', customerId],
+    queryFn: async () => {
+      // Fetch all appointments and filter by customer
+      const result = await get<AppointmentWithDetails[]>(
+        `/api/appointments/business/${businessId}?customer_id=${customerId}`
+      );
+      return result || [];
+    },
+    enabled: !!customerId && !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useCustomerCalls(customerId: string) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: ['customer-calls', customerId],
+    queryFn: async () => {
+      // Fetch calls for this business and filter by customer
+      const result = await get<{ data: CallLogWithDetails[]; total: number }>(
+        `/api/calls/business/${businessId}?limit=100`
+      );
+      // Filter by customer_id on the client side
+      const customerCalls = (result.data || []).filter(
+        (call) => call.customer_id === customerId
+      );
+      return customerCalls;
+    },
+    enabled: !!customerId && !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
 // =============================================================================
 // STAFF HOOKS
 // =============================================================================
@@ -257,7 +295,14 @@ export function useStaff() {
   
   return useQuery({
     queryKey: queryKeys.staff(businessId || ''),
-    queryFn: () => get<StaffResponse>(`/api/staff/business/${businessId}`),
+    queryFn: async () => {
+      const result = await get<Staff[] | StaffResponse>(`/api/staff/business/${businessId}`);
+      // Handle both array and wrapped response formats
+      if (Array.isArray(result)) {
+        return { data: result, total: result.length };
+      }
+      return result;
+    },
     enabled: !!businessId,
     staleTime: 1000 * 60 * 5,
   });
@@ -310,6 +355,22 @@ export function useDeleteStaff() {
   });
 }
 
+export function useStaffAppointments(staffId: string) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: ['staff-appointments', staffId],
+    queryFn: async () => {
+      const result = await get<AppointmentWithDetails[]>(
+        `/api/appointments/business/${businessId}?staff_id=${staffId}`
+      );
+      return result || [];
+    },
+    enabled: !!staffId && !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
 // =============================================================================
 // SERVICE HOOKS
 // =============================================================================
@@ -324,7 +385,14 @@ export function useServices() {
   
   return useQuery({
     queryKey: queryKeys.services(businessId || ''),
-    queryFn: () => get<ServicesResponse>(`/api/services/business/${businessId}`),
+    queryFn: async () => {
+      const result = await get<Service[] | ServicesResponse>(`/api/services/business/${businessId}`);
+      // Handle both array and wrapped response formats
+      if (Array.isArray(result)) {
+        return { data: result, total: result.length };
+      }
+      return result;
+    },
     enabled: !!businessId,
     staleTime: 1000 * 60 * 5,
   });
@@ -525,7 +593,7 @@ export function useAIRoles() {
   
   return useQuery({
     queryKey: queryKeys.aiRoles(businessId || ''),
-    queryFn: () => get<AIRole[]>(`/api/ai-config/roles/business/${businessId}`),
+    queryFn: () => get<AIRole[]>(`/api/ai/roles/${businessId}`),
     enabled: !!businessId,
     staleTime: 1000 * 60 * 5,
   });
@@ -537,7 +605,7 @@ export function useCreateAIRole() {
   
   return useMutation({
     mutationFn: (data: Partial<AIRole>) => 
-      post<AIRole>('/api/ai-config/roles', { ...data, business_id: businessId }),
+      post<AIRole>('/api/ai/roles', { ...data, business_id: businessId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.aiRoles(businessId || '') });
     },
@@ -550,7 +618,7 @@ export function useUpdateAIRole() {
   
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<AIRole> }) => 
-      put<AIRole>(`/api/ai-config/roles/${id}`, data),
+      put<AIRole>(`/api/ai/roles/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.aiRoles(businessId || '') });
     },
@@ -562,7 +630,7 @@ export function useDeleteAIRole() {
   const businessId = useBusinessId();
   
   return useMutation({
-    mutationFn: (id: string) => del(`/api/ai-config/roles/${id}`),
+    mutationFn: (id: string) => del(`/api/ai/roles/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.aiRoles(businessId || '') });
     },
@@ -663,10 +731,117 @@ export function useUpdateBusinessHours() {
   
   return useMutation({
     mutationFn: (data: BusinessHours[]) => 
-      put<BusinessHours[]>(`/api/business-hours/${businessId}`, data),
+      post<BusinessHours[]>(`/api/business-hours/${businessId}`, { hours: data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businessHours(businessId || '') });
     },
+  });
+}
+
+// =============================================================================
+// MESSAGING HOOKS
+// =============================================================================
+
+interface MessageTemplate {
+  id: string;
+  business_id: string | null;
+  template_type: string;
+  channel: string;
+  name: string;
+  subject: string | null;
+  body: string;
+  variables: string[];
+  language_code: string;
+  is_active: boolean;
+}
+
+interface MessageLog {
+  id: string;
+  business_id: string;
+  customer_id: string | null;
+  channel: string;
+  direction: string;
+  to_address: string;
+  subject: string | null;
+  body: string;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+}
+
+export function useMessageTemplates(templateType?: string, channel?: string) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: ['message-templates', businessId, templateType, channel],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (businessId) params.append('business_id', businessId);
+      if (templateType) params.append('template_type', templateType);
+      if (channel) params.append('channel', channel);
+      
+      return get<MessageTemplate[]>(`/api/messaging/templates?${params.toString()}`);
+    },
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useMessageHistory(customerId: string) {
+  const businessId = useBusinessId();
+  
+  return useQuery({
+    queryKey: ['message-history', customerId, businessId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (businessId) params.append('business_id', businessId);
+      
+      return get<MessageLog[]>(`/api/messaging/history/${customerId}?${params.toString()}`);
+    },
+    enabled: !!customerId && !!businessId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+interface SendSMSRequest {
+  to_phone?: string;
+  message: string;
+  customer_id?: string;
+  include_appointment?: boolean;
+}
+
+interface SendEmailRequest {
+  to_email?: string;
+  subject: string;
+  message: string;
+  customer_id?: string;
+  include_appointment?: boolean;
+}
+
+export function useSendSMS() {
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: SendSMSRequest) => 
+      post(`/api/messaging/send-sms`, { ...data, business_id: businessId }),
+  });
+}
+
+export function useSendEmail() {
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: SendEmailRequest) => 
+      post(`/api/messaging/send-email`, { ...data, business_id: businessId }),
+  });
+}
+
+export function useSendWhatsApp() {
+  const businessId = useBusinessId();
+  
+  return useMutation({
+    mutationFn: (data: SendSMSRequest) => 
+      post(`/api/messaging/send-whatsapp`, { ...data, business_id: businessId }),
   });
 }
 
