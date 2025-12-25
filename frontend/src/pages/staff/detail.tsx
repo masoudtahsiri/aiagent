@@ -13,7 +13,7 @@ import { Badge, AppointmentStatusBadge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, formatTime } from '@/lib/utils/format';
-import { useStaffMember, useStaffAppointments, useServices } from '@/lib/api/hooks';
+import { useStaffMember, useStaffAppointments, useServices, useStaffAvailability } from '@/lib/api/hooks';
 
 export default function StaffDetailPage() {
   const { id } = useParams();
@@ -25,9 +25,12 @@ export default function StaffDetailPage() {
   // Fetch staff appointments
   const { data: appointments, isLoading: appointmentsLoading } = useStaffAppointments(id || '');
   
-  // Fetch services to show which ones are assigned
+  // Fetch services
   const { data: servicesData, isLoading: servicesLoading } = useServices();
   const services = servicesData?.data || [];
+  
+  // Fetch staff availability from dedicated endpoint
+  const { data: availabilityTemplates, isLoading: availabilityLoading } = useStaffAvailability(id || '');
 
   if (staffLoading) {
     return (
@@ -56,18 +59,22 @@ export default function StaffDetailPage() {
   }
 
   const staffName = staffMember.name || 'Unknown';
-  const assignedServices = services.filter(s => 
-    staffMember.service_ids?.includes(s.id)
-  );
-
-  // Parse availability from JSON if available
-  const availability = staffMember.availability 
-    ? (typeof staffMember.availability === 'string' 
-        ? JSON.parse(staffMember.availability) 
-        : staffMember.availability)
-    : null;
+  
+  // For now, show all services (staff-service mapping would need backend support)
+  const assignedServices = services;
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Convert availability templates to a map by day_of_week
+  const availabilityByDay: Record<number, { start_time: string; end_time: string }> = {};
+  if (availabilityTemplates) {
+    for (const template of availabilityTemplates) {
+      availabilityByDay[template.day_of_week] = {
+        start_time: template.start_time,
+        end_time: template.end_time,
+      };
+    }
+  }
 
   return (
     <PageContainer
@@ -83,7 +90,6 @@ export default function StaffDetailPage() {
           <div className="flex flex-col sm:flex-row gap-6">
             <Avatar 
               name={staffName}
-              src={staffMember.avatar_url}
               size="2xl" 
             />
             
@@ -98,7 +104,7 @@ export default function StaffDetailPage() {
                   </h1>
                   <p className="text-muted-foreground flex items-center gap-2">
                     <Briefcase className="h-4 w-4" />
-                    {staffMember.role || staffMember.title || 'Staff'}
+                    {staffMember.title || 'Staff'}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -155,7 +161,7 @@ export default function StaffDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Briefcase className="h-5 w-5" />
-                  Assigned Services
+                  Available Services
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -167,11 +173,11 @@ export default function StaffDetailPage() {
                   </div>
                 ) : assignedServices.length === 0 ? (
                   <p className="text-muted-foreground text-center py-4">
-                    No services assigned
+                    No services available
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {assignedServices.map((service) => (
+                    {assignedServices.slice(0, 5).map((service) => (
                       <div 
                         key={service.id} 
                         className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
@@ -179,12 +185,17 @@ export default function StaffDetailPage() {
                         <div>
                           <p className="font-medium">{service.name}</p>
                           <p className="text-sm text-muted-foreground">
-                            {service.duration_minutes} min • ${service.price}
+                            {service.duration_minutes} min • ${service.price || 0}
                           </p>
                         </div>
-                        <Badge>{service.category}</Badge>
+                        <Badge>{service.category || 'General'}</Badge>
                       </div>
                     ))}
+                    {assignedServices.length > 5 && (
+                      <p className="text-sm text-muted-foreground text-center pt-2">
+                        +{assignedServices.length - 5} more services
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -257,12 +268,17 @@ export default function StaffDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {availability ? (
+              {availabilityLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full" />
+                  ))}
+                </div>
+              ) : Object.keys(availabilityByDay).length > 0 ? (
                 <div className="space-y-3">
                   {dayNames.map((day, idx) => {
-                    const dayKey = day.toLowerCase();
-                    const daySchedule = availability[dayKey];
-                    const isWorking = daySchedule && !daySchedule.closed;
+                    const daySchedule = availabilityByDay[idx];
+                    const isWorking = !!daySchedule;
                     
                     return (
                       <div 
@@ -283,7 +299,7 @@ export default function StaffDetailPage() {
                         </div>
                         <span className="text-sm text-muted-foreground">
                           {isWorking 
-                            ? `${daySchedule.start} - ${daySchedule.end}`
+                            ? `${daySchedule.start_time} - ${daySchedule.end_time}`
                             : 'Off'
                           }
                         </span>
@@ -293,7 +309,7 @@ export default function StaffDetailPage() {
                 </div>
               ) : (
                 <p className="text-muted-foreground text-center py-8">
-                  No availability schedule set
+                  No availability schedule set. Add availability templates to show the schedule.
                 </p>
               )}
             </CardContent>

@@ -130,10 +130,10 @@ export function useRecentCalls(limit: number = 5) {
   return useQuery({
     queryKey: ['recent-calls', businessId, limit],
     queryFn: async () => {
-      const result = await get<{ data: RecentCall[]; total: number }>(
+      const result = await get<{ calls: RecentCall[]; total: number }>(
         `/api/calls/business/${businessId}?limit=${limit}&offset=0`
       );
-      return result.data || [];
+      return result.calls || [];
     },
     enabled: !!businessId,
     staleTime: 1000 * 60 * 2,
@@ -170,8 +170,10 @@ export function useCallAnalytics(days: number = 7) {
 // =============================================================================
 
 interface CustomersResponse {
-  data: Customer[];
+  customers: Customer[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export function useCustomers(search?: string, limit: number = 50, offset: number = 0) {
@@ -185,9 +187,11 @@ export function useCustomers(search?: string, limit: number = 50, offset: number
       params.append('limit', limit.toString());
       params.append('offset', offset.toString());
       
-      return get<CustomersResponse>(
+      const result = await get<CustomersResponse>(
         `/api/customers/business/${businessId}?${params.toString()}`
       );
+      // Normalize response to use 'data' key for consistency
+      return { data: result.customers || [], total: result.total || 0 };
     },
     enabled: !!businessId,
     staleTime: 1000 * 60 * 2,
@@ -249,11 +253,15 @@ export function useCustomerAppointments(customerId: string) {
   return useQuery({
     queryKey: ['customer-appointments', customerId],
     queryFn: async () => {
-      // Fetch all appointments and filter by customer
+      // Fetch all appointments for the business (backend doesn't support customer_id filter)
       const result = await get<AppointmentWithDetails[]>(
-        `/api/appointments/business/${businessId}?customer_id=${customerId}`
+        `/api/appointments/business/${businessId}`
       );
-      return result || [];
+      // Filter by customer_id on the client side
+      const customerAppointments = (result || []).filter(
+        (apt) => apt.customer_id === customerId
+      );
+      return customerAppointments;
     },
     enabled: !!customerId && !!businessId,
     staleTime: 1000 * 60 * 2,
@@ -267,11 +275,11 @@ export function useCustomerCalls(customerId: string) {
     queryKey: ['customer-calls', customerId],
     queryFn: async () => {
       // Fetch calls for this business and filter by customer
-      const result = await get<{ data: CallLogWithDetails[]; total: number }>(
+      const result = await get<{ calls: CallLogWithDetails[]; total: number }>(
         `/api/calls/business/${businessId}?limit=100`
       );
       // Filter by customer_id on the client side
-      const customerCalls = (result.data || []).filter(
+      const customerCalls = (result.calls || []).filter(
         (call) => call.customer_id === customerId
       );
       return customerCalls;
@@ -368,6 +376,51 @@ export function useStaffAppointments(staffId: string) {
     },
     enabled: !!staffId && !!businessId,
     staleTime: 1000 * 60 * 2,
+  });
+}
+
+interface AvailabilityTemplate {
+  id: string;
+  staff_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+}
+
+export function useStaffAvailability(staffId: string) {
+  return useQuery({
+    queryKey: ['staff-availability', staffId],
+    queryFn: () => get<AvailabilityTemplate[]>(`/api/staff/${staffId}/availability`),
+    enabled: !!staffId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+interface StaffServiceMapping {
+  staff_id: string;
+  service_id: string;
+}
+
+export function useStaffServices(staffId: string) {
+  const { data: servicesData } = useServices();
+  
+  return useQuery({
+    queryKey: ['staff-services', staffId],
+    queryFn: async () => {
+      // Get the staff member to check for service assignments
+      const staff = await get<Staff>(`/api/staff/${staffId}`);
+      // The staff_services relationship is fetched through services endpoint
+      // Filter services that this staff member can perform
+      const allServices = servicesData?.data || [];
+      
+      // For now, return all services since the backend staff endpoint 
+      // doesn't include service_ids directly. This can be enhanced later.
+      return allServices;
+    },
+    enabled: !!staffId && !!servicesData,
+    staleTime: 1000 * 60 * 5,
   });
 }
 
@@ -476,6 +529,15 @@ export function useAppointment(appointmentId: string) {
   });
 }
 
+interface TimeSlotResponse {
+  id: string;
+  staff_id: string;
+  date: string;
+  time: string;
+  duration_minutes: number;
+  is_booked: boolean;
+}
+
 export function useAvailableSlots(staffId: string, startDate: string, endDate?: string) {
   return useQuery({
     queryKey: queryKeys.availableSlots(staffId, startDate),
@@ -483,9 +545,16 @@ export function useAvailableSlots(staffId: string, startDate: string, endDate?: 
       const params = new URLSearchParams({ start_date: startDate });
       if (endDate) params.append('end_date', endDate);
       
-      return get<Array<{ date: string; time: string; is_available: boolean }>>(
+      const result = await get<TimeSlotResponse[]>(
         `/api/appointments/staff/${staffId}/slots?${params.toString()}`
       );
+      // Transform to expected format (is_booked → is_available)
+      return (result || []).map(slot => ({
+        date: slot.date,
+        time: slot.time,
+        is_available: !slot.is_booked,
+        duration_minutes: slot.duration_minutes,
+      }));
     },
     enabled: !!staffId && !!startDate,
     staleTime: 1000 * 60 * 1,
@@ -551,8 +620,10 @@ interface CallFilters {
 }
 
 interface CallsResponse {
-  data: CallLogWithDetails[];
+  calls: CallLogWithDetails[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export function useCalls(filters?: CallFilters) {
@@ -567,9 +638,11 @@ export function useCalls(filters?: CallFilters) {
       params.append('limit', (filters?.limit || 50).toString());
       params.append('offset', (filters?.offset || 0).toString());
       
-      return get<CallsResponse>(
+      const result = await get<CallsResponse>(
         `/api/calls/business/${businessId}?${params.toString()}`
       );
+      // Normalize response to use 'data' key for consistency
+      return { data: result.calls || [], total: result.total || 0 };
     },
     enabled: !!businessId,
     staleTime: 1000 * 60 * 2,
