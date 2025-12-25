@@ -71,12 +71,16 @@ export interface Staff {
   business_id: string;
   name: string;
   title?: string;
+  role?: string;
   email?: string;
   phone?: string;
   specialty?: string;
   bio?: string;
   color_code: string;
+  avatar_url?: string;
   is_active: boolean;
+  service_ids?: string[];
+  availability?: Record<string, { start: string; end: string; closed?: boolean }> | string;
   created_at: string;
   updated_at: string;
 }

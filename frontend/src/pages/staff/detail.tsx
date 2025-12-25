@@ -98,7 +98,7 @@ export default function StaffDetailPage() {
                   </h1>
                   <p className="text-muted-foreground flex items-center gap-2">
                     <Briefcase className="h-4 w-4" />
-                    {staffMember.role}
+                    {staffMember.role || staffMember.title || 'Staff'}
                   </p>
                 </div>
                 <div className="flex gap-2">

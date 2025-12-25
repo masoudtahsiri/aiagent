@@ -12,9 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { useDebounce } from '@/lib/utils/hooks';
+import { useDebounce } from '@/lib/hooks';
 import { formatDate, formatPhone } from '@/lib/utils/format';
 import { 
   useCustomers, 
@@ -35,10 +35,10 @@ export default function MessagingPage() {
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   // Fetch customers
-  const { data: customersData, isLoading: customersLoading } = useCustomers({
-    search: debouncedSearch,
-    limit: 50,
-  });
+  const { data: customersData, isLoading: customersLoading } = useCustomers(
+    debouncedSearch,
+    50
+  );
   const customers = customersData?.data || [];
 
   // Fetch templates
@@ -295,7 +295,7 @@ export default function MessagingPage() {
             <CardContent>
               {!selectedCustomerId ? (
                 <EmptyState
-                  icon={<MessageSquare className="h-12 w-12" />}
+                  icon={MessageSquare}
                   title="Select a customer"
                   description="Choose a customer from the compose tab to view their message history"
                 />
@@ -307,7 +307,7 @@ export default function MessagingPage() {
                 </div>
               ) : !messageHistory?.length ? (
                 <EmptyState
-                  icon={<MessageSquare className="h-12 w-12" />}
+                  icon={MessageSquare}
                   title="No messages yet"
                   description="No messages have been sent to this customer"
                 />
@@ -337,7 +337,7 @@ export default function MessagingPage() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <Badge>{message.channel.toUpperCase()}</Badge>
-                            <Badge variant={message.status === 'sent' ? 'success' : 'destructive'}>
+                            <Badge variant={message.status === 'sent' ? 'success' : 'error'}>
                               {message.status === 'sent' ? (
                                 <CheckCircle className="h-3 w-3 mr-1" />
                               ) : (
