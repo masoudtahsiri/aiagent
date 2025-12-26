@@ -102,11 +102,11 @@ export default function AISetupPage() {
       title="AI Setup"
       description="Configure your AI assistant's personality and knowledge"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[6fr_4fr] gap-6 items-stretch">
-        {/* Left Column - AI Configuration (60%) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-180px)]">
+        {/* Left Column - AI Configuration (50%) */}
         <ConfigurationTab />
 
-        {/* Right Column - Knowledge Base (40%) */}
+        {/* Right Column - Knowledge Base (50%) */}
         <KnowledgeBaseTab />
       </div>
     </PageContainer>
@@ -246,9 +246,9 @@ function ConfigurationTab() {
   }
 
   return (
-    <div className="flex flex-col gap-5 h-full">
+    <div className="flex flex-col gap-5 h-full overflow-hidden">
       {/* AI Assistant Card */}
-      <Card>
+      <Card className="flex-1">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Bot className="h-5 w-5 text-primary" />
@@ -349,7 +349,7 @@ function ConfigurationTab() {
       </Card>
 
       {/* Greeting Card */}
-      <Card>
+      <Card className="shrink-0">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <MessageSquare className="h-5 w-5 text-primary" />
