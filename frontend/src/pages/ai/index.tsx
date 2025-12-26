@@ -456,7 +456,7 @@ function KnowledgeBaseTab() {
   };
 
   return (
-    <Card className="flex flex-col overflow-hidden max-h-[500px] lg:max-h-none lg:h-full">
+    <Card className="flex flex-col lg:overflow-hidden lg:h-full">
       <CardHeader className="pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -497,7 +497,7 @@ function KnowledgeBaseTab() {
         </div>
 
         {/* FAQ List */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0">
           {isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
