@@ -330,7 +330,7 @@ function ConfigurationTab() {
                   value={formData.voice_style}
                   onValueChange={(v) => handleChange('voice_style', v as VoiceStyle)}
                 >
-                  <SelectTrigger className="flex-1">
+                  <SelectTrigger className="w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -347,18 +347,18 @@ function ConfigurationTab() {
                 </Select>
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="sm"
                   onClick={handleVoiceSample}
                   disabled={voicePreview.isPending}
-                  title="Preview voice"
                 >
                   {voicePreview.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : isPreviewPlaying ? (
-                    <Square className="h-4 w-4" />
+                    <Square className="h-4 w-4 mr-2" />
                   ) : (
-                    <Play className="h-4 w-4" />
+                    <Play className="h-4 w-4 mr-2" />
                   )}
+                  Preview
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -444,22 +444,22 @@ function ConfigurationTab() {
               value={formData.greeting_message}
               onChange={(e) => handleChange('greeting_message', e.target.value)}
               placeholder="Hello! Thank you for calling. I'm Alex, how can I help you today?"
-              className="flex-1"
             />
             <Button
               variant="outline"
-              size="icon"
+              size="sm"
               onClick={handleGreetingPreview}
               disabled={voicePreview.isPending}
-              title="Preview greeting"
+              className="shrink-0"
             >
               {voicePreview.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : isPreviewPlaying ? (
-                <Square className="h-4 w-4" />
+                <Square className="h-4 w-4 mr-2" />
               ) : (
-                <Play className="h-4 w-4" />
+                <Play className="h-4 w-4 mr-2" />
               )}
+              Preview
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
