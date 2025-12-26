@@ -13,12 +13,16 @@ All endpoints maintain backward compatibility.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from typing import List, Optional
 import asyncio
 from datetime import date as date_type, datetime
 from functools import lru_cache
 import time
 import logging
+import os
+import base64
+from pydantic import BaseModel
 
 from backend.models.ai_config import AIRoleCreate, AIRoleUpdate, AIRoleResponse
 from backend.models.business import PhoneNumberLookup
@@ -547,3 +551,129 @@ async def delete_ai_role(
         _config_cache.invalidate(f"biz_phone:{phone}")
     
     return {"message": "AI role deleted successfully"}
+
+
+# =============================================================================
+# VOICE PREVIEW ENDPOINT
+# =============================================================================
+
+class VoicePreviewRequest(BaseModel):
+    voice: str  # Voice name (e.g., "Puck", "Charon", "Kore")
+    text: str   # Text to synthesize
+
+
+# Valid voice names from Google Gemini TTS
+VALID_VOICES = {
+    'Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Zephyr', 'Leda', 'Orus',
+    'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba',
+    'Despina', 'Erinome', 'Algenib', 'Rasalgethi', 'Laomedeia', 'Achernar',
+    'Alnilam', 'Schedar', 'Gacrux', 'Pulcherrima', 'Achird', 'Zubenelgenubi',
+    'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat'
+}
+
+
+@router.post("/voice-preview")
+async def generate_voice_preview(
+    request: VoicePreviewRequest,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """
+    Generate a voice preview using Google Gemini TTS.
+
+    Returns audio as base64-encoded WAV data.
+    """
+    # Validate voice name
+    if request.voice not in VALID_VOICES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid voice: {request.voice}. Must be one of: {', '.join(sorted(VALID_VOICES))}"
+        )
+
+    # Limit text length to prevent abuse
+    if len(request.text) > 500:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text too long. Maximum 500 characters."
+        )
+
+    if len(request.text) < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text cannot be empty."
+        )
+
+    # Get API key from environment
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google API key not configured"
+        )
+
+    try:
+        # Import google.genai here to avoid import errors if not installed
+        from google import genai
+        from google.genai import types
+
+        # Create client with API key
+        client = genai.Client(api_key=api_key)
+
+        # Generate speech
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=request.text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=request.voice,
+                        )
+                    )
+                ),
+            )
+        )
+
+        # Extract audio data
+        if not response.candidates or not response.candidates[0].content.parts:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No audio generated"
+            )
+
+        audio_data = response.candidates[0].content.parts[0].inline_data.data
+
+        # Convert PCM to WAV format
+        import wave
+        import io
+
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, 'wb') as wav_file:
+            wav_file.setnchannels(1)  # Mono
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(24000)  # 24kHz sample rate
+            wav_file.writeframes(audio_data)
+
+        wav_buffer.seek(0)
+        wav_data = wav_buffer.read()
+
+        # Return as base64
+        audio_base64 = base64.b64encode(wav_data).decode('utf-8')
+
+        return {
+            "audio": audio_base64,
+            "format": "wav",
+            "voice": request.voice
+        }
+
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google GenAI library not installed"
+        )
+    except Exception as e:
+        logger.error(f"Voice preview error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate voice preview: {str(e)}"
+        )

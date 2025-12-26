@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -14,6 +14,8 @@ import {
   Edit,
   Trash2,
   Play,
+  Square,
+  Loader2,
   MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,16 +37,42 @@ import {
   useCreateFAQ,
   useUpdateFAQ,
   useDeleteFAQ,
+  useVoicePreview,
 } from '@/lib/api/hooks';
 import type { FAQ, FAQCategory, VoiceStyle, PersonalityStyle, ResponseLength } from '@/types';
 
-// Voice options - these map to actual TTS voices
+// Voice options - all 30 Google Gemini TTS voices with official descriptions
 const voiceOptions: Array<{ value: VoiceStyle; label: string; description: string }> = [
-  { value: 'Puck', label: 'Puck', description: 'Professional, clear, confident' },
-  { value: 'Charon', label: 'Charon', description: 'Warm, approachable, friendly' },
-  { value: 'Kore', label: 'Kore', description: 'Authoritative, trustworthy' },
-  { value: 'Fenrir', label: 'Fenrir', description: 'Casual, personable' },
-  { value: 'Aoede', label: 'Aoede', description: 'Balanced, versatile' },
+  { value: 'Puck', label: 'Puck', description: 'Upbeat' },
+  { value: 'Charon', label: 'Charon', description: 'Informative' },
+  { value: 'Kore', label: 'Kore', description: 'Firm' },
+  { value: 'Fenrir', label: 'Fenrir', description: 'Excitable' },
+  { value: 'Aoede', label: 'Aoede', description: 'Breezy' },
+  { value: 'Zephyr', label: 'Zephyr', description: 'Bright' },
+  { value: 'Leda', label: 'Leda', description: 'Youthful' },
+  { value: 'Orus', label: 'Orus', description: 'Firm' },
+  { value: 'Callirrhoe', label: 'Callirrhoe', description: 'Easy-going' },
+  { value: 'Autonoe', label: 'Autonoe', description: 'Bright' },
+  { value: 'Enceladus', label: 'Enceladus', description: 'Breathy' },
+  { value: 'Iapetus', label: 'Iapetus', description: 'Clear' },
+  { value: 'Umbriel', label: 'Umbriel', description: 'Easy-going' },
+  { value: 'Algieba', label: 'Algieba', description: 'Smooth' },
+  { value: 'Despina', label: 'Despina', description: 'Smooth' },
+  { value: 'Erinome', label: 'Erinome', description: 'Clear' },
+  { value: 'Algenib', label: 'Algenib', description: 'Gravelly' },
+  { value: 'Rasalgethi', label: 'Rasalgethi', description: 'Informative' },
+  { value: 'Laomedeia', label: 'Laomedeia', description: 'Upbeat' },
+  { value: 'Achernar', label: 'Achernar', description: 'Soft' },
+  { value: 'Alnilam', label: 'Alnilam', description: 'Firm' },
+  { value: 'Schedar', label: 'Schedar', description: 'Even' },
+  { value: 'Gacrux', label: 'Gacrux', description: 'Mature' },
+  { value: 'Pulcherrima', label: 'Pulcherrima', description: 'Forward' },
+  { value: 'Achird', label: 'Achird', description: 'Friendly' },
+  { value: 'Zubenelgenubi', label: 'Zubenelgenubi', description: 'Casual' },
+  { value: 'Vindemiatrix', label: 'Vindemiatrix', description: 'Gentle' },
+  { value: 'Sadachbia', label: 'Sadachbia', description: 'Lively' },
+  { value: 'Sadaltager', label: 'Sadaltager', description: 'Knowledgeable' },
+  { value: 'Sulafat', label: 'Sulafat', description: 'Warm' },
 ];
 
 // Personality options
@@ -139,6 +167,7 @@ function ConfigurationTab() {
   const { data: roles, isLoading } = useAIRoles();
   const updateRole = useUpdateAIRole();
   const createRole = useCreateAIRole();
+  const voicePreview = useVoicePreview();
 
   const [formData, setFormData] = useState<{
     ai_name: string;
@@ -154,6 +183,8 @@ function ConfigurationTab() {
     greeting_message: '',
   });
   const [hasChanges, setHasChanges] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Get primary role (first enabled role or first role)
   const primaryRole = roles?.find(r => r.is_enabled) || roles?.[0];
@@ -195,6 +226,53 @@ function ConfigurationTab() {
       setHasChanges(false);
     } catch (error) {
       toast.error('Failed to save configuration');
+    }
+  };
+
+  const handleVoicePreview = async () => {
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    if (isPreviewPlaying) {
+      setIsPreviewPlaying(false);
+      return;
+    }
+
+    const previewText = formData.greeting_message ||
+      `Hello! Thank you for calling. I'm ${formData.ai_name}, how can I help you today?`;
+
+    try {
+      const response = await voicePreview.mutateAsync({
+        voice: formData.voice_style,
+        text: previewText,
+      });
+
+      // Create audio from base64
+      const audioBlob = new Blob(
+        [Uint8Array.from(atob(response.audio), c => c.charCodeAt(0))],
+        { type: 'audio/wav' }
+      );
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.onended = () => {
+        setIsPreviewPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audioRef.current.onerror = () => {
+        setIsPreviewPlaying(false);
+        toast.error('Failed to play audio preview');
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await audioRef.current.play();
+      setIsPreviewPlaying(true);
+    } catch (error) {
+      toast.error('Failed to generate voice preview');
+      setIsPreviewPlaying(false);
     }
   };
 
@@ -266,12 +344,27 @@ function ConfigurationTab() {
 
           {/* Voice Preview */}
           <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-            <Button variant="outline" size="sm" disabled>
-              <Play className="h-4 w-4 mr-2" />
-              Preview Voice
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleVoicePreview}
+              disabled={voicePreview.isPending}
+            >
+              {voicePreview.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : isPreviewPlaying ? (
+                <Square className="h-4 w-4 mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {voicePreview.isPending ? 'Generating...' : isPreviewPlaying ? 'Stop' : 'Preview Voice'}
             </Button>
             <span className="text-sm text-muted-foreground">
-              Voice preview coming soon
+              {voicePreview.isPending
+                ? 'Generating audio with Gemini TTS...'
+                : isPreviewPlaying
+                  ? 'Playing preview...'
+                  : 'Hear how your AI will sound'}
             </span>
           </div>
         </CardContent>
@@ -353,6 +446,26 @@ function ConfigurationTab() {
             placeholder="Hello! Thank you for calling {business_name}. I'm {ai_name}, how can I help you today?"
             className="min-h-[100px]"
           />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleVoicePreview}
+              disabled={voicePreview.isPending}
+            >
+              {voicePreview.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : isPreviewPlaying ? (
+                <Square className="h-4 w-4 mr-2" />
+              ) : (
+                <Volume2 className="h-4 w-4 mr-2" />
+              )}
+              {voicePreview.isPending ? 'Generating...' : isPreviewPlaying ? 'Stop' : 'Preview Greeting'}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Hear how your greeting sounds with the selected voice
+            </span>
+          </div>
           <div className="p-3 rounded-lg bg-muted/50 border">
             <p className="text-sm font-medium mb-1">Available variables:</p>
             <div className="flex flex-wrap gap-2">

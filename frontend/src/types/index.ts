@@ -212,7 +212,13 @@ export interface CallLogWithDetails extends CallLog {
 
 // AI config types
 export type AIRoleType = 'assistant' | 'receptionist' | 'sales' | 'support' | 'billing' | 'marketing';
-export type VoiceStyle = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede';
+export type VoiceStyle =
+  | 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede'
+  | 'Zephyr' | 'Leda' | 'Orus' | 'Callirrhoe' | 'Autonoe'
+  | 'Enceladus' | 'Iapetus' | 'Umbriel' | 'Algieba' | 'Despina'
+  | 'Erinome' | 'Algenib' | 'Rasalgethi' | 'Laomedeia' | 'Achernar'
+  | 'Alnilam' | 'Schedar' | 'Gacrux' | 'Pulcherrima' | 'Achird'
+  | 'Zubenelgenubi' | 'Vindemiatrix' | 'Sadachbia' | 'Sadaltager' | 'Sulafat';
 export type PersonalityStyle = 'professional' | 'friendly' | 'calm' | 'energetic';
 export type ResponseLength = 'concise' | 'detailed';
 

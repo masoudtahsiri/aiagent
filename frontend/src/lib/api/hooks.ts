@@ -911,10 +911,32 @@ export function useSendEmail() {
 
 export function useSendWhatsApp() {
   const businessId = useBusinessId();
-  
+
   return useMutation({
-    mutationFn: (data: SendSMSRequest) => 
+    mutationFn: (data: SendSMSRequest) =>
       post(`/api/messaging/send-whatsapp`, { ...data, business_id: businessId }),
+  });
+}
+
+// =============================================================================
+// VOICE PREVIEW HOOK
+// =============================================================================
+
+interface VoicePreviewRequest {
+  voice: string;
+  text: string;
+}
+
+interface VoicePreviewResponse {
+  audio: string;  // Base64-encoded WAV audio
+  format: string;
+  voice: string;
+}
+
+export function useVoicePreview() {
+  return useMutation({
+    mutationFn: (data: VoicePreviewRequest) =>
+      post<VoicePreviewResponse>('/api/ai/voice-preview', data),
   });
 }
 
