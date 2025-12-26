@@ -295,109 +295,87 @@ function ConfigurationTab() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* AI Identity */}
+    <div className="space-y-6 max-w-3xl">
+      {/* AI Assistant Card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            AI Identity
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Bot className="h-5 w-5 text-primary" />
+            AI Assistant
           </CardTitle>
           <CardDescription>
-            Set your AI assistant's name and voice
+            Configure your assistant's identity and communication style
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-6 sm:grid-cols-2">
-            {/* AI Name */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">AI Name</label>
+          {/* Identity Row */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Name</label>
               <Input
                 value={formData.ai_name}
                 onChange={(e) => handleChange('ai_name', e.target.value)}
-                placeholder="e.g., Alex, Sarah, Max"
+                placeholder="Alex"
+                className="max-w-[200px]"
               />
-              <p className="text-xs text-muted-foreground">
-                The name your AI uses when introducing itself
-              </p>
             </div>
-
-            {/* Voice Selection */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Voice</label>
               <div className="flex gap-2">
                 <Select
                   value={formData.voice_style}
                   onValueChange={(v) => handleChange('voice_style', v as VoiceStyle)}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[200px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {voiceOptions.map((voice) => (
                       <SelectItem key={voice.value} value={voice.value}>
-                        <div className="flex items-center gap-2">
-                          <Volume2 className="h-4 w-4 text-muted-foreground" />
-                          <span>{voice.label}</span>
-                          <span className="text-xs text-muted-foreground">- {voice.description}</span>
-                        </div>
+                        <span>{voice.label}</span>
+                        <span className="text-muted-foreground ml-1">· {voice.description}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="ghost"
+                  size="icon"
                   onClick={handleVoiceSample}
                   disabled={voicePreview.isPending}
+                  className="shrink-0"
                 >
                   {voicePreview.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : isPreviewPlaying ? (
-                    <Square className="h-4 w-4 mr-2" />
+                    <Square className="h-4 w-4" />
                   ) : (
-                    <Play className="h-4 w-4 mr-2" />
+                    <Volume2 className="h-4 w-4" />
                   )}
-                  Preview
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                The voice used for phone calls
-              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Personality */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            Personality
-          </CardTitle>
-          <CardDescription>
-            Define how your AI communicates with callers
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+          {/* Divider */}
+          <div className="border-t" />
+
           {/* Personality Style */}
           <div className="space-y-3">
             <label className="text-sm font-medium">Communication Style</label>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex flex-wrap gap-2">
               {personalityOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handleChange('personality_style', option.value)}
                   className={cn(
-                    'p-4 rounded-lg border text-left transition-all',
+                    'px-4 py-2 rounded-full text-sm font-medium transition-all',
                     formData.personality_style === option.value
-                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                      : 'hover:border-primary/50 hover:bg-muted/50'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  <p className="font-medium">{option.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                  {option.label}
                 </button>
               ))}
             </div>
@@ -406,20 +384,19 @@ function ConfigurationTab() {
           {/* Response Length */}
           <div className="space-y-3">
             <label className="text-sm font-medium">Response Length</label>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex gap-2">
               {responseLengthOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handleChange('response_length', option.value)}
                   className={cn(
-                    'p-4 rounded-lg border text-left transition-all',
+                    'px-4 py-2 rounded-full text-sm font-medium transition-all',
                     formData.response_length === option.value
-                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                      : 'hover:border-primary/50 hover:bg-muted/50'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  <p className="font-medium">{option.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                  {option.label}
                 </button>
               ))}
             </div>
@@ -427,44 +404,41 @@ function ConfigurationTab() {
         </CardContent>
       </Card>
 
-      {/* Greeting Message */}
+      {/* Greeting Card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            Greeting Message
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            Greeting
           </CardTitle>
           <CardDescription>
-            Customize how your AI greets callers
+            The first thing your AI says when answering a call
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent>
           <div className="flex gap-2">
             <Input
               value={formData.greeting_message}
               onChange={(e) => handleChange('greeting_message', e.target.value)}
               placeholder="Hello! Thank you for calling. I'm Alex, how can I help you today?"
+              className="flex-1"
             />
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={handleGreetingPreview}
               disabled={voicePreview.isPending}
               className="shrink-0"
             >
               {voicePreview.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : isPreviewPlaying ? (
-                <Square className="h-4 w-4 mr-2" />
+                <Square className="h-4 w-4" />
               ) : (
-                <Play className="h-4 w-4 mr-2" />
+                <Volume2 className="h-4 w-4" />
               )}
-              Preview
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            The first thing your AI says when answering a call
-          </p>
         </CardContent>
       </Card>
 
