@@ -140,6 +140,7 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
     def fetch_ai_roles():
         return db.table("ai_roles").select(
             "id, business_id, role_type, ai_personality_name, voice_style, "
+            "personality_style, response_length, "
             "system_prompt, greeting_message, is_enabled, priority"
         ).eq("business_id", business_id).eq("is_enabled", True).order("priority").execute()
     
@@ -192,9 +193,11 @@ async def lookup_business_by_phone(lookup: PhoneNumberLookup):
             "id": role["id"],
             "business_id": role["business_id"],
             "role_type": role["role_type"],
-            "ai_name": role.get("ai_personality_name", role.get("role_name", "Assistant")),
+            "name": role.get("ai_personality_name", role.get("role_name", "Assistant")),
             "voice_style": role["voice_style"],
-            "system_prompt": role["system_prompt"],
+            "personality_style": role.get("personality_style", "friendly"),
+            "response_length": role.get("response_length", "concise"),
+            "custom_system_prompt": role.get("system_prompt", ""),
             "greeting_message": role.get("greeting_message", ""),
             "is_enabled": role["is_enabled"],
             "priority": role.get("priority", 0)
@@ -373,6 +376,8 @@ async def create_ai_role(
         "role_type": role_data.role_type,
         "ai_personality_name": role_data.ai_name,
         "voice_style": role_data.voice_style,
+        "personality_style": role_data.personality_style,
+        "response_length": role_data.response_length,
         "system_prompt": role_data.system_prompt,
         "greeting_message": role_data.greeting_message,
         "is_enabled": role_data.is_enabled,
@@ -398,6 +403,8 @@ async def create_ai_role(
         "role_type": role["role_type"],
         "ai_name": role["ai_personality_name"],
         "voice_style": role["voice_style"],
+        "personality_style": role.get("personality_style", "friendly"),
+        "response_length": role.get("response_length", "concise"),
         "system_prompt": role["system_prompt"],
         "greeting_message": role["greeting_message"],
         "is_enabled": role["is_enabled"],
@@ -428,12 +435,14 @@ async def get_business_ai_roles(
             "role_type": role["role_type"],
             "ai_name": role["ai_personality_name"],
             "voice_style": role["voice_style"],
+            "personality_style": role.get("personality_style", "friendly"),
+            "response_length": role.get("response_length", "concise"),
             "system_prompt": role["system_prompt"],
             "greeting_message": role["greeting_message"],
             "is_enabled": role["is_enabled"],
             "priority": role.get("priority", 0)
         })
-    
+
     return roles
 
 
@@ -463,6 +472,10 @@ async def update_ai_role(
         update_dict["ai_personality_name"] = role_data.ai_name
     if role_data.voice_style is not None:
         update_dict["voice_style"] = role_data.voice_style
+    if role_data.personality_style is not None:
+        update_dict["personality_style"] = role_data.personality_style
+    if role_data.response_length is not None:
+        update_dict["response_length"] = role_data.response_length
     if role_data.system_prompt is not None:
         update_dict["system_prompt"] = role_data.system_prompt
     if role_data.greeting_message is not None:
@@ -492,6 +505,8 @@ async def update_ai_role(
         "role_type": updated_role["role_type"],
         "ai_name": updated_role["ai_personality_name"],
         "voice_style": updated_role["voice_style"],
+        "personality_style": updated_role.get("personality_style", "friendly"),
+        "response_length": updated_role.get("response_length", "concise"),
         "system_prompt": updated_role["system_prompt"],
         "greeting_message": updated_role["greeting_message"],
         "is_enabled": updated_role["is_enabled"],

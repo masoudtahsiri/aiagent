@@ -307,9 +307,11 @@ CREATE TABLE ai_roles (
     role_type VARCHAR(50) NOT NULL, -- 'receptionist', 'sales', 'support', 'billing', 'marketing'
     role_name VARCHAR(100), -- Display name: "Front Desk", "Sales Team", etc.
     ai_personality_name VARCHAR(100), -- "Sarah", "Mike", "Lisa"
-    voice_style VARCHAR(50), -- 'professional_female', 'friendly_male', etc.
+    voice_style VARCHAR(50), -- 'Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'
+    personality_style VARCHAR(50) DEFAULT 'friendly', -- 'professional', 'friendly', 'calm', 'energetic'
+    response_length VARCHAR(50) DEFAULT 'concise', -- 'concise', 'detailed'
     voice_speed DECIMAL(3,2) DEFAULT 1.0, -- 0.5 to 2.0
-    system_prompt TEXT NOT NULL,
+    system_prompt TEXT DEFAULT '',
     greeting_message TEXT,
     fallback_message TEXT, -- When AI can't understand
     transfer_to_human_keywords TEXT[], -- Array of keywords that trigger human transfer
