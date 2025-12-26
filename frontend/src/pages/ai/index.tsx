@@ -102,11 +102,11 @@ export default function AISetupPage() {
       title="AI Setup"
       description="Configure your AI assistant's personality and knowledge"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6 items-start">
-        {/* Left Column - AI Configuration */}
+      <div className="grid grid-cols-1 lg:grid-cols-[6fr_4fr] gap-6 items-stretch">
+        {/* Left Column - AI Configuration (60%) */}
         <ConfigurationTab />
 
-        {/* Right Column - Knowledge Base */}
+        {/* Right Column - Knowledge Base (40%) */}
         <KnowledgeBaseTab />
       </div>
     </PageContainer>
@@ -246,7 +246,7 @@ function ConfigurationTab() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5 h-full">
       {/* AI Assistant Card */}
       <Card>
         <CardHeader className="pb-4">
@@ -456,8 +456,8 @@ function KnowledgeBaseTab() {
   };
 
   return (
-    <Card className="h-fit">
-      <CardHeader className="pb-4">
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <BookOpen className="h-5 w-5 text-primary" />
@@ -469,20 +469,20 @@ function KnowledgeBaseTab() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-col gap-4 flex-1 min-h-0">
         {/* Search & Filter */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        <div className="flex gap-2 shrink-0">
+          <div className="relative w-[120px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search FAQs..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
             />
           </div>
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="flex-1">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -496,55 +496,34 @@ function KnowledgeBaseTab() {
           </Select>
         </div>
 
-        {/* Category Pills */}
-        <div className="flex flex-wrap gap-1.5">
-          {faqCategories.map((cat) => {
-            const count = faqList.filter(f => f.category === cat.value).length;
-            if (count === 0) return null;
-            return (
-              <button
-                key={cat.value}
-                onClick={() => setSelectedCategory(cat.value === selectedCategory ? 'all' : cat.value)}
-                className={cn(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
-                  selectedCategory === cat.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {cat.label} ({count})
-              </button>
-            );
-          })}
-        </div>
-
         {/* FAQ List */}
-        {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : filteredFAQs.length === 0 ? (
-          <div className="py-8 text-center">
-            <BookOpen className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-            <p className="text-sm font-medium mb-1">
-              {searchQuery ? 'No FAQs found' : 'No FAQs yet'}
-            </p>
-            <p className="text-xs text-muted-foreground mb-3">
-              {searchQuery
-                ? 'Try a different search'
-                : 'Add FAQs to help your AI answer questions'}
-            </p>
-            {!searchQuery && (
-              <Button size="sm" variant="outline" onClick={() => setShowNewModal(true)}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add First FAQ
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : filteredFAQs.length === 0 ? (
+            <div className="py-8 text-center">
+              <BookOpen className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm font-medium mb-1">
+                {searchQuery ? 'No FAQs found' : 'No FAQs yet'}
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                {searchQuery
+                  ? 'Try a different search'
+                  : 'Add FAQs to help your AI answer questions'}
+              </p>
+              {!searchQuery && (
+                <Button size="sm" variant="outline" onClick={() => setShowNewModal(true)}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add First FAQ
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
             {filteredFAQs.map((faq) => (
               <div
                 key={faq.id}
@@ -620,7 +599,8 @@ function KnowledgeBaseTab() {
               </div>
             ))}
           </div>
-        )}
+          )}
+        </div>
       </CardContent>
 
       {/* New/Edit FAQ Modal */}
