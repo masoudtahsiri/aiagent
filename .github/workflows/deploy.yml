@@ -99,6 +99,15 @@ jobs:
               mv .env.tmp .env
             fi
             
+            # Update GOOGLE_API_KEY in backend .env (for voice preview TTS)
+            GOOGLE_API_KEY_VALUE=$(echo "${{ secrets.GOOGLE_API_KEY }}" | tr -d '\n\r')
+            if [ -n "$GOOGLE_API_KEY_VALUE" ]; then
+              echo "Updating GOOGLE_API_KEY in .env..."
+              grep -v "^GOOGLE_API_KEY=" .env > .env.tmp || true
+              echo "GOOGLE_API_KEY=$GOOGLE_API_KEY_VALUE" >> .env.tmp
+              mv .env.tmp .env
+            fi
+            
             # Update virtual environment
             echo "Updating dependencies..."
             if [ ! -d venv ]; then
