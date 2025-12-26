@@ -26,6 +26,8 @@ const AIRolesPage = lazy(() => import('@/pages/ai-config/roles'));
 const KnowledgeBasePage = lazy(() => import('@/pages/ai-config/knowledge'));
 const MessagingPage = lazy(() => import('@/pages/messaging'));
 const SettingsPage = lazy(() => import('@/pages/settings'));
+const IntegrationsPage = lazy(() => import('@/pages/integrations'));
+const BusinessHoursPage = lazy(() => import('@/pages/hours'));
 
 // Error pages
 const NotFoundPage = lazy(() => import('@/pages/errors/not-found'));
@@ -59,6 +61,8 @@ export function AppRoutes() {
             <Route path="/ai-config/roles" element={<AIRolesPage />} />
             <Route path="/ai-config/knowledge" element={<KnowledgeBasePage />} />
             <Route path="/messaging" element={<MessagingPage />} />
+            <Route path="/integrations" element={<IntegrationsPage />} />
+            <Route path="/hours" element={<BusinessHoursPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
