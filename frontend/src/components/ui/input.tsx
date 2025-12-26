@@ -58,7 +58,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const hasError = !!error;
     
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 w-full">
         {label && (
           <label 
             htmlFor={inputId}

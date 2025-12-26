@@ -295,7 +295,7 @@ function ConfigurationTab() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-5 max-w-xl">
       {/* AI Assistant Card */}
       <Card>
         <CardHeader className="pb-4">
@@ -303,30 +303,26 @@ function ConfigurationTab() {
             <Bot className="h-5 w-5 text-primary" />
             AI Assistant
           </CardTitle>
-          <CardDescription>
-            Configure your assistant's identity and communication style
-          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Identity Row */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
+        <CardContent className="space-y-5">
+          {/* Name & Voice Row */}
+          <div className="flex gap-4">
+            <div className="space-y-1.5 flex-1">
+              <label className="text-sm font-medium text-muted-foreground">Name</label>
               <Input
                 value={formData.ai_name}
                 onChange={(e) => handleChange('ai_name', e.target.value)}
                 placeholder="Alex"
-                className="max-w-[200px]"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Voice</label>
-              <div className="flex gap-2">
+            <div className="space-y-1.5 flex-1">
+              <label className="text-sm font-medium text-muted-foreground">Voice</label>
+              <div className="flex gap-1.5">
                 <Select
                   value={formData.voice_style}
                   onValueChange={(v) => handleChange('voice_style', v as VoiceStyle)}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -339,11 +335,11 @@ function ConfigurationTab() {
                   </SelectContent>
                 </Select>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
                   onClick={handleVoiceSample}
                   disabled={voicePreview.isPending}
-                  className="shrink-0"
+                  className="shrink-0 h-11"
                 >
                   {voicePreview.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -357,19 +353,16 @@ function ConfigurationTab() {
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="border-t" />
-
-          {/* Personality Style */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium">Communication Style</label>
-            <div className="flex flex-wrap gap-2">
+          {/* Communication Style */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-muted-foreground">Style</label>
+            <div className="grid grid-cols-4 gap-1.5">
               {personalityOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handleChange('personality_style', option.value)}
                   className={cn(
-                    'px-4 py-2 rounded-full text-sm font-medium transition-all',
+                    'px-3 py-2 rounded-md text-sm font-medium transition-all text-center',
                     formData.personality_style === option.value
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground'
@@ -382,15 +375,15 @@ function ConfigurationTab() {
           </div>
 
           {/* Response Length */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium">Response Length</label>
-            <div className="flex gap-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-muted-foreground">Responses</label>
+            <div className="grid grid-cols-2 gap-1.5">
               {responseLengthOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handleChange('response_length', option.value)}
                   className={cn(
-                    'px-4 py-2 rounded-full text-sm font-medium transition-all',
+                    'px-3 py-2 rounded-md text-sm font-medium transition-all text-center',
                     formData.response_length === option.value
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground'
@@ -411,24 +404,20 @@ function ConfigurationTab() {
             <MessageSquare className="h-5 w-5 text-primary" />
             Greeting
           </CardTitle>
-          <CardDescription>
-            The first thing your AI says when answering a call
-          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             <Input
               value={formData.greeting_message}
               onChange={(e) => handleChange('greeting_message', e.target.value)}
               placeholder="Hello! Thank you for calling. I'm Alex, how can I help you today?"
-              className="flex-1"
             />
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon"
               onClick={handleGreetingPreview}
               disabled={voicePreview.isPending}
-              className="shrink-0"
+              className="shrink-0 h-11"
             >
               {voicePreview.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
