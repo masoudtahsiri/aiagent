@@ -212,7 +212,9 @@ export interface CallLogWithDetails extends CallLog {
 
 // AI config types
 export type AIRoleType = 'assistant' | 'receptionist' | 'sales' | 'support' | 'billing' | 'marketing';
-export type VoiceStyle = 'professional_female' | 'friendly_female' | 'professional_male' | 'friendly_male' | 'neutral';
+export type VoiceStyle = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede';
+export type PersonalityStyle = 'professional' | 'friendly' | 'calm' | 'energetic';
+export type ResponseLength = 'concise' | 'detailed';
 
 export interface AIRole {
   id: string;
@@ -220,14 +222,16 @@ export interface AIRole {
   role_type: AIRoleType;
   ai_name: string;
   voice_style: VoiceStyle;
+  personality_style: PersonalityStyle;
+  response_length: ResponseLength;
   system_prompt: string;
   greeting_message: string;
   fallback_message?: string;
   priority: number;
   is_enabled: boolean;
-  calls_handled: number;
-  created_at: string;
-  updated_at: string;
+  calls_handled?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type FAQCategory = 'hours' | 'pricing' | 'services' | 'policies' | 'general' | 'location';

@@ -7,7 +7,9 @@ class AIRoleConfig(BaseModel):
     role_type: str  # "receptionist", "sales", "support"
     ai_name: str  # "Sarah", "Mike", etc.
     voice_style: str  # "Kore", "Puck", "Charon", "Fenrir", "Aoede"
-    system_prompt: str
+    personality_style: str = "friendly"  # "professional", "friendly", "calm", "energetic"
+    response_length: str = "concise"  # "concise", "detailed"
+    system_prompt: str = ""  # Additional custom instructions (optional)
     greeting_message: str
     is_enabled: bool = True
 
@@ -19,6 +21,8 @@ class AIRoleCreate(AIRoleConfig):
 class AIRoleUpdate(BaseModel):
     ai_name: Optional[str] = None
     voice_style: Optional[str] = None
+    personality_style: Optional[str] = None
+    response_length: Optional[str] = None
     system_prompt: Optional[str] = None
     greeting_message: Optional[str] = None
     is_enabled: Optional[bool] = None

@@ -13,9 +13,8 @@ import {
   ChevronRight,
   Edit,
   Trash2,
-  Wand2,
+  Play,
   MessageSquare,
-  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
@@ -23,7 +22,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Textarea, Switch } from '@/components/ui/form-elements';
+import { Textarea } from '@/components/ui/form-elements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,15 +36,29 @@ import {
   useUpdateFAQ,
   useDeleteFAQ,
 } from '@/lib/api/hooks';
-import type { AIRole, FAQ, FAQCategory } from '@/types';
+import type { FAQ, FAQCategory, VoiceStyle, PersonalityStyle, ResponseLength } from '@/types';
 
 // Voice options - these map to actual TTS voices
-const voiceOptions = [
-  { value: 'professional_female', label: 'Puck', description: 'Professional, clear, confident' },
-  { value: 'friendly_female', label: 'Charon', description: 'Warm, approachable, friendly' },
-  { value: 'professional_male', label: 'Kore', description: 'Authoritative, trustworthy' },
-  { value: 'friendly_male', label: 'Fenrir', description: 'Casual, personable' },
-  { value: 'neutral', label: 'Aoede', description: 'Balanced, versatile' },
+const voiceOptions: Array<{ value: VoiceStyle; label: string; description: string }> = [
+  { value: 'Puck', label: 'Puck', description: 'Professional, clear, confident' },
+  { value: 'Charon', label: 'Charon', description: 'Warm, approachable, friendly' },
+  { value: 'Kore', label: 'Kore', description: 'Authoritative, trustworthy' },
+  { value: 'Fenrir', label: 'Fenrir', description: 'Casual, personable' },
+  { value: 'Aoede', label: 'Aoede', description: 'Balanced, versatile' },
+];
+
+// Personality options
+const personalityOptions: Array<{ value: PersonalityStyle; label: string; description: string }> = [
+  { value: 'professional', label: 'Professional', description: 'Efficient and business-like' },
+  { value: 'friendly', label: 'Friendly', description: 'Warm and conversational' },
+  { value: 'calm', label: 'Calm', description: 'Patient and reassuring' },
+  { value: 'energetic', label: 'Energetic', description: 'Upbeat and enthusiastic' },
+];
+
+// Response length options
+const responseLengthOptions: Array<{ value: ResponseLength; label: string; description: string }> = [
+  { value: 'concise', label: 'Concise', description: 'Brief and to the point' },
+  { value: 'detailed', label: 'Detailed', description: 'Thorough and informative' },
 ];
 
 const faqCategories = [
@@ -59,7 +72,6 @@ const faqCategories = [
 
 const tabs = [
   { id: 'config', label: 'Configuration', icon: Sparkles },
-  { id: 'voice', label: 'Voice', icon: Volume2 },
   { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
 ];
 
@@ -74,7 +86,7 @@ export default function AISetupPage() {
   return (
     <PageContainer
       title="AI Setup"
-      description="Configure your AI assistant's behavior, voice, and knowledge"
+      description="Configure your AI assistant's personality and knowledge"
     >
       {/* Tab Navigation */}
       <div className="flex gap-1 p-1 bg-muted rounded-xl mb-6 w-fit">
@@ -107,16 +119,6 @@ export default function AISetupPage() {
             <ConfigurationTab />
           </motion.div>
         )}
-        {activeTab === 'voice' && (
-          <motion.div
-            key="voice"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <VoiceTab />
-          </motion.div>
-        )}
         {activeTab === 'knowledge' && (
           <motion.div
             key="knowledge"
@@ -132,17 +134,24 @@ export default function AISetupPage() {
   );
 }
 
-// Configuration Tab - System Prompt & AI Settings
+// Configuration Tab - Simplified with personality controls
 function ConfigurationTab() {
   const { data: roles, isLoading } = useAIRoles();
   const updateRole = useUpdateAIRole();
   const createRole = useCreateAIRole();
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    ai_name: string;
+    voice_style: VoiceStyle;
+    personality_style: PersonalityStyle;
+    response_length: ResponseLength;
+    greeting_message: string;
+  }>({
     ai_name: 'Alex',
+    voice_style: 'Puck',
+    personality_style: 'friendly',
+    response_length: 'concise',
     greeting_message: '',
-    system_prompt: '',
-    fallback_message: '',
   });
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -153,14 +162,15 @@ function ConfigurationTab() {
     if (primaryRole) {
       setFormData({
         ai_name: primaryRole.ai_name || 'Alex',
+        voice_style: (primaryRole.voice_style as VoiceStyle) || 'Puck',
+        personality_style: (primaryRole.personality_style as PersonalityStyle) || 'friendly',
+        response_length: (primaryRole.response_length as ResponseLength) || 'concise',
         greeting_message: primaryRole.greeting_message || '',
-        system_prompt: primaryRole.system_prompt || '',
-        fallback_message: primaryRole.fallback_message || '',
       });
     }
   }, [primaryRole]);
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = <K extends keyof typeof formData>(field: K, value: typeof formData[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setHasChanges(true);
   };
@@ -175,8 +185,8 @@ function ConfigurationTab() {
       } else {
         await createRole.mutateAsync({
           ...formData,
-          role_type: 'assistant',
-          voice_style: 'professional_female',
+          role_type: 'receptionist',
+          system_prompt: '',
           is_enabled: true,
           priority: 1,
         });
@@ -191,9 +201,9 @@ function ConfigurationTab() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     );
   }
@@ -208,11 +218,12 @@ function ConfigurationTab() {
             AI Identity
           </CardTitle>
           <CardDescription>
-            Define your AI assistant's name and personality
+            Set your AI assistant's name and voice
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <CardContent className="space-y-6">
+          <div className="grid gap-6 sm:grid-cols-2">
+            {/* AI Name */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">AI Name</label>
               <Input
@@ -221,71 +232,138 @@ function ConfigurationTab() {
                 placeholder="e.g., Alex, Sarah, Max"
               />
               <p className="text-xs text-muted-foreground">
-                The name your AI will use when introducing itself
+                The name your AI uses when introducing itself
+              </p>
+            </div>
+
+            {/* Voice Selection */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Voice</label>
+              <Select
+                value={formData.voice_style}
+                onValueChange={(v) => handleChange('voice_style', v as VoiceStyle)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {voiceOptions.map((voice) => (
+                    <SelectItem key={voice.value} value={voice.value}>
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="h-4 w-4 text-muted-foreground" />
+                        <span>{voice.label}</span>
+                        <span className="text-xs text-muted-foreground">- {voice.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The voice used for phone calls
               </p>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Greeting Message</label>
-            <Textarea
-              value={formData.greeting_message}
-              onChange={(e) => handleChange('greeting_message', e.target.value)}
-              placeholder="Hello! Thank you for calling {{business_name}}. I'm {{ai_name}}, how can I help you today?"
-              className="min-h-[80px]"
-            />
-            <p className="text-xs text-muted-foreground">
-              Use {'{{business_name}}'} and {'{{ai_name}}'} as placeholders
-            </p>
+          {/* Voice Preview */}
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+            <Button variant="outline" size="sm" disabled>
+              <Play className="h-4 w-4 mr-2" />
+              Preview Voice
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Voice preview coming soon
+            </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* System Prompt */}
+      {/* Personality */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Wand2 className="h-5 w-5" />
-            System Prompt
+            <Sparkles className="h-5 w-5" />
+            Personality
           </CardTitle>
           <CardDescription>
-            This is the most important setting. It defines how your AI behaves and responds.
+            Define how your AI communicates with callers
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Textarea
-            value={formData.system_prompt}
-            onChange={(e) => handleChange('system_prompt', e.target.value)}
-            placeholder="You are a helpful AI assistant for {{business_name}}. You help customers with scheduling appointments, answering questions about services, and providing excellent customer service. Be professional, friendly, and efficient. Never make up information - if you don't know something, offer to have a human team member follow up..."
-            className="min-h-[200px] font-mono text-sm"
-          />
-          <div className="mt-3 p-3 rounded-lg bg-muted/50 border">
-            <p className="text-sm text-muted-foreground">
-              <strong>Tips:</strong> Be specific about your business, services, and policies.
-              Include guidelines for tone, what to do when unsure, and any important rules.
-            </p>
+        <CardContent className="space-y-6">
+          {/* Personality Style */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Communication Style</label>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {personalityOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleChange('personality_style', option.value)}
+                  className={cn(
+                    'p-4 rounded-lg border text-left transition-all',
+                    formData.personality_style === option.value
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'hover:border-primary/50 hover:bg-muted/50'
+                  )}
+                >
+                  <p className="font-medium">{option.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Response Length */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Response Length</label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {responseLengthOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleChange('response_length', option.value)}
+                  className={cn(
+                    'p-4 rounded-lg border text-left transition-all',
+                    formData.response_length === option.value
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'hover:border-primary/50 hover:bg-muted/50'
+                  )}
+                >
+                  <p className="font-medium">{option.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Fallback Message */}
+      {/* Greeting Message */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
-            Fallback Message
+            Greeting Message
           </CardTitle>
           <CardDescription>
-            What the AI says when it can't answer a question
+            Customize how your AI greets callers
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <Textarea
-            value={formData.fallback_message}
-            onChange={(e) => handleChange('fallback_message', e.target.value)}
-            placeholder="I'm not sure about that. Would you like me to have someone from our team call you back with more information?"
-            className="min-h-[80px]"
+            value={formData.greeting_message}
+            onChange={(e) => handleChange('greeting_message', e.target.value)}
+            placeholder="Hello! Thank you for calling {business_name}. I'm {ai_name}, how can I help you today?"
+            className="min-h-[100px]"
           />
+          <div className="p-3 rounded-lg bg-muted/50 border">
+            <p className="text-sm font-medium mb-1">Available variables:</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="default" size="sm">{'{business_name}'}</Badge>
+              <Badge variant="default" size="sm">{'{ai_name}'}</Badge>
+              <Badge variant="default" size="sm">{'{customer_name}'}</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              These will be automatically replaced with actual values during calls
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -307,114 +385,6 @@ function ConfigurationTab() {
           </Button>
         </motion.div>
       )}
-    </div>
-  );
-}
-
-// Voice Tab
-function VoiceTab() {
-  const { data: roles, isLoading } = useAIRoles();
-  const updateRole = useUpdateAIRole();
-
-  const primaryRole = roles?.find(r => r.is_enabled) || roles?.[0];
-  const [selectedVoice, setSelectedVoice] = useState<AIRole['voice_style']>(
-    primaryRole?.voice_style || 'professional_female'
-  );
-
-  useEffect(() => {
-    if (primaryRole) {
-      setSelectedVoice(primaryRole.voice_style);
-    }
-  }, [primaryRole]);
-
-  const handleVoiceChange = async (voice: AIRole['voice_style']) => {
-    setSelectedVoice(voice);
-    if (primaryRole) {
-      try {
-        await updateRole.mutateAsync({
-          id: primaryRole.id,
-          data: { voice_style: voice as AIRole['voice_style'] },
-        });
-        toast.success('Voice updated');
-      } catch (error) {
-        toast.error('Failed to update voice');
-      }
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-32" />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <Card className="bg-primary/5 border-primary/20">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Volume2 className="h-5 w-5 text-primary mt-0.5" />
-            <div>
-              <p className="font-medium">Voice Selection</p>
-              <p className="text-sm text-muted-foreground">
-                Choose the voice that best represents your brand. This voice will be used for all AI phone calls.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {voiceOptions.map((voice) => (
-          <Card
-            key={voice.value}
-            className={cn(
-              'cursor-pointer transition-all hover:shadow-md',
-              selectedVoice === voice.value
-                ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                : 'hover:border-primary/50'
-            )}
-            onClick={() => handleVoiceChange(voice.value as AIRole['voice_style'])}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-3">
-                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                  <Volume2 className="h-6 w-6 text-white" />
-                </div>
-                {selectedVoice === voice.value && (
-                  <Badge variant="success">Active</Badge>
-                )}
-              </div>
-              <h3 className="font-semibold text-lg">{voice.label}</h3>
-              <p className="text-sm text-muted-foreground mt-1">{voice.description}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Voice Preview</CardTitle>
-          <CardDescription>
-            Listen to how your AI will sound to callers
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-            <Button variant="outline" disabled>
-              <Volume2 className="h-4 w-4 mr-2" />
-              Play Sample
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Voice preview coming soon
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

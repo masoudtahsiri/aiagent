@@ -404,12 +404,32 @@ If the caller switches language, follow their lead naturally."""
     # Tool guidelines removed - Gemini already knows tools via function calling
     
     def _build_behavior_guidelines(self) -> str:
-        """Build behavior guidelines - COMPACT, merged with critical instructions"""
-        return """BEHAVIOR:
+        """Build behavior guidelines - uses personality_style and response_length from config"""
+        # Get personality and response preferences from ai_config
+        personality = self.ai_config.get("personality_style", "friendly")
+        response_length = self.ai_config.get("response_length", "concise")
 
-BE NATURAL: Warm, friendly, professional. Keep responses concise. Match the caller's energy.
+        # Map personality style to behavior description
+        personality_descriptions = {
+            "professional": "Maintain professional, efficient communication. Be polite and business-like.",
+            "friendly": "Be warm, friendly, and conversational. Make the caller feel welcome.",
+            "calm": "Speak calmly and patiently. Take your time and be reassuring.",
+            "energetic": "Be upbeat and enthusiastic. Show genuine excitement to help."
+        }
+        personality_desc = personality_descriptions.get(personality, personality_descriptions["friendly"])
 
-BEFORE USING TOOLS: Always say something first like "Let me check that..." or "One moment..." 
+        # Map response length to instruction
+        length_descriptions = {
+            "concise": "Keep responses brief and to the point.",
+            "detailed": "Provide thorough, detailed responses when helpful."
+        }
+        length_desc = length_descriptions.get(response_length, length_descriptions["concise"])
+
+        return f"""BEHAVIOR:
+
+BE NATURAL: {personality_desc} {length_desc} Match the caller's energy.
+
+BEFORE USING TOOLS: Always say something first like "Let me check that..." or "One moment..."
 Never leave dead silence while looking something up.
 
 CRITICAL RULES:
@@ -434,7 +454,11 @@ def build_greeting(
 ) -> str:
     """
     Build the initial greeting for the call.
-    
+
+    Uses custom greeting_message from ai_config if provided,
+    with variable substitution for {business_name}, {ai_name}, {customer_name}.
+    Falls back to language-specific templates if no custom greeting.
+
     Args:
         business_config: Business configuration
         customer: Customer record (if known)
@@ -442,18 +466,21 @@ def build_greeting(
         language_code: Language code
         is_outbound: Whether outbound call
         outbound_context: Context for outbound calls
-    
+
     Returns:
         Greeting string in the appropriate language
     """
     business_name = business_config.get("business", {}).get("business_name", "")
     ai_name = ai_config.get("name", "") if ai_config else ""
     customer_name = customer.get("first_name", "") if customer else ""
-    
-    # Outbound greetings
+
+    # Check for custom greeting message (for inbound calls)
+    custom_greeting = ai_config.get("greeting_message", "") if ai_config else ""
+
+    # Outbound calls use specific templates (custom greeting is for inbound)
     if is_outbound:
         call_type = outbound_context.get("call_type", "callback") if outbound_context else "callback"
-        
+
         if language_code.startswith("tr"):
             if customer_name:
                 return f"Merhaba, {customer_name} Bey/Hanım ile mi görüşüyorum? Ben {ai_name}, {business_name}'den arıyorum."
@@ -462,33 +489,43 @@ def build_greeting(
             if customer_name:
                 return f"Hello, am I speaking with {customer_name}? This is {ai_name} calling from {business_name}."
             return f"Hello, this is {ai_name} calling from {business_name}."
-    
-    # Inbound greetings
+
+    # Inbound calls - use custom greeting if provided
+    if custom_greeting:
+        # Substitute variables in custom greeting
+        greeting = custom_greeting.replace("{business_name}", business_name)
+        greeting = greeting.replace("{ai_name}", ai_name)
+        greeting = greeting.replace("{customer_name}", customer_name if customer_name else "")
+        # Clean up empty customer name placeholder
+        greeting = greeting.replace("  ", " ").strip()
+        return greeting
+
+    # Fallback to language-specific templates
     if language_code.startswith("tr"):
         if customer_name:
             return f"Merhaba {customer_name}! {business_name}'e hoş geldiniz. Size nasıl yardımcı olabilirim?"
         return f"Merhaba! {business_name}'e hoş geldiniz. Size nasıl yardımcı olabilirim?"
-    
+
     elif language_code.startswith("es"):
         if customer_name:
             return f"¡Hola {customer_name}! Gracias por llamar a {business_name}. ¿En qué puedo ayudarle hoy?"
         return f"¡Hola! Gracias por llamar a {business_name}. ¿En qué puedo ayudarle hoy?"
-    
+
     elif language_code.startswith("de"):
         if customer_name:
             return f"Guten Tag {customer_name}! Willkommen bei {business_name}. Wie kann ich Ihnen helfen?"
         return f"Guten Tag! Willkommen bei {business_name}. Wie kann ich Ihnen helfen?"
-    
+
     elif language_code.startswith("fr"):
         if customer_name:
             return f"Bonjour {customer_name}! Bienvenue chez {business_name}. Comment puis-je vous aider?"
         return f"Bonjour! Bienvenue chez {business_name}. Comment puis-je vous aider?"
-    
+
     elif language_code.startswith("ar"):
         if customer_name:
             return f"مرحبا {customer_name}! أهلاً بكم في {business_name}. كيف يمكنني مساعدتك؟"
         return f"مرحبا! أهلاً بكم في {business_name}. كيف يمكنني مساعدتك؟"
-    
+
     # English default
     if customer_name:
         return f"Hello {customer_name}! Thank you for calling {business_name}. How can I help you today?"
