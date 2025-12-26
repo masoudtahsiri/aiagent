@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bot,
   Volume2,
   BookOpen,
-  Sparkles,
   Save,
   Plus,
   Search,
@@ -98,66 +96,19 @@ const faqCategories = [
   { value: 'location', label: 'Location', color: 'info' },
 ];
 
-const tabs = [
-  { id: 'config', label: 'Configuration', icon: Sparkles },
-  { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
-];
-
 export default function AISetupPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'config';
-
-  const setActiveTab = (tab: string) => {
-    setSearchParams({ tab });
-  };
-
   return (
     <PageContainer
       title="AI Setup"
       description="Configure your AI assistant's personality and knowledge"
     >
-      {/* Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-muted rounded-xl mb-6 w-fit">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              activeTab === tab.id
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-6 items-start">
+        {/* Left Column - AI Configuration */}
+        <ConfigurationTab />
 
-      {/* Tab Content */}
-      <AnimatePresence mode="wait">
-        {activeTab === 'config' && (
-          <motion.div
-            key="config"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <ConfigurationTab />
-          </motion.div>
-        )}
-        {activeTab === 'knowledge' && (
-          <motion.div
-            key="knowledge"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <KnowledgeBaseTab />
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {/* Right Column - Knowledge Base */}
+        <KnowledgeBaseTab />
+      </div>
     </PageContainer>
   );
 }
@@ -295,7 +246,7 @@ function ConfigurationTab() {
   }
 
   return (
-    <div className="space-y-5 max-w-xl">
+    <div className="space-y-5">
       {/* AI Assistant Card */}
       <Card>
         <CardHeader className="pb-4">
@@ -504,191 +455,173 @@ function KnowledgeBaseTab() {
     refetch();
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-full max-w-md" />
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-32 w-full" />
-        ))}
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Info Banner */}
-      <Card className="bg-secondary/5 border-secondary/20">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <BookOpen className="h-5 w-5 text-secondary mt-0.5" />
-            <div>
-              <p className="font-medium">Knowledge Base</p>
-              <p className="text-sm text-muted-foreground">
-                Add FAQs so your AI can answer common questions accurately.
-                The more information you provide, the smarter your AI becomes.
-              </p>
-            </div>
+    <Card className="h-fit">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <BookOpen className="h-5 w-5 text-primary" />
+            Knowledge Base
+          </CardTitle>
+          <Button size="sm" onClick={() => setShowNewModal(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Search & Filter */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search FAQs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Search & Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search FAQs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {faqCategories.map((cat) => (
+                <SelectItem key={cat.value} value={cat.value}>
+                  {cat.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {faqCategories.map((cat) => (
-              <SelectItem key={cat.value} value={cat.value}>
-                {cat.label}
-              </SelectItem>
+
+        {/* Category Pills */}
+        <div className="flex flex-wrap gap-1.5">
+          {faqCategories.map((cat) => {
+            const count = faqList.filter(f => f.category === cat.value).length;
+            if (count === 0) return null;
+            return (
+              <button
+                key={cat.value}
+                onClick={() => setSelectedCategory(cat.value === selectedCategory ? 'all' : cat.value)}
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                  selectedCategory === cat.value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {cat.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+
+        {/* FAQ List */}
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
             ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={() => setShowNewModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add FAQ
-        </Button>
-      </div>
-
-      {/* Category Stats */}
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {faqCategories.map((cat) => {
-          const count = faqList.filter(f => f.category === cat.value).length;
-          return (
-            <button
-              key={cat.value}
-              onClick={() => setSelectedCategory(cat.value === selectedCategory ? 'all' : cat.value)}
-              className={cn(
-                'px-4 py-2 rounded-lg border text-sm font-medium transition-colors shrink-0',
-                selectedCategory === cat.value
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-card hover:bg-muted'
-              )}
-            >
-              {cat.label} ({count})
-            </button>
-          );
-        })}
-      </div>
-
-      {/* FAQ List */}
-      {filteredFAQs.length === 0 ? (
-        <Card className="p-8 text-center">
-          <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-          <h3 className="font-semibold mb-2">
-            {searchQuery ? 'No FAQs found' : 'No FAQs yet'}
-          </h3>
-          <p className="text-muted-foreground mb-4">
-            {searchQuery
-              ? 'Try a different search term'
-              : 'Add your first FAQ to help your AI answer questions'}
-          </p>
-          {!searchQuery && (
-            <Button onClick={() => setShowNewModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add First FAQ
-            </Button>
-          )}
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {Object.entries(groupedFAQs).map(([category, categoryFaqs]) => (
-            <Card key={category}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant={faqCategories.find(c => c.value === category)?.color as any || 'default'}>
-                    {faqCategories.find(c => c.value === category)?.label || category}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">
-                    {categoryFaqs.length} {categoryFaqs.length === 1 ? 'item' : 'items'}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="divide-y divide-border">
-                  {categoryFaqs.map((faq) => (
-                    <div key={faq.id} className="py-3">
-                      <button
-                        onClick={() => toggleExpanded(faq.id)}
-                        className="w-full flex items-start justify-between text-left"
-                      >
-                        <div className="flex items-start gap-3">
-                          {expandedIds.includes(faq.id) ? (
-                            <ChevronDown className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                          ) : (
-                            <ChevronRight className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                          )}
-                          <span className="font-medium">{faq.question}</span>
-                        </div>
-                        <div className="flex items-center gap-2 ml-4">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingFAQ(faq);
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(faq);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </button>
-
-                      <AnimatePresence>
-                        {expandedIds.includes(faq.id) && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="pt-3 pl-8">
-                              <p className="text-muted-foreground">{faq.answer}</p>
-                              {faq.keywords && faq.keywords.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-3">
-                                  {faq.keywords.map((keyword: string) => (
-                                    <Badge key={keyword} variant="default" size="sm">
-                                      {keyword}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+          </div>
+        ) : filteredFAQs.length === 0 ? (
+          <div className="py-8 text-center">
+            <BookOpen className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-sm font-medium mb-1">
+              {searchQuery ? 'No FAQs found' : 'No FAQs yet'}
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              {searchQuery
+                ? 'Try a different search'
+                : 'Add FAQs to help your AI answer questions'}
+            </p>
+            {!searchQuery && (
+              <Button size="sm" variant="outline" onClick={() => setShowNewModal(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add First FAQ
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredFAQs.map((faq) => (
+              <div
+                key={faq.id}
+                className="rounded-lg border bg-muted/30 overflow-hidden"
+              >
+                <button
+                  onClick={() => toggleExpanded(faq.id)}
+                  className="w-full p-3 flex items-start justify-between text-left hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    {expandedIds.includes(faq.id) ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{faq.question}</p>
+                      <Badge variant="secondary" size="sm" className="mt-1">
+                        {faqCategories.find(c => c.value === faq.category)?.label || faq.category}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                  </div>
+                  <div className="flex items-center gap-1 ml-2 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingFAQ(faq);
+                      }}
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(faq);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </button>
+
+                <AnimatePresence>
+                  {expandedIds.includes(faq.id) && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-3 pb-3 pt-0">
+                        <div className="pl-6 pt-2 border-t">
+                          <p className="text-sm text-muted-foreground">{faq.answer}</p>
+                          {faq.keywords && faq.keywords.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {faq.keywords.map((keyword: string) => (
+                                <Badge key={keyword} variant="default" size="sm">
+                                  {keyword}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
 
       {/* New/Edit FAQ Modal */}
       <Dialog
@@ -707,7 +640,7 @@ function KnowledgeBaseTab() {
           <FAQForm faq={editingFAQ} onSuccess={handleSuccess} />
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }
 
