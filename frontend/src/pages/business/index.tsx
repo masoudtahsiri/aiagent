@@ -403,7 +403,7 @@ function BusinessContent() {
       </Card>
 
       {/* Row 2, Col 2 - Services */}
-      <Card className="flex flex-col">
+      <Card className="flex flex-col lg:overflow-hidden">
         <CardHeader className="pb-4 shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -416,7 +416,7 @@ function BusinessContent() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="flex-1 overflow-hidden">
+        <CardContent className="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           {servicesList.length === 0 ? (
             <div className="py-8 text-center">
               <Briefcase className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
@@ -430,7 +430,7 @@ function BusinessContent() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[300px] overflow-y-auto lg:max-h-none">
+            <div className="space-y-2 lg:h-full lg:overflow-y-auto">
               {servicesList.map((service) => (
                 <div
                   key={service.id}
