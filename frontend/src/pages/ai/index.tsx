@@ -102,7 +102,7 @@ export default function AISetupPage() {
       title="AI Setup"
       description="Configure your AI assistant's personality and knowledge"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-320px)] min-h-[400px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:h-[calc(100vh-320px)] lg:min-h-[400px]">
         {/* Left Column - AI Configuration (50%) */}
         <ConfigurationTab />
 
@@ -246,10 +246,10 @@ function ConfigurationTab() {
   }
 
   return (
-    <div className="flex flex-col gap-5 h-full overflow-hidden">
+    <div className="flex flex-col gap-5 lg:h-full lg:overflow-hidden">
       {/* AI Assistant Card */}
-      <Card className="flex-1 overflow-hidden">
-        <CardHeader className="pb-4 shrink-0">
+      <Card className="lg:flex-1 lg:overflow-hidden">
+        <CardHeader className="pb-4 lg:shrink-0">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Bot className="h-5 w-5 text-primary" />
             AI Assistant
@@ -257,8 +257,8 @@ function ConfigurationTab() {
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Name & Voice Row */}
-          <div className="flex gap-4">
-            <div className="space-y-1.5 flex-1">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="space-y-1.5 sm:flex-1">
               <label className="text-sm font-medium text-muted-foreground">Name</label>
               <Input
                 value={formData.ai_name}
@@ -266,7 +266,7 @@ function ConfigurationTab() {
                 placeholder="Alex"
               />
             </div>
-            <div className="space-y-1.5 flex-1">
+            <div className="space-y-1.5 sm:flex-1">
               <label className="text-sm font-medium text-muted-foreground">Voice</label>
               <div className="flex gap-1.5">
                 <Select
@@ -307,7 +307,7 @@ function ConfigurationTab() {
           {/* Communication Style */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">Style</label>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               {personalityOptions.map((option) => (
                 <button
                   key={option.value}
@@ -456,7 +456,7 @@ function KnowledgeBaseTab() {
   };
 
   return (
-    <Card className="h-full flex flex-col overflow-hidden">
+    <Card className="flex flex-col overflow-hidden max-h-[500px] lg:max-h-none lg:h-full">
       <CardHeader className="pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
