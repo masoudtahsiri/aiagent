@@ -12,22 +12,15 @@ const ForgotPasswordPage = lazy(() => import('@/pages/auth/forgot-password'));
 // Onboarding
 const OnboardingPage = lazy(() => import('@/pages/onboarding'));
 
-// Main app pages
-const DashboardPage = lazy(() => import('@/pages/dashboard'));
-const AppointmentsPage = lazy(() => import('@/pages/appointments'));
+// Main app pages - New structure
+const OverviewPage = lazy(() => import('@/pages/dashboard'));
+const AISetupPage = lazy(() => import('@/pages/ai'));
+const BusinessPage = lazy(() => import('@/pages/business'));
+const TeamPage = lazy(() => import('@/pages/team'));
 const CustomersPage = lazy(() => import('@/pages/customers'));
 const CustomerDetailPage = lazy(() => import('@/pages/customers/detail'));
-const StaffPage = lazy(() => import('@/pages/staff'));
-const StaffDetailPage = lazy(() => import('@/pages/staff/detail'));
-const ServicesPage = lazy(() => import('@/pages/services'));
-const CallsPage = lazy(() => import('@/pages/calls'));
-const AIConfigPage = lazy(() => import('@/pages/ai-config'));
-const AIRolesPage = lazy(() => import('@/pages/ai-config/roles'));
-const KnowledgeBasePage = lazy(() => import('@/pages/ai-config/knowledge'));
-const MessagingPage = lazy(() => import('@/pages/messaging'));
+const ActivityPage = lazy(() => import('@/pages/activity'));
 const SettingsPage = lazy(() => import('@/pages/settings'));
-const IntegrationsPage = lazy(() => import('@/pages/integrations'));
-const BusinessHoursPage = lazy(() => import('@/pages/hours'));
 
 // Error pages
 const NotFoundPage = lazy(() => import('@/pages/errors/not-found'));
@@ -46,24 +39,30 @@ export function AppRoutes() {
           <Route path="/onboarding" element={<OnboardingPage />} />
         </Route>
 
-        {/* Protected routes */}
+        {/* Protected routes - New structure */}
         <Route element={<AuthGuard />}>
           <Route element={<AppShell />}>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/appointments" element={<AppointmentsPage />} />
+            {/* Main navigation */}
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/ai" element={<AISetupPage />} />
+            <Route path="/business" element={<BusinessPage />} />
+            <Route path="/team" element={<TeamPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
-            <Route path="/staff" element={<StaffPage />} />
-            <Route path="/staff/:id" element={<StaffDetailPage />} />
-            <Route path="/services" element={<ServicesPage />} />
-            <Route path="/calls" element={<CallsPage />} />
-            <Route path="/ai-config" element={<AIConfigPage />} />
-            <Route path="/ai-config/roles" element={<AIRolesPage />} />
-            <Route path="/ai-config/knowledge" element={<KnowledgeBasePage />} />
-            <Route path="/messaging" element={<MessagingPage />} />
-            <Route path="/integrations" element={<IntegrationsPage />} />
-            <Route path="/hours" element={<BusinessHoursPage />} />
+            <Route path="/activity" element={<ActivityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Redirects from old routes */}
+            <Route path="/ai-config" element={<Navigate to="/ai" replace />} />
+            <Route path="/ai-config/*" element={<Navigate to="/ai" replace />} />
+            <Route path="/staff" element={<Navigate to="/team" replace />} />
+            <Route path="/staff/*" element={<Navigate to="/team" replace />} />
+            <Route path="/services" element={<Navigate to="/business?tab=services" replace />} />
+            <Route path="/hours" element={<Navigate to="/business?tab=hours" replace />} />
+            <Route path="/calls" element={<Navigate to="/activity?tab=calls" replace />} />
+            <Route path="/appointments" element={<Navigate to="/activity?tab=appointments" replace />} />
+            <Route path="/integrations" element={<Navigate to="/settings" replace />} />
+            <Route path="/messaging" element={<Navigate to="/settings" replace />} />
           </Route>
         </Route>
 
