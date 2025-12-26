@@ -229,7 +229,7 @@ function ConfigurationTab() {
     }
   };
 
-  const handleVoicePreview = async () => {
+  const playPreview = async (text: string) => {
     // Stop any currently playing audio
     if (audioRef.current) {
       audioRef.current.pause();
@@ -241,13 +241,10 @@ function ConfigurationTab() {
       return;
     }
 
-    const previewText = formData.greeting_message ||
-      `Hello! Thank you for calling. I'm ${formData.ai_name}, how can I help you today?`;
-
     try {
       const response = await voicePreview.mutateAsync({
         voice: formData.voice_style,
-        text: previewText,
+        text,
       });
 
       // Create audio from base64
@@ -274,6 +271,17 @@ function ConfigurationTab() {
       toast.error('Failed to generate voice preview');
       setIsPreviewPlaying(false);
     }
+  };
+
+  const handleVoiceSample = () => {
+    const sampleText = `Hello! This is a sample of the ${formData.voice_style} voice. How can I assist you today?`;
+    playPreview(sampleText);
+  };
+
+  const handleGreetingPreview = () => {
+    const greetingText = formData.greeting_message ||
+      `Hello! Thank you for calling. I'm ${formData.ai_name}, how can I help you today?`;
+    playPreview(greetingText);
   };
 
   if (isLoading) {
@@ -317,55 +325,46 @@ function ConfigurationTab() {
             {/* Voice Selection */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Voice</label>
-              <Select
-                value={formData.voice_style}
-                onValueChange={(v) => handleChange('voice_style', v as VoiceStyle)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {voiceOptions.map((voice) => (
-                    <SelectItem key={voice.value} value={voice.value}>
-                      <div className="flex items-center gap-2">
-                        <Volume2 className="h-4 w-4 text-muted-foreground" />
-                        <span>{voice.label}</span>
-                        <span className="text-xs text-muted-foreground">- {voice.description}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.voice_style}
+                  onValueChange={(v) => handleChange('voice_style', v as VoiceStyle)}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {voiceOptions.map((voice) => (
+                      <SelectItem key={voice.value} value={voice.value}>
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="h-4 w-4 text-muted-foreground" />
+                          <span>{voice.label}</span>
+                          <span className="text-xs text-muted-foreground">- {voice.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleVoiceSample}
+                  disabled={voicePreview.isPending}
+                  title="Preview voice"
+                >
+                  {voicePreview.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isPreviewPlaying ? (
+                    <Square className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 The voice used for phone calls
               </p>
             </div>
-          </div>
-
-          {/* Voice Preview */}
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleVoicePreview}
-              disabled={voicePreview.isPending}
-            >
-              {voicePreview.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : isPreviewPlaying ? (
-                <Square className="h-4 w-4 mr-2" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              {voicePreview.isPending ? 'Generating...' : isPreviewPlaying ? 'Stop' : 'Preview Voice'}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {voicePreview.isPending
-                ? 'Generating audio with Gemini TTS...'
-                : isPreviewPlaying
-                  ? 'Playing preview...'
-                  : 'Hear how your AI will sound'}
-            </span>
           </div>
         </CardContent>
       </Card>
@@ -439,44 +438,33 @@ function ConfigurationTab() {
             Customize how your AI greets callers
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            value={formData.greeting_message}
-            onChange={(e) => handleChange('greeting_message', e.target.value)}
-            placeholder="Hello! Thank you for calling {business_name}. I'm {ai_name}, how can I help you today?"
-            className="min-h-[100px]"
-          />
-          <div className="flex items-center gap-3">
+        <CardContent className="space-y-2">
+          <div className="flex gap-2">
+            <Input
+              value={formData.greeting_message}
+              onChange={(e) => handleChange('greeting_message', e.target.value)}
+              placeholder="Hello! Thank you for calling. I'm Alex, how can I help you today?"
+              className="flex-1"
+            />
             <Button
               variant="outline"
-              size="sm"
-              onClick={handleVoicePreview}
+              size="icon"
+              onClick={handleGreetingPreview}
               disabled={voicePreview.isPending}
+              title="Preview greeting"
             >
               {voicePreview.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : isPreviewPlaying ? (
-                <Square className="h-4 w-4 mr-2" />
+                <Square className="h-4 w-4" />
               ) : (
-                <Volume2 className="h-4 w-4 mr-2" />
+                <Play className="h-4 w-4" />
               )}
-              {voicePreview.isPending ? 'Generating...' : isPreviewPlaying ? 'Stop' : 'Preview Greeting'}
             </Button>
-            <span className="text-xs text-muted-foreground">
-              Hear how your greeting sounds with the selected voice
-            </span>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50 border">
-            <p className="text-sm font-medium mb-1">Available variables:</p>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="default" size="sm">{'{business_name}'}</Badge>
-              <Badge variant="default" size="sm">{'{ai_name}'}</Badge>
-              <Badge variant="default" size="sm">{'{customer_name}'}</Badge>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              These will be automatically replaced with actual values during calls
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            The first thing your AI says when answering a call
+          </p>
         </CardContent>
       </Card>
 
