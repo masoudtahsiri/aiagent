@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthToken(response.access_token);
       queryClient.setQueryData(['auth', 'me'], response.user);
       toast.success('Account created!', {
-        description: 'Welcome to AI Receptionist',
+        description: 'Welcome to Algority',
       });
     },
     onError: (error: Error) => {

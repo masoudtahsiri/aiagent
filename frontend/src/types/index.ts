@@ -211,7 +211,7 @@ export interface CallLogWithDetails extends CallLog {
 }
 
 // AI config types
-export type AIRoleType = 'receptionist' | 'sales' | 'support' | 'billing' | 'marketing';
+export type AIRoleType = 'assistant' | 'receptionist' | 'sales' | 'support' | 'billing' | 'marketing';
 export type VoiceStyle = 'professional_female' | 'friendly_female' | 'professional_male' | 'friendly_male' | 'neutral';
 
 export interface AIRole {

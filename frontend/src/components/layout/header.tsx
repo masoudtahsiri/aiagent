@@ -1,18 +1,20 @@
 import { Menu, Search, Bell, Moon, Sun, User, LogOut, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/components/shared/theme-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/ui/avatar';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger 
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { useIsMobile } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/features/auth/auth-provider';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -22,6 +24,13 @@ interface HeaderProps {
 export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const isMobile = useIsMobile();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <header 
@@ -92,27 +101,27 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
-                <Avatar name="John Doe" size="sm" />
+                <Avatar name={user?.full_name || 'User'} size="sm" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium">John Doe</p>
-                  <p className="text-xs text-muted-foreground">john@example.com</p>
+                  <p className="text-sm font-medium">{user?.full_name || 'User'}</p>
+                  <p className="text-xs text-muted-foreground">{user?.email || ''}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/settings')}>
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/settings')}>
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-error-600">
+              <DropdownMenuItem className="text-error-600" onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Log out
               </DropdownMenuItem>

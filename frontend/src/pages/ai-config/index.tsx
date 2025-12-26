@@ -45,7 +45,7 @@ export default function AIConfigPage() {
   return (
     <PageContainer
       title="AI Configuration"
-      description="Customize how your AI receptionist behaves and responds"
+      description="Customize how your AI assistant behaves and responds"
     >
       {/* AI Status */}
       <div className="mb-8">

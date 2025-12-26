@@ -61,18 +61,18 @@ export default function LoginPage() {
         <div className="relative z-10 space-y-8">
           <div>
             <h1 className="text-4xl font-bold text-white font-display mb-4">
-              Your AI-powered receptionist that never sleeps
+              AI-powered communication for every business
             </h1>
             <p className="text-xl text-white/80">
-              Handle calls, book appointments, and delight customers 24/7
+              Handle calls, manage conversations, and delight customers 24/7
             </p>
           </div>
 
           <div className="space-y-3">
             {[
               '24/7 AI-powered call handling',
-              'Smart appointment scheduling',
-              'Customer memory & preferences',
+              'Smart scheduling & booking',
+              'Customer insights & memory',
               'Multi-language support',
             ].map((feature, i) => (
               <motion.div
@@ -95,7 +95,7 @@ export default function LoginPage() {
 
         <div className="relative z-10">
           <p className="text-white/60 text-sm">
-            © 2025 AI Receptionist. All rights reserved.
+            © 2025 Algority. All rights reserved.
           </p>
         </div>
       </div>

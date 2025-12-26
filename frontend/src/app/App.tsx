@@ -18,7 +18,7 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="light" storageKey="ai-receptionist-theme">
+      <ThemeProvider defaultTheme="light" storageKey="algority-theme">
         <BrowserRouter>
           <AuthProvider>
             <AppRoutes />

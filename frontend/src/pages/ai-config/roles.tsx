@@ -23,11 +23,12 @@ import { useAIRoles, useCreateAIRole, useUpdateAIRole, useDeleteAIRole } from '@
 import type { AIRole } from '@/types';
 
 const roleTypes = [
-  { value: 'receptionist', label: 'Receptionist', color: 'primary' },
+  { value: 'assistant', label: 'Assistant', color: 'primary' },
   { value: 'sales', label: 'Sales', color: 'success' },
   { value: 'support', label: 'Support', color: 'secondary' },
   { value: 'billing', label: 'Billing', color: 'warning' },
   { value: 'marketing', label: 'Marketing', color: 'info' },
+  { value: 'receptionist', label: 'Receptionist', color: 'default' },
 ];
 
 const voiceStyles = [
@@ -232,7 +233,7 @@ export default function AIRolesPage() {
 function RoleForm({ role, onSuccess }: { role?: AIRole | null; onSuccess: () => void }) {
   const [formData, setFormData] = useState({
     ai_name: '',
-    role_type: 'receptionist' as AIRole['role_type'],
+    role_type: 'assistant' as AIRole['role_type'],
     voice_style: 'professional_female' as AIRole['voice_style'],
     greeting_message: '',
     system_prompt: '',

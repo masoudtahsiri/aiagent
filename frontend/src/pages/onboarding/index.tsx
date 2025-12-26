@@ -365,10 +365,10 @@ export default function OnboardingPage() {
         // Create AI role
         await post('/api/ai/roles', {
           business_id: businessId,
-          role_type: 'receptionist',
+          role_type: 'assistant',
           ai_name: formData.ai_name,
           voice_style: formData.voice_style,
-          system_prompt: `You are ${formData.ai_name}, a professional AI receptionist for ${formData.business_name}. You help customers schedule appointments, answer questions, and provide excellent service.`,
+          system_prompt: `You are ${formData.ai_name}, a professional AI assistant for ${formData.business_name}. You help customers schedule appointments, answer questions, and provide excellent service.`,
           greeting_message: formData.greeting_message,
           is_enabled: true,
         });
@@ -408,7 +408,7 @@ export default function OnboardingPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <Logo size="lg" />
-          <h1 className="mt-6 text-2xl font-bold font-display">Let's set up your AI receptionist</h1>
+          <h1 className="mt-6 text-2xl font-bold font-display">Let's set up your AI assistant</h1>
           <p className="text-muted-foreground mt-2">This will only take a few minutes</p>
         </div>
 
@@ -480,7 +480,7 @@ export default function OnboardingPage() {
             ) : (
               <Button onClick={handleComplete} loading={isLoading}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Launch My AI Receptionist
+                Launch My AI Assistant
               </Button>
             )}
           </div>
@@ -767,7 +767,7 @@ function AISetupStep({ control, watch }: { control: any; watch: any }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold font-display">Configure your AI</h2>
-        <p className="text-muted-foreground mt-1">Choose how your AI receptionist sounds and behaves</p>
+        <p className="text-muted-foreground mt-1">Choose how your AI assistant sounds and behaves</p>
       </div>
 
       <div className="space-y-4">
@@ -845,7 +845,7 @@ function CompleteStep() {
 
       <h2 className="text-2xl font-bold font-display mb-2">You're all set!</h2>
       <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-        Your AI receptionist is ready to start taking calls. Here's what happens next:
+        Your AI assistant is ready to start taking calls. Here's what happens next:
       </p>
 
       <div className="grid gap-4 sm:grid-cols-3 text-left max-w-2xl mx-auto">

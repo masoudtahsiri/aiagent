@@ -89,7 +89,7 @@ export function Logo({ size = 'default', variant = 'default', collapsed = false 
           textSizes[size],
           variant === 'white' ? 'text-white' : 'text-foreground'
         )}>
-          Recept<span className="text-primary">.</span>AI
+          Algor<span className="text-primary">ity</span>
         </span>
       )}
     </div>
