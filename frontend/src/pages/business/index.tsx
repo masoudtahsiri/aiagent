@@ -1,38 +1,24 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Building2,
   Clock,
   Briefcase,
   Save,
   Plus,
-  MoreHorizontal,
   Edit,
   Trash2,
-  Check,
-  X,
-  AlertCircle,
   MapPin,
-  Phone,
-  Globe,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea, Switch } from '@/components/ui/form-elements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatDuration } from '@/lib/utils/format';
 import {
@@ -47,10 +33,6 @@ import {
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours, Service } from '@/types';
 
-const tabs = [
-  { id: 'profile', label: 'Profile', icon: Building2 },
-  { id: 'services', label: 'Services', icon: Briefcase },
-];
 
 const timezones = [
   { value: 'America/New_York', label: 'Eastern Time (ET)' },
@@ -85,70 +67,26 @@ const serviceCategories = [
 ];
 
 export default function BusinessPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'profile';
-
-  const setActiveTab = (tab: string) => {
-    setSearchParams({ tab });
-  };
-
   return (
     <PageContainer
       title="Business"
       description="Manage your business profile, hours, and services"
     >
-      {/* Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-muted rounded-xl mb-6 w-fit">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              activeTab === tab.id
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      <AnimatePresence mode="wait">
-        {activeTab === 'profile' && (
-          <motion.div
-            key="profile"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <ProfileTab />
-          </motion.div>
-        )}
-        {activeTab === 'services' && (
-          <motion.div
-            key="services"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <ServicesTab />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <BusinessContent />
     </PageContainer>
   );
 }
 
-// Profile Tab - Two column layout with Hours below
-function ProfileTab() {
+// Business Content - 2x2 Grid Layout
+function BusinessContent() {
   const { data: business, isLoading: businessLoading, refetch: refetchBusiness } = useBusiness();
   const updateBusiness = useUpdateBusiness();
   const { data: hoursData, isLoading: hoursLoading, refetch: refetchHours } = useBusinessHours();
   const updateHours = useUpdateBusinessHours();
+  const { data: servicesResponse, isLoading: servicesLoading, refetch: refetchServices } = useServices();
+  const createService = useCreateService();
+  const updateService = useUpdateService();
+  const deleteService = useDeleteService();
 
   const [formData, setFormData] = useState<Partial<Business>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -157,6 +95,11 @@ function ProfileTab() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const [schedule, setSchedule] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
   const [hoursHasChanges, setHoursHasChanges] = useState(false);
+
+  // Services state
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const servicesList = servicesResponse?.data || [];
 
   useEffect(() => {
     if (business) {
@@ -221,14 +164,12 @@ function ProfileTab() {
 
   const handleSave = async () => {
     try {
-      // Save business profile
       if (hasChanges) {
         await updateBusiness.mutateAsync(formData);
         setHasChanges(false);
         refetchBusiness();
       }
 
-      // Save hours
       if (hoursHasChanges) {
         const hoursArray = Object.entries(schedule).map(([day, data]) => ({
           day_of_week: parseInt(day),
@@ -262,207 +203,275 @@ function ProfileTab() {
     toast.success('Applied Monday schedule to all weekdays');
   };
 
-  if (businessLoading || hoursLoading) {
+  const handleDeleteService = async (service: Service) => {
+    if (!confirm(`Delete ${service.name}?`)) return;
+    try {
+      await deleteService.mutateAsync(service.id);
+      toast.success('Service deleted');
+      refetchServices();
+    } catch (error) {
+      toast.error('Failed to delete service');
+    }
+  };
+
+  const handleServiceSuccess = () => {
+    setShowServiceModal(false);
+    setEditingService(null);
+    refetchServices();
+  };
+
+  if (businessLoading || hoursLoading || servicesLoading) {
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-        <Skeleton className="h-96 w-full" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-80 w-full" />
+        <Skeleton className="h-80 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Two Column Layout - Business Identity & Location */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Business Identity */}
-        <Card className="h-full">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Building2 className="h-5 w-5 text-primary" />
-              Business Identity
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Business Name</label>
-              <Input
-                value={formData.business_name || ''}
-                onChange={(e) => handleChange('business_name', e.target.value)}
-                placeholder="Your business name"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Industry</label>
-              <Select
-                value={formData.industry || 'other'}
-                onValueChange={(v) => handleChange('industry', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {industries.map((ind) => (
-                    <SelectItem key={ind.value} value={ind.value}>
-                      {ind.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
-              <Input
-                type="tel"
-                value={formData.phone_number || ''}
-                onChange={(e) => handleChange('phone_number', e.target.value)}
-                placeholder="+1 (555) 000-0000"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Location */}
-        <Card className="h-full">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <MapPin className="h-5 w-5 text-primary" />
-              Location
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Street Address</label>
-              <Input
-                value={formData.address || ''}
-                onChange={(e) => handleChange('address', e.target.value)}
-                placeholder="123 Main Street"
-              />
-            </div>
-            <div className="grid gap-4 grid-cols-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-muted-foreground">City</label>
-                <Input
-                  value={formData.city || ''}
-                  onChange={(e) => handleChange('city', e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-muted-foreground">State</label>
-                <Input
-                  value={formData.state || ''}
-                  onChange={(e) => handleChange('state', e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-muted-foreground">ZIP</label>
-                <Input
-                  value={formData.zip_code || ''}
-                  onChange={(e) => handleChange('zip_code', e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Timezone</label>
-              <Select
-                value={formData.timezone || 'America/New_York'}
-                onValueChange={(v) => handleChange('timezone', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {timezones.map((tz) => (
-                    <SelectItem key={tz.value} value={tz.value}>
-                      {tz.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Business Hours Section */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Row 1, Col 1 - Business Identity */}
       <Card>
         <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Building2 className="h-5 w-5 text-primary" />
+            Business Identity
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-muted-foreground">Business Name</label>
+            <Input
+              value={formData.business_name || ''}
+              onChange={(e) => handleChange('business_name', e.target.value)}
+              placeholder="Your business name"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-muted-foreground">Industry</label>
+            <Select
+              value={formData.industry || 'other'}
+              onValueChange={(v) => handleChange('industry', v)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {industries.map((ind) => (
+                  <SelectItem key={ind.value} value={ind.value}>
+                    {ind.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
+            <Input
+              type="tel"
+              value={formData.phone_number || ''}
+              onChange={(e) => handleChange('phone_number', e.target.value)}
+              placeholder="+1 (555) 000-0000"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Row 1, Col 2 - Location */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <MapPin className="h-5 w-5 text-primary" />
+            Location
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-muted-foreground">Street Address</label>
+            <Input
+              value={formData.address || ''}
+              onChange={(e) => handleChange('address', e.target.value)}
+              placeholder="123 Main Street"
+            />
+          </div>
+          <div className="grid gap-4 grid-cols-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">City</label>
+              <Input
+                value={formData.city || ''}
+                onChange={(e) => handleChange('city', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">State</label>
+              <Input
+                value={formData.state || ''}
+                onChange={(e) => handleChange('state', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">ZIP</label>
+              <Input
+                value={formData.zip_code || ''}
+                onChange={(e) => handleChange('zip_code', e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-muted-foreground">Timezone</label>
+            <Select
+              value={formData.timezone || 'America/New_York'}
+              onValueChange={(v) => handleChange('timezone', v)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {timezones.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Row 2, Col 1 - Business Hours */}
+      <Card className="flex flex-col">
+        <CardHeader className="pb-4 shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Clock className="h-5 w-5 text-primary" />
               Business Hours
             </CardTitle>
             <Button variant="outline" size="sm" onClick={applyToWeekdays}>
-              Apply Monday to Weekdays
+              Copy Mon
             </Button>
           </div>
-          <CardDescription>
-            Your AI assistant will handle calls during these hours
-          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
+        <CardContent className="flex-1">
+          <div className="space-y-1.5">
             {days.map((day, index) => (
               <div
                 key={day}
                 className={cn(
-                  'flex items-center gap-4 p-3 rounded-lg border transition-colors',
+                  'flex items-center gap-3 p-2 rounded-lg border transition-colors',
                   schedule[index]?.is_open
                     ? 'bg-card border-border'
                     : 'bg-muted/50 border-border'
                 )}
               >
-                <div className="flex items-center gap-3 w-32">
-                  <Switch
-                    checked={schedule[index]?.is_open ?? index < 5}
-                    onCheckedChange={() => handleToggleDay(index)}
-                  />
-                  <span className={cn(
-                    'font-medium text-sm',
-                    !schedule[index]?.is_open && 'text-muted-foreground'
-                  )}>
-                    {day.slice(0, 3)}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 w-20">
-                  {schedule[index]?.is_open ? (
-                    <span className="flex items-center gap-1 text-xs text-success-600 dark:text-success-400">
-                      <Check className="h-3.5 w-3.5" />
-                      Open
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <X className="h-3.5 w-3.5" />
-                      Closed
-                    </span>
-                  )}
-                </div>
-
-                <div className={cn(
-                  'flex items-center gap-2 flex-1',
-                  !schedule[index]?.is_open && 'opacity-50 pointer-events-none'
+                <Switch
+                  checked={schedule[index]?.is_open ?? index < 5}
+                  onCheckedChange={() => handleToggleDay(index)}
+                />
+                <span className={cn(
+                  'font-medium text-sm w-10',
+                  !schedule[index]?.is_open && 'text-muted-foreground'
                 )}>
-                  <Input
-                    type="time"
-                    value={schedule[index]?.open_time || '09:00'}
-                    onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                    className="w-28"
-                  />
-                  <span className="text-muted-foreground text-sm">to</span>
-                  <Input
-                    type="time"
-                    value={schedule[index]?.close_time || '17:00'}
-                    onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                    className="w-28"
-                  />
-                </div>
+                  {day.slice(0, 3)}
+                </span>
+
+                {schedule[index]?.is_open ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      type="time"
+                      value={schedule[index]?.open_time || '09:00'}
+                      onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
+                      className="w-24 h-8 text-xs"
+                    />
+                    <span className="text-muted-foreground text-xs">-</span>
+                    <Input
+                      type="time"
+                      value={schedule[index]?.close_time || '17:00'}
+                      onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
+                      className="w-24 h-8 text-xs"
+                    />
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Closed</span>
+                )}
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Row 2, Col 2 - Services */}
+      <Card className="flex flex-col">
+        <CardHeader className="pb-4 shrink-0">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Briefcase className="h-5 w-5 text-primary" />
+              Services
+            </CardTitle>
+            <Button size="sm" onClick={() => setShowServiceModal(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="flex-1 overflow-hidden">
+          {servicesList.length === 0 ? (
+            <div className="py-8 text-center">
+              <Briefcase className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm font-medium mb-1">No services yet</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Add services for booking
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setShowServiceModal(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add Service
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto lg:max-h-none">
+              {servicesList.map((service) => (
+                <div
+                  key={service.id}
+                  className={cn(
+                    'flex items-center justify-between p-3 rounded-lg border',
+                    !service.is_active && 'opacity-60'
+                  )}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{service.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDuration(service.duration_minutes)}
+                      </span>
+                      {service.price != null && service.price > 0 && (
+                        <span className="text-xs font-medium">
+                          {formatCurrency(service.price)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setEditingService(service)}
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleDeleteService(service)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -484,223 +493,24 @@ function ProfileTab() {
           </Button>
         </motion.div>
       )}
-    </div>
-  );
-}
 
-// Services Tab
-function ServicesTab() {
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-
-  const { data: servicesResponse, isLoading, refetch } = useServices();
-  const updateService = useUpdateService();
-  const deleteService = useDeleteService();
-
-  const servicesList = servicesResponse?.data || [];
-
-  const filteredServices = selectedCategory === 'all'
-    ? servicesList
-    : servicesList.filter(s => s.category === selectedCategory);
-
-  const handleToggleActive = async (service: Service) => {
-    try {
-      await updateService.mutateAsync({
-        id: service.id,
-        data: { is_active: !service.is_active }
-      });
-      toast.success(`${service.name} ${service.is_active ? 'deactivated' : 'activated'}`);
-      refetch();
-    } catch (error) {
-      toast.error('Failed to update service');
-    }
-  };
-
-  const handleDelete = async (service: Service) => {
-    if (!confirm(`Delete ${service.name}?`)) return;
-    try {
-      await deleteService.mutateAsync(service.id);
-      toast.success('Service deleted');
-      refetch();
-    } catch (error) {
-      toast.error('Failed to delete service');
-    }
-  };
-
-  const handleSuccess = () => {
-    setShowNewModal(false);
-    setEditingService(null);
-    refetch();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <Skeleton key={i} className="h-48 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Info Banner */}
-      <Card className="bg-secondary/5 border-secondary/20">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Briefcase className="h-5 w-5 text-secondary mt-0.5" />
-            <div>
-              <p className="font-medium">Services</p>
-              <p className="text-sm text-muted-foreground">
-                Define the services your business offers. The AI will use this information
-                to help customers book appointments.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Category Filter + Add Button */}
-      <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          <Button
-            variant={selectedCategory === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedCategory('all')}
-          >
-            All ({servicesList.length})
-          </Button>
-          {serviceCategories.map((cat) => {
-            const count = servicesList.filter(s => s.category === cat.value).length;
-            if (count === 0 && selectedCategory !== cat.value) return null;
-            return (
-              <Button
-                key={cat.value}
-                variant={selectedCategory === cat.value ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedCategory(cat.value)}
-              >
-                {cat.label} ({count})
-              </Button>
-            );
-          })}
-        </div>
-        <Button onClick={() => setShowNewModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Service
-        </Button>
-      </div>
-
-      {/* Services Grid */}
-      {filteredServices.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Briefcase className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-          <h3 className="font-semibold mb-2">No services yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Add services so your AI knows what customers can book
-          </p>
-          <Button onClick={() => setShowNewModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add First Service
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredServices.map((service, i) => (
-            <motion.div
-              key={service.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Card className={cn('h-full', !service.is_active && 'opacity-60')}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h4 className="font-semibold">{service.name}</h4>
-                      {service.description && (
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                          {service.description}
-                        </p>
-                      )}
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditingService(service)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleToggleActive(service)}>
-                          {service.is_active ? 'Deactivate' : 'Activate'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(service)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className="flex items-center gap-4 mt-4">
-                    <div className="flex items-center gap-1.5 text-sm">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>{formatDuration(service.duration_minutes)}</span>
-                    </div>
-                    {service.price != null && service.price > 0 && (
-                      <div className="text-sm font-medium">
-                        {formatCurrency(service.price)}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                    <Badge
-                      variant={serviceCategories.find(c => c.value === service.category)?.color as any || 'default'}
-                      size="sm"
-                    >
-                      {serviceCategories.find(c => c.value === service.category)?.label || 'General'}
-                    </Badge>
-                    <Badge
-                      variant={service.is_active ? 'success' : 'default'}
-                      size="sm"
-                    >
-                      {service.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-      )}
-
-      {/* New/Edit Service Modal */}
+      {/* Service Modal */}
       <Dialog
-        open={showNewModal || !!editingService}
+        open={showServiceModal || !!editingService}
         onOpenChange={(open) => {
           if (!open) {
-            setShowNewModal(false);
+            setShowServiceModal(false);
             setEditingService(null);
           }
         }}
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingService ? 'Edit Service' : 'Add New Service'}</DialogTitle>
+            <DialogTitle>{editingService ? 'Edit Service' : 'Add Service'}</DialogTitle>
           </DialogHeader>
           <ServiceForm
             service={editingService}
-            onSuccess={handleSuccess}
+            onSuccess={handleServiceSuccess}
           />
         </DialogContent>
       </Dialog>
