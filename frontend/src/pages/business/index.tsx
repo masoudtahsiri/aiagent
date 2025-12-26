@@ -49,7 +49,6 @@ import type { Business, BusinessHours, Service } from '@/types';
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: Building2 },
-  { id: 'hours', label: 'Hours', icon: Clock },
   { id: 'services', label: 'Services', icon: Briefcase },
 ];
 
@@ -129,16 +128,6 @@ export default function BusinessPage() {
             <ProfileTab />
           </motion.div>
         )}
-        {activeTab === 'hours' && (
-          <motion.div
-            key="hours"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <HoursTab />
-          </motion.div>
-        )}
         {activeTab === 'services' && (
           <motion.div
             key="services"
@@ -154,12 +143,20 @@ export default function BusinessPage() {
   );
 }
 
-// Profile Tab
+// Profile Tab - Two column layout with Hours below
 function ProfileTab() {
-  const { data: business, isLoading, refetch } = useBusiness();
+  const { data: business, isLoading: businessLoading, refetch: refetchBusiness } = useBusiness();
   const updateBusiness = useUpdateBusiness();
+  const { data: hoursData, isLoading: hoursLoading, refetch: refetchHours } = useBusinessHours();
+  const updateHours = useUpdateBusinessHours();
+
   const [formData, setFormData] = useState<Partial<Business>>({});
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Hours state
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const [schedule, setSchedule] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
+  const [hoursHasChanges, setHoursHasChanges] = useState(false);
 
   useEffect(() => {
     if (business) {
@@ -178,48 +175,120 @@ function ProfileTab() {
     }
   }, [business]);
 
+  useEffect(() => {
+    if (hoursData) {
+      const hoursMap: Record<number, { is_open: boolean; open_time: string; close_time: string }> = {};
+      hoursData.forEach(h => {
+        hoursMap[h.day_of_week] = {
+          is_open: h.is_open !== false,
+          open_time: h.open_time?.slice(0, 5) || '09:00',
+          close_time: h.close_time?.slice(0, 5) || '17:00',
+        };
+      });
+      for (let i = 0; i < 7; i++) {
+        if (!hoursMap[i]) {
+          hoursMap[i] = {
+            is_open: i < 5,
+            open_time: '09:00',
+            close_time: '17:00',
+          };
+        }
+      }
+      setSchedule(hoursMap);
+    }
+  }, [hoursData]);
+
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setHasChanges(true);
   };
 
+  const handleToggleDay = (dayIndex: number) => {
+    setSchedule(prev => ({
+      ...prev,
+      [dayIndex]: { ...prev[dayIndex], is_open: !prev[dayIndex]?.is_open },
+    }));
+    setHoursHasChanges(true);
+  };
+
+  const handleTimeChange = (dayIndex: number, field: 'open_time' | 'close_time', value: string) => {
+    setSchedule(prev => ({
+      ...prev,
+      [dayIndex]: { ...prev[dayIndex], [field]: value },
+    }));
+    setHoursHasChanges(true);
+  };
+
   const handleSave = async () => {
     try {
-      await updateBusiness.mutateAsync(formData);
-      toast.success('Business profile saved');
-      setHasChanges(false);
-      refetch();
+      // Save business profile
+      if (hasChanges) {
+        await updateBusiness.mutateAsync(formData);
+        setHasChanges(false);
+        refetchBusiness();
+      }
+
+      // Save hours
+      if (hoursHasChanges) {
+        const hoursArray = Object.entries(schedule).map(([day, data]) => ({
+          day_of_week: parseInt(day),
+          is_open: data.is_open,
+          open_time: data.open_time + ':00',
+          close_time: data.close_time + ':00',
+        })) as BusinessHours[];
+        await updateHours.mutateAsync(hoursArray);
+        setHoursHasChanges(false);
+        refetchHours();
+      }
+
+      toast.success('Changes saved');
     } catch (error) {
-      toast.error('Failed to save business profile');
+      toast.error('Failed to save changes');
     }
   };
 
-  if (isLoading) {
+  const applyToWeekdays = () => {
+    const monday = schedule[0];
+    if (!monday) return;
+
+    setSchedule(prev => {
+      const newSchedule = { ...prev };
+      for (let i = 0; i <= 4; i++) {
+        newSchedule[i] = { ...monday };
+      }
+      return newSchedule;
+    });
+    setHoursHasChanges(true);
+    toast.success('Applied Monday schedule to all weekdays');
+  };
+
+  if (businessLoading || hoursLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+        <Skeleton className="h-96 w-full" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Business Identity */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Business Identity
-          </CardTitle>
-          <CardDescription>
-            Basic information about your business
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+      {/* Two Column Layout - Business Identity & Location */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Business Identity */}
+        <Card className="h-full">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Building2 className="h-5 w-5 text-primary" />
+              Business Identity
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Business Name</label>
+              <label className="text-sm font-medium text-muted-foreground">Business Name</label>
               <Input
                 value={formData.business_name || ''}
                 onChange={(e) => handleChange('business_name', e.target.value)}
@@ -227,7 +296,7 @@ function ProfileTab() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Industry</label>
+              <label className="text-sm font-medium text-muted-foreground">Industry</label>
               <Select
                 value={formData.industry || 'other'}
                 onValueChange={(v) => handleChange('industry', v)}
@@ -244,299 +313,152 @@ function ProfileTab() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
+              <Input
+                type="tel"
+                value={formData.phone_number || ''}
+                onChange={(e) => handleChange('phone_number', e.target.value)}
+                placeholder="+1 (555) 000-0000"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <Phone className="h-4 w-4" />
-              Phone Number
-            </label>
-            <Input
-              type="tel"
-              value={formData.phone_number || ''}
-              onChange={(e) => handleChange('phone_number', e.target.value)}
-              placeholder="+1 (555) 000-0000"
-            />
-          </div>
-        </CardContent>
-      </Card>
+        {/* Location */}
+        <Card className="h-full">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <MapPin className="h-5 w-5 text-primary" />
+              Location
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Street Address</label>
+              <Input
+                value={formData.address || ''}
+                onChange={(e) => handleChange('address', e.target.value)}
+                placeholder="123 Main Street"
+              />
+            </div>
+            <div className="grid gap-4 grid-cols-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-muted-foreground">City</label>
+                <Input
+                  value={formData.city || ''}
+                  onChange={(e) => handleChange('city', e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-muted-foreground">State</label>
+                <Input
+                  value={formData.state || ''}
+                  onChange={(e) => handleChange('state', e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-muted-foreground">ZIP</label>
+                <Input
+                  value={formData.zip_code || ''}
+                  onChange={(e) => handleChange('zip_code', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Timezone</label>
+              <Select
+                value={formData.timezone || 'America/New_York'}
+                onValueChange={(v) => handleChange('timezone', v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {timezones.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Location */}
+      {/* Business Hours Section */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Location
-          </CardTitle>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Clock className="h-5 w-5 text-primary" />
+              Business Hours
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={applyToWeekdays}>
+              Apply Monday to Weekdays
+            </Button>
+          </div>
           <CardDescription>
-            Your business address and timezone
+            Your AI assistant will handle calls during these hours
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Street Address</label>
-            <Input
-              value={formData.address || ''}
-              onChange={(e) => handleChange('address', e.target.value)}
-              placeholder="123 Main Street"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">City</label>
-              <Input
-                value={formData.city || ''}
-                onChange={(e) => handleChange('city', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">State</label>
-              <Input
-                value={formData.state || ''}
-                onChange={(e) => handleChange('state', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">ZIP Code</label>
-              <Input
-                value={formData.zip_code || ''}
-                onChange={(e) => handleChange('zip_code', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <Globe className="h-4 w-4" />
-              Timezone
-            </label>
-            <Select
-              value={formData.timezone || 'America/New_York'}
-              onValueChange={(v) => handleChange('timezone', v)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {timezones.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Save Button */}
-      {hasChanges && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed bottom-6 right-6 z-50"
-        >
-          <Button
-            size="lg"
-            onClick={handleSave}
-            loading={updateBusiness.isPending}
-            className="shadow-lg"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
-          </Button>
-        </motion.div>
-      )}
-    </div>
-  );
-}
-
-// Hours Tab
-function HoursTab() {
-  const { data: hoursData, isLoading, refetch } = useBusinessHours();
-  const updateHours = useUpdateBusinessHours();
-
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const [schedule, setSchedule] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
-  const [hasChanges, setHasChanges] = useState(false);
-
-  useEffect(() => {
-    if (hoursData) {
-      const hoursMap: Record<number, { is_open: boolean; open_time: string; close_time: string }> = {};
-      hoursData.forEach(h => {
-        hoursMap[h.day_of_week] = {
-          is_open: h.is_open !== false,
-          open_time: h.open_time?.slice(0, 5) || '09:00',
-          close_time: h.close_time?.slice(0, 5) || '17:00',
-        };
-      });
-      // Fill in missing days with defaults
-      for (let i = 0; i < 7; i++) {
-        if (!hoursMap[i]) {
-          hoursMap[i] = {
-            is_open: i < 5,
-            open_time: '09:00',
-            close_time: '17:00',
-          };
-        }
-      }
-      setSchedule(hoursMap);
-    }
-  }, [hoursData]);
-
-  const handleToggleDay = (dayIndex: number) => {
-    setSchedule(prev => ({
-      ...prev,
-      [dayIndex]: { ...prev[dayIndex], is_open: !prev[dayIndex]?.is_open },
-    }));
-    setHasChanges(true);
-  };
-
-  const handleTimeChange = (dayIndex: number, field: 'open_time' | 'close_time', value: string) => {
-    setSchedule(prev => ({
-      ...prev,
-      [dayIndex]: { ...prev[dayIndex], [field]: value },
-    }));
-    setHasChanges(true);
-  };
-
-  const handleSave = async () => {
-    try {
-      const hoursArray = Object.entries(schedule).map(([day, data]) => ({
-        day_of_week: parseInt(day),
-        is_open: data.is_open,
-        open_time: data.open_time + ':00',
-        close_time: data.close_time + ':00',
-      })) as BusinessHours[];
-
-      await updateHours.mutateAsync(hoursArray);
-      toast.success('Business hours saved');
-      setHasChanges(false);
-      refetch();
-    } catch (error) {
-      toast.error('Failed to save business hours');
-    }
-  };
-
-  const applyToWeekdays = () => {
-    const monday = schedule[0];
-    if (!monday) return;
-
-    setSchedule(prev => {
-      const newSchedule = { ...prev };
-      for (let i = 0; i <= 4; i++) {
-        newSchedule[i] = { ...monday };
-      }
-      return newSchedule;
-    });
-    setHasChanges(true);
-    toast.success('Applied Monday schedule to all weekdays');
-  };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-          <Skeleton key={i} className="h-16 w-full" />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Info Banner */}
-      <Card className="bg-primary/5 border-primary/20">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Clock className="h-5 w-5 text-primary mt-0.5" />
-            <div>
-              <p className="font-medium">AI Availability</p>
-              <p className="text-sm text-muted-foreground">
-                Your AI assistant will handle calls during these hours. Outside business hours,
-                callers will hear a customized message.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Actions */}
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={applyToWeekdays}>
-          Apply Monday to Weekdays
-        </Button>
-      </div>
-
-      {/* Schedule */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Weekly Schedule</CardTitle>
-          <CardDescription>Set when your business is open</CardDescription>
-        </CardHeader>
         <CardContent>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {days.map((day, index) => (
               <div
                 key={day}
                 className={cn(
-                  'flex items-center gap-4 p-4 rounded-lg border transition-colors',
+                  'flex items-center gap-4 p-3 rounded-lg border transition-colors',
                   schedule[index]?.is_open
                     ? 'bg-card border-border'
                     : 'bg-muted/50 border-border'
                 )}
               >
-                <div className="flex items-center gap-4 w-40">
+                <div className="flex items-center gap-3 w-32">
                   <Switch
                     checked={schedule[index]?.is_open ?? index < 5}
                     onCheckedChange={() => handleToggleDay(index)}
                   />
                   <span className={cn(
-                    'font-medium',
+                    'font-medium text-sm',
                     !schedule[index]?.is_open && 'text-muted-foreground'
                   )}>
-                    {day}
+                    {day.slice(0, 3)}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 w-24">
+                <div className="flex items-center gap-1.5 w-20">
                   {schedule[index]?.is_open ? (
-                    <span className="flex items-center gap-1.5 text-sm text-success-600 dark:text-success-400">
-                      <Check className="h-4 w-4" />
+                    <span className="flex items-center gap-1 text-xs text-success-600 dark:text-success-400">
+                      <Check className="h-3.5 w-3.5" />
                       Open
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <X className="h-4 w-4" />
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <X className="h-3.5 w-3.5" />
                       Closed
                     </span>
                   )}
                 </div>
 
                 <div className={cn(
-                  'flex items-center gap-3 flex-1',
+                  'flex items-center gap-2 flex-1',
                   !schedule[index]?.is_open && 'opacity-50 pointer-events-none'
                 )}>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-muted-foreground w-12">From</label>
-                    <Input
-                      type="time"
-                      value={schedule[index]?.open_time || '09:00'}
-                      onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                      className="w-32"
-                    />
-                  </div>
-                  <span className="text-muted-foreground">—</span>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-muted-foreground w-8">To</label>
-                    <Input
-                      type="time"
-                      value={schedule[index]?.close_time || '17:00'}
-                      onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                      className="w-32"
-                    />
-                  </div>
+                  <Input
+                    type="time"
+                    value={schedule[index]?.open_time || '09:00'}
+                    onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
+                    className="w-28"
+                  />
+                  <span className="text-muted-foreground text-sm">to</span>
+                  <Input
+                    type="time"
+                    value={schedule[index]?.close_time || '17:00'}
+                    onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
+                    className="w-28"
+                  />
                 </div>
               </div>
             ))}
@@ -545,7 +467,7 @@ function HoursTab() {
       </Card>
 
       {/* Save Button */}
-      {hasChanges && (
+      {(hasChanges || hoursHasChanges) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -554,11 +476,11 @@ function HoursTab() {
           <Button
             size="lg"
             onClick={handleSave}
-            loading={updateHours.isPending}
+            loading={updateBusiness.isPending || updateHours.isPending}
             className="shadow-lg"
           >
             <Save className="h-4 w-4 mr-2" />
-            Save Hours
+            Save Changes
           </Button>
         </motion.div>
       )}
