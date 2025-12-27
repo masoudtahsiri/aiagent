@@ -16,6 +16,7 @@ const OnboardingPage = lazy(() => import('@/pages/onboarding'));
 const OverviewPage = lazy(() => import('@/pages/dashboard'));
 const AISetupPage = lazy(() => import('@/pages/ai'));
 const BusinessPage = lazy(() => import('@/pages/business'));
+const ServicesPage = lazy(() => import('@/pages/services'));
 const TeamPage = lazy(() => import('@/pages/team'));
 const CustomersPage = lazy(() => import('@/pages/customers'));
 const CustomerDetailPage = lazy(() => import('@/pages/customers/detail'));
@@ -51,13 +52,13 @@ export function AppRoutes() {
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/services" element={<ServicesPage />} />
 
             {/* Redirects from old routes */}
             <Route path="/ai-config" element={<Navigate to="/ai" replace />} />
             <Route path="/ai-config/*" element={<Navigate to="/ai" replace />} />
             <Route path="/staff" element={<Navigate to="/team" replace />} />
             <Route path="/staff/*" element={<Navigate to="/team" replace />} />
-            <Route path="/services" element={<Navigate to="/business?tab=services" replace />} />
             <Route path="/hours" element={<Navigate to="/business?tab=hours" replace />} />
             <Route path="/calls" element={<Navigate to="/activity?tab=calls" replace />} />
             <Route path="/appointments" element={<Navigate to="/activity?tab=appointments" replace />} />
