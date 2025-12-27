@@ -20,21 +20,22 @@ class ServiceService:
 
     async def get_business_services(business_id: str, include_inactive: bool = False) -> List[dict]:
 
-        """Get all services for a business"""
+        """Get all services for a business (excludes archived/deleted)"""
 
         db = get_db()
 
-        
+
 
         query = db.table("services").select("*").eq("business_id", business_id)
 
-        
+        # Always exclude archived services
+        query = query.is_("deleted_at", "null")
 
         if not include_inactive:
 
             query = query.eq("is_active", True)
 
-        
+
 
         result = query.order("category").order("name").execute()
 
@@ -198,23 +199,23 @@ class ServiceService:
 
     async def delete_service(service_id: str, user_id: str) -> dict:
 
-        """Delete/deactivate service"""
+        """Archive/delete service (permanently hidden)"""
 
         db = get_db()
 
-        
+
 
         # Get service
 
         service = await ServiceService.get_service(service_id)
 
-        
+
 
         # Verify user owns this business
 
         user_result = db.table("users").select("business_id").eq("id", user_id).execute()
 
-        
+
 
         if not user_result.data or user_result.data[0].get("business_id") != service["business_id"]:
 
@@ -226,15 +227,17 @@ class ServiceService:
 
             )
 
-        
 
-        # Soft delete
 
-        result = db.table("services").update({"is_active": False}).eq("id", service_id).execute()
+        # Archive by setting deleted_at timestamp (never retrievable)
+        from datetime import datetime
+        result = db.table("services").update({
+            "deleted_at": datetime.utcnow().isoformat()
+        }).eq("id", service_id).execute()
 
-        
 
-        return {"message": "Service deactivated successfully"}
+
+        return {"message": "Service deleted successfully"}
 
     
 

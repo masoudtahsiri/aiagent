@@ -35,26 +35,27 @@ class StaffService:
     
     @staticmethod
     async def get_business_staff(business_id: str, user_id: str, include_inactive: bool = False) -> List[dict]:
-        """Get all staff for a business"""
+        """Get all staff for a business (excludes archived/deleted)"""
         db = get_db()
-        
+
         # Verify user owns this business
         user_result = db.table("users").select("business_id").eq("id", user_id).execute()
-        
+
         if not user_result.data or user_result.data[0].get("business_id") != business_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to view this business"
             )
-        
-        # Get staff
+
+        # Get staff (always exclude archived)
         query = db.table("staff").select("*").eq("business_id", business_id)
-        
+        query = query.is_("deleted_at", "null")
+
         if not include_inactive:
             query = query.eq("is_active", True)
-        
+
         result = query.order("name").execute()
-        
+
         return result.data if result.data else []
     
     @staticmethod
@@ -114,24 +115,25 @@ class StaffService:
     
     @staticmethod
     async def delete_staff(staff_id: str, user_id: str) -> dict:
-        """Delete/deactivate staff member"""
+        """Archive/delete staff member (permanently hidden)"""
         db = get_db()
-        
+
         # Get staff to verify ownership
         await StaffService.get_staff(staff_id, user_id)
-        
-        # Soft delete
+
+        # Archive by setting deleted_at timestamp (never retrievable)
+        from datetime import datetime
         result = db.table("staff").update({
-            "is_active": False
+            "deleted_at": datetime.utcnow().isoformat()
         }).eq("id", staff_id).execute()
-        
+
         if not result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Staff member not found"
             )
-        
-        return {"message": "Staff member deactivated successfully"}
+
+        return {"message": "Staff member deleted successfully"}
     
     # Availability Management
     
