@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm, Controller } from 'react-hook-form';
-import { 
-  Building2, Clock, Users, Bot, Check, ArrowRight, 
+import {
+  Building2, Clock, Users, Bot, Check, ArrowRight,
   ArrowLeft, Sparkles, Phone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,12 @@ import { post } from '@/lib/api/client';
 import { useAuth } from '@/features/auth/auth-provider';
 import { toast } from 'sonner';
 import type { Business } from '@/types';
+import {
+  BUSINESS_TYPES,
+  INDUSTRY_META,
+  type BusinessType,
+  getIndustryBadgeClasses
+} from '@/config/industries';
 
 const steps = [
   { id: 1, title: 'Business Info', icon: Building2 },
@@ -26,30 +32,24 @@ const steps = [
   { id: 5, title: 'Complete', icon: Check },
 ];
 
-const industries = [
-  { value: 'healthcare', label: 'Healthcare / Medical' },
-  { value: 'dental', label: 'Dental' },
-  { value: 'salon', label: 'Salon & Spa' },
-  { value: 'fitness', label: 'Fitness & Wellness' },
-  { value: 'legal', label: 'Legal Services' },
-  { value: 'consulting', label: 'Consulting' },
-  { value: 'airlines', label: 'Airlines / Aviation' },
-  { value: 'hotel', label: 'Hotels / Hospitality' },
-  { value: 'restaurant', label: 'Restaurants / Food Service' },
-  { value: 'retail', label: 'Retail / E-commerce' },
-  { value: 'real_estate', label: 'Real Estate' },
-  { value: 'automotive', label: 'Automotive / Car Dealership' },
-  { value: 'insurance', label: 'Insurance' },
-  { value: 'financial', label: 'Financial Services / Banking' },
-  { value: 'education', label: 'Education / Schools' },
-  { value: 'veterinary', label: 'Veterinary / Pet Care' },
-  { value: 'home_services', label: 'Home Services / Contractors' },
-  { value: 'beauty', label: 'Beauty / Cosmetics' },
-  { value: 'travel', label: 'Travel / Tourism' },
-  { value: 'event_planning', label: 'Event Planning / Catering' },
-  { value: 'nonprofit', label: 'Nonprofit / Charity' },
-  { value: 'technology', label: 'Technology / IT Services' },
-  { value: 'other', label: 'Other' },
+// List of supported business types for onboarding (ordered by popularity)
+const SUPPORTED_BUSINESS_TYPES: BusinessType[] = [
+  BUSINESS_TYPES.RESTAURANT,
+  BUSINESS_TYPES.MEDICAL,
+  BUSINESS_TYPES.SALON,
+  BUSINESS_TYPES.SPA,
+  BUSINESS_TYPES.REAL_ESTATE,
+  BUSINESS_TYPES.LEGAL,
+  BUSINESS_TYPES.HOME_SERVICES,
+  BUSINESS_TYPES.AUTO_REPAIR,
+  BUSINESS_TYPES.FITNESS,
+  BUSINESS_TYPES.VET,
+  BUSINESS_TYPES.HOTEL,
+  BUSINESS_TYPES.THERAPY,
+  BUSINESS_TYPES.MED_SPA,
+  BUSINESS_TYPES.CLEANING,
+  BUSINESS_TYPES.PHOTOGRAPHY,
+  BUSINESS_TYPES.GENERIC,
 ];
 
 // Get server timezone (defaults to UTC if not available)
@@ -218,7 +218,7 @@ const voiceStyles = [
 interface OnboardingFormData {
   // Step 1: Business Info
   business_name: string;
-  industry: string;
+  industry: BusinessType;
   phone_country_code: string;
   phone_number: string;
   timezone: string;
@@ -253,7 +253,7 @@ export default function OnboardingPage() {
   const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<OnboardingFormData>({
     defaultValues: {
       business_name: '',
-      industry: '',
+      industry: undefined as unknown as BusinessType, // Will be selected via visual cards
       phone_country_code: '+90', // Turkey default
       phone_number: '',
       timezone: DEFAULT_TIMEZONE,
@@ -454,7 +454,7 @@ export default function OnboardingPage() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
             >
-              {currentStep === 1 && <BusinessInfoStep control={control} errors={errors} />}
+              {currentStep === 1 && <BusinessInfoStep control={control} errors={errors} watch={watch} />}
               {currentStep === 2 && <HoursStep control={control} watch={watch} />}
               {currentStep === 3 && <StaffStep control={control} setValue={setValue} watch={watch} />}
               {currentStep === 4 && <AISetupStep control={control} watch={watch} />}
@@ -490,8 +490,10 @@ export default function OnboardingPage() {
   );
 }
 
-// Step 1: Business Info
-function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
+// Step 1: Business Info with Visual Industry Selection
+function BusinessInfoStep({ control, errors, watch }: { control: any; errors: any; watch: any }) {
+  const selectedIndustry = watch('industry');
+
   return (
     <div className="space-y-6">
       <div>
@@ -499,7 +501,8 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
         <p className="text-muted-foreground mt-1">This helps us customize the AI for your industry</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
+        {/* Business Name */}
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Business Name *</label>
           <Controller
@@ -515,31 +518,72 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Industry *</label>
+        {/* Industry Selection - Visual Cards */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium">Select Your Business Type *</label>
           <Controller
             name="industry"
             control={control}
-            rules={{ required: 'Industry is required' }}
+            rules={{ required: 'Please select your business type' }}
             render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select your industry" />
-            </SelectTrigger>
-            <SelectContent>
-              {industries.map((ind) => (
-                <SelectItem key={ind.value} value={ind.value}>{ind.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[320px] overflow-y-auto pr-1">
+                {SUPPORTED_BUSINESS_TYPES.map((type) => {
+                  const meta = INDUSTRY_META[type];
+                  const badgeClasses = getIndustryBadgeClasses(type);
+                  const isSelected = field.value === type;
+                  const Icon = meta.icon;
+
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => field.onChange(type)}
+                      className={cn(
+                        'relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200',
+                        'hover:shadow-md hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary/20',
+                        isSelected
+                          ? `border-primary bg-primary/5 shadow-md ${badgeClasses.bg}`
+                          : 'border-border bg-card hover:border-primary/50'
+                      )}
+                    >
+                      {isSelected && (
+                        <div className="absolute top-2 right-2">
+                          <Check className="h-4 w-4 text-primary" />
+                        </div>
+                      )}
+                      <div className={cn(
+                        'w-12 h-12 rounded-xl flex items-center justify-center',
+                        isSelected ? badgeClasses.bg : 'bg-muted'
+                      )}>
+                        <Icon className={cn(
+                          'h-6 w-6',
+                          isSelected ? badgeClasses.icon : 'text-muted-foreground'
+                        )} />
+                      </div>
+                      <span className={cn(
+                        'text-xs font-medium text-center leading-tight',
+                        isSelected ? 'text-foreground' : 'text-muted-foreground'
+                      )}>
+                        {meta.name.split('/')[0].trim()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           />
           {errors.industry && (
             <p className="text-xs text-destructive">{errors.industry.message}</p>
           )}
+          {selectedIndustry && (
+            <p className="text-xs text-muted-foreground">
+              {INDUSTRY_META[selectedIndustry as BusinessType]?.description}
+            </p>
+          )}
         </div>
 
-        <div className="space-y-4">
+        {/* Phone & Timezone */}
+        <div className="space-y-4 pt-2 border-t border-border">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Phone Number</label>
             <div className="flex gap-2">
@@ -565,18 +609,18 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
                 name="phone_number"
                 control={control}
                 render={({ field }) => (
-                  <Input 
-                    type="tel" 
-                    placeholder="555 123 4567" 
+                  <Input
+                    type="tel"
+                    placeholder="555 123 4567"
                     className="flex-1"
-                    {...field} 
+                    {...field}
                   />
                 )}
               />
             </div>
             <p className="text-xs text-muted-foreground">Optional - for business contact</p>
           </div>
-          
+
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Timezone *</label>
             <Controller
@@ -584,15 +628,15 @@ function BusinessInfoStep({ control, errors }: { control: any; errors: any }) {
               control={control}
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent className="max-h-[400px]">
-                {timezones.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                    {timezones.map((tz) => (
+                      <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             />
           </div>

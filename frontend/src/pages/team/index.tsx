@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useStaff, useCreateStaff, useDeleteStaff, useUpdateStaff } from '@/lib/api/hooks';
+import { useIndustry } from '@/contexts/industry-context';
 import type { Staff } from '@/types';
 
 const colorOptions = [
@@ -51,6 +52,11 @@ const colorOptions = [
 export default function TeamPage() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+
+  // Get industry-specific terminology
+  const { terminology } = useIndustry();
+  const staffLabel = terminology.staff;
+  const staffLabelPlural = terminology.staffPlural;
 
   const { data: staffResponse, isLoading, refetch } = useStaff();
   const deleteStaff = useDeleteStaff();
@@ -96,7 +102,7 @@ export default function TeamPage() {
 
   if (isLoading) {
     return (
-      <PageContainer title="Team" description="Manage your team and their calendar integrations">
+      <PageContainer title={staffLabelPlural} description={`Manage your ${staffLabelPlural.toLowerCase()} and their calendar integrations`}>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-72 rounded-xl" />
@@ -108,8 +114,8 @@ export default function TeamPage() {
 
   return (
     <PageContainer
-      title="Team"
-      description="Manage staff members and their calendar integrations"
+      title={staffLabelPlural}
+      description={`Manage ${staffLabelPlural.toLowerCase()} and their calendar integrations`}
     >
       {/* Info Banner */}
       <Card className="bg-primary/5 border-primary/20 mb-6">
@@ -119,7 +125,7 @@ export default function TeamPage() {
             <div>
               <p className="font-medium">Calendar Integration</p>
               <p className="text-sm text-muted-foreground">
-                Each team member can connect their own Google Calendar. The AI will automatically
+                Each {staffLabel.toLowerCase()} can connect their own Google Calendar. The AI will automatically
                 check availability and sync appointments.
               </p>
             </div>
@@ -131,7 +137,7 @@ export default function TeamPage() {
       <div className="flex justify-end mb-6">
         <Button onClick={() => setShowNewModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Add Team Member
+          Add {staffLabel}
         </Button>
       </div>
 

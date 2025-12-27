@@ -1,25 +1,21 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard,
-  Bot,
-  Building2,
-  Users,
-  UserCircle,
-  Activity,
-  Settings,
   ChevronLeft,
   ChevronRight,
   LogOut,
   X,
   Zap,
-  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/shared/loading-screen';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useIsMobile } from '@/lib/hooks';
+import { useIndustryOptional } from '@/contexts/industry-context';
+import { getIndustryNavigation, type NavItem } from '@/config/industries/navigation';
+import { BUSINESS_TYPES, getIndustryMeta, getIndustryBadgeClasses } from '@/config/industries';
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -27,26 +23,6 @@ interface SidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }
-
-interface NavItem {
-  label: string;
-  icon: React.ElementType;
-  href: string;
-}
-
-// Clean, focused navigation
-const mainNavItems: NavItem[] = [
-  { label: 'Overview', icon: LayoutDashboard, href: '/' },
-  { label: 'AI Setup', icon: Bot, href: '/ai' },
-  { label: 'Business', icon: Building2, href: '/business' },
-  { label: 'Team', icon: Users, href: '/team' },
-  { label: 'Customers', icon: UserCircle, href: '/customers' },
-  { label: 'Activity', icon: Activity, href: '/activity' },
-];
-
-const bottomNavItems: NavItem[] = [
-  { label: 'Settings', icon: Settings, href: '/settings' },
-];
 
 export function Sidebar({
   collapsed = false,
@@ -58,6 +34,15 @@ export function Sidebar({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { logout } = useAuth();
+  const industryContext = useIndustryOptional();
+
+  // Get navigation items - either from industry context or fallback to generic
+  const { main: mainNavItems, bottom: bottomNavItems } = industryContext?.navigation ??
+    getIndustryNavigation(BUSINESS_TYPES.GENERIC);
+
+  // Get industry meta and badge styling for branding
+  const industryMeta = industryContext?.meta ?? getIndustryMeta(BUSINESS_TYPES.GENERIC);
+  const badgeClasses = getIndustryBadgeClasses(industryContext?.businessType ?? BUSINESS_TYPES.GENERIC);
 
   const handleLogout = () => {
     logout();
@@ -88,8 +73,24 @@ export function Sidebar({
         )}
       </div>
 
+      {/* Industry Badge */}
+      {!collapsed && industryMeta && industryMeta.id !== 'generic' && (
+        <div className="px-3 pt-3">
+          <div className={cn(
+            'flex items-center gap-2 px-3 py-2 rounded-lg border',
+            badgeClasses.bg,
+            badgeClasses.border
+          )}>
+            <industryMeta.icon className={cn('h-4 w-4 shrink-0', badgeClasses.icon)} />
+            <span className={cn('text-xs font-medium truncate', badgeClasses.text)}>
+              {industryMeta.name}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* AI Status Indicator */}
-      <div className={cn('px-3 pt-4', collapsed && 'px-2')}>
+      <div className={cn('px-3 pt-3', collapsed && 'px-2 pt-4')}>
         <div
           className={cn(
             'flex items-center gap-3 p-3 rounded-xl bg-success-500/10 border border-success-500/20',

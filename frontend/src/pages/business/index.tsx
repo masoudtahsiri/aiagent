@@ -9,6 +9,7 @@ import {
   Edit,
   Trash2,
   MapPin,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
@@ -32,6 +33,12 @@ import {
   useDeleteService,
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours, Service } from '@/types';
+import { useIndustry } from '@/contexts/industry-context';
+import {
+  INDUSTRY_META,
+  type BusinessType,
+  getIndustryBadgeClasses,
+} from '@/config/industries';
 
 
 const timezones = [
@@ -44,18 +51,8 @@ const timezones = [
   { value: 'Asia/Dubai', label: 'Gulf Time (Dubai)' },
 ];
 
-const industries = [
-  { value: 'healthcare', label: 'Healthcare' },
-  { value: 'dental', label: 'Dental' },
-  { value: 'salon', label: 'Salon & Spa' },
-  { value: 'fitness', label: 'Fitness' },
-  { value: 'legal', label: 'Legal Services' },
-  { value: 'restaurant', label: 'Restaurant' },
-  { value: 'consulting', label: 'Consulting' },
-  { value: 'real-estate', label: 'Real Estate' },
-  { value: 'travel', label: 'Travel & Tourism' },
-  { value: 'other', label: 'Other' },
-];
+// Supported business types from config
+const supportedIndustries = Object.values(INDUSTRY_META).filter(meta => meta.id !== 'generic');
 
 const serviceCategories = [
   { value: 'consultation', label: 'Consultation', color: 'primary' },
@@ -87,6 +84,11 @@ function BusinessContent() {
   const createService = useCreateService();
   const updateService = useUpdateService();
   const deleteService = useDeleteService();
+
+  // Get industry-specific terminology
+  const { terminology } = useIndustry();
+  const serviceLabel = terminology.service;
+  const serviceLabelPlural = terminology.servicePlural;
 
   const [formData, setFormData] = useState<Partial<Business>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -250,23 +252,46 @@ function BusinessContent() {
               placeholder="Your business name"
             />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">Industry</label>
-            <Select
-              value={formData.industry || 'other'}
-              onValueChange={(v) => handleChange('industry', v)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {industries.map((ind) => (
-                  <SelectItem key={ind.value} value={ind.value}>
-                    {ind.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
+              {supportedIndustries.map((meta) => {
+                const badgeClasses = getIndustryBadgeClasses(meta.id);
+                const isSelected = formData.industry === meta.id;
+                const Icon = meta.icon;
+
+                return (
+                  <button
+                    key={meta.id}
+                    type="button"
+                    onClick={() => handleChange('industry', meta.id)}
+                    className={cn(
+                      'relative flex flex-col items-center gap-1.5 p-2.5 rounded-lg border transition-all',
+                      'hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20',
+                      isSelected
+                        ? `border-primary ${badgeClasses.bg}`
+                        : 'border-border bg-card hover:border-primary/50'
+                    )}
+                  >
+                    {isSelected && (
+                      <div className="absolute top-1 right-1">
+                        <Check className="h-3 w-3 text-primary" />
+                      </div>
+                    )}
+                    <Icon className={cn(
+                      'h-5 w-5',
+                      isSelected ? badgeClasses.icon : 'text-muted-foreground'
+                    )} />
+                    <span className={cn(
+                      'text-[10px] font-medium text-center leading-tight',
+                      isSelected ? 'text-foreground' : 'text-muted-foreground'
+                    )}>
+                      {meta.name.split('/')[0].trim().split(' ')[0]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
@@ -408,7 +433,7 @@ function BusinessContent() {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Briefcase className="h-5 w-5 text-primary" />
-              Services
+              {serviceLabelPlural}
             </CardTitle>
             <Button size="sm" onClick={() => setShowServiceModal(true)}>
               <Plus className="h-4 w-4 mr-1" />
@@ -420,13 +445,13 @@ function BusinessContent() {
           {servicesList.length === 0 ? (
             <div className="py-8 text-center">
               <Briefcase className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm font-medium mb-1">No services yet</p>
+              <p className="text-sm font-medium mb-1">No {serviceLabelPlural.toLowerCase()} yet</p>
               <p className="text-xs text-muted-foreground mb-3">
-                Add services for booking
+                Add {serviceLabelPlural.toLowerCase()} for booking
               </p>
               <Button size="sm" variant="outline" onClick={() => setShowServiceModal(true)}>
                 <Plus className="h-4 w-4 mr-1" />
-                Add Service
+                Add {serviceLabel}
               </Button>
             </div>
           ) : (
@@ -506,11 +531,12 @@ function BusinessContent() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingService ? 'Edit Service' : 'Add Service'}</DialogTitle>
+            <DialogTitle>{editingService ? `Edit ${serviceLabel}` : `Add ${serviceLabel}`}</DialogTitle>
           </DialogHeader>
           <ServiceForm
             service={editingService}
             onSuccess={handleServiceSuccess}
+            serviceLabel={serviceLabel}
           />
         </DialogContent>
       </Dialog>
@@ -519,7 +545,7 @@ function BusinessContent() {
 }
 
 // Service Form Component
-function ServiceForm({ service, onSuccess }: { service?: Service | null; onSuccess: () => void }) {
+function ServiceForm({ service, onSuccess, serviceLabel = 'Service' }: { service?: Service | null; onSuccess: () => void; serviceLabel?: string }) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -549,7 +575,7 @@ function ServiceForm({ service, onSuccess }: { service?: Service | null; onSucce
     e.preventDefault();
 
     if (!formData.name) {
-      toast.error('Please enter a service name');
+      toast.error(`Please enter a ${serviceLabel.toLowerCase()} name`);
       return;
     }
 
@@ -566,7 +592,7 @@ function ServiceForm({ service, onSuccess }: { service?: Service | null; onSucce
             is_active: formData.is_active,
           }
         });
-        toast.success('Service updated');
+        toast.success(`${serviceLabel} updated`);
       } else {
         await createService.mutateAsync({
           name: formData.name,
@@ -577,11 +603,11 @@ function ServiceForm({ service, onSuccess }: { service?: Service | null; onSucce
           is_active: formData.is_active,
           requires_staff: true,
         });
-        toast.success('Service added');
+        toast.success(`${serviceLabel} added`);
       }
       onSuccess();
     } catch (error) {
-      toast.error(service ? 'Failed to update service' : 'Failed to add service');
+      toast.error(service ? `Failed to update ${serviceLabel.toLowerCase()}` : `Failed to add ${serviceLabel.toLowerCase()}`);
     }
   };
 
@@ -590,9 +616,9 @@ function ServiceForm({ service, onSuccess }: { service?: Service | null; onSucce
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Service Name</label>
+        <label className="text-sm font-medium">{serviceLabel} Name</label>
         <Input
-          placeholder="e.g., Haircut, Consultation, Cleaning"
+          placeholder={`e.g., ${serviceLabel}`}
           value={formData.name}
           onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
           required
@@ -663,7 +689,7 @@ function ServiceForm({ service, onSuccess }: { service?: Service | null; onSucce
       <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
         <div>
           <p className="font-medium">Active</p>
-          <p className="text-sm text-muted-foreground">Service is available for booking</p>
+          <p className="text-sm text-muted-foreground">{serviceLabel} is available for booking</p>
         </div>
         <Switch
           checked={formData.is_active}
@@ -676,7 +702,7 @@ function ServiceForm({ service, onSuccess }: { service?: Service | null; onSucce
           Cancel
         </Button>
         <Button type="submit" loading={isLoading}>
-          {service ? 'Save Changes' : 'Add Service'}
+          {service ? 'Save Changes' : `Add ${serviceLabel}`}
         </Button>
       </div>
     </form>

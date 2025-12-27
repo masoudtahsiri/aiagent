@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
+import {
   Search, Plus, MoreHorizontal, Phone, Mail, Calendar,
   ChevronLeft, ChevronRight, Users, Filter
 } from 'lucide-react';
@@ -13,17 +13,18 @@ import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useDebounce, useIsMobile } from '@/lib/hooks';
 import { formatDate, formatPhone } from '@/lib/utils/format';
 import { useCustomers, useCreateCustomer, useDeleteCustomer } from '@/lib/api/hooks';
+import { useIndustry } from '@/contexts/industry-context';
 import type { Customer } from '@/types';
 
 const ITEMS_PER_PAGE = 20;
@@ -34,6 +35,12 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+
+  // Get industry-specific terminology
+  const { terminology } = useIndustry();
+  const customerLabel = terminology.customer;
+  const customerLabelPlural = terminology.customerPlural;
+  const appointmentLabel = terminology.appointment;
 
   const debouncedSearch = useDebounce(searchQuery, 300);
   const offset = (page - 1) * ITEMS_PER_PAGE;
@@ -56,11 +63,11 @@ export default function CustomersPage() {
 
   return (
     <PageContainer
-      title="Customers"
-      description="Manage your customer database"
+      title={customerLabelPlural}
+      description={`Manage your ${customerLabelPlural.toLowerCase()} database`}
       actions={
         <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          Add Customer
+          Add {customerLabel}
         </Button>
       }
     >
@@ -93,11 +100,11 @@ export default function CustomersPage() {
       ) : customers.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No customers found"
-          description={searchQuery ? "Try a different search term" : "Add your first customer to get started"}
+          title={`No ${customerLabelPlural.toLowerCase()} found`}
+          description={searchQuery ? "Try a different search term" : `Add your first ${customerLabel.toLowerCase()} to get started`}
           action={
             <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
-              Add Customer
+              Add {customerLabel}
             </Button>
           }
         />
@@ -111,7 +118,7 @@ export default function CustomersPage() {
       {customers.length > 0 && (
         <div className="flex items-center justify-between mt-6">
           <p className="text-sm text-muted-foreground">
-            Showing {offset + 1}-{Math.min(offset + customers.length, totalCustomers)} of {totalCustomers} customers
+            Showing {offset + 1}-{Math.min(offset + customers.length, totalCustomers)} of {totalCustomers} {customerLabelPlural.toLowerCase()}
           </p>
           <div className="flex items-center gap-2">
             <Button 
@@ -139,9 +146,9 @@ export default function CustomersPage() {
       <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add New Customer</DialogTitle>
+            <DialogTitle>Add New {customerLabel}</DialogTitle>
           </DialogHeader>
-          <NewCustomerForm onSuccess={handleNewCustomerSuccess} />
+          <NewCustomerForm onSuccess={handleNewCustomerSuccess} customerLabel={customerLabel} />
         </DialogContent>
       </Dialog>
     </PageContainer>
@@ -305,7 +312,7 @@ function DesktopCustomerTable({
 }
 
 // New Customer Form
-function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
+function NewCustomerForm({ onSuccess, customerLabel = 'Customer' }: { onSuccess: () => void; customerLabel?: string }) {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -313,12 +320,12 @@ function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
     email: '',
     notes: '',
   });
-  
+
   const createCustomer = useCreateCustomer();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await createCustomer.mutateAsync({
         first_name: formData.first_name,
@@ -328,10 +335,10 @@ function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
         notes: formData.notes || undefined,
         language: 'en',
       });
-      toast.success('Customer created successfully');
+      toast.success(`${customerLabel} created successfully`);
       onSuccess();
     } catch (error) {
-      toast.error('Failed to create customer');
+      toast.error(`Failed to create ${customerLabel.toLowerCase()}`);
     }
   };
 
@@ -383,7 +390,7 @@ function NewCustomerForm({ onSuccess }: { onSuccess: () => void }) {
         <label className="text-sm font-medium">Notes</label>
         <textarea 
           className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary"
-          placeholder="Any notes about this customer..."
+          placeholder={`Any notes about this ${customerLabel.toLowerCase()}...`}
           value={formData.notes}
           onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
         />

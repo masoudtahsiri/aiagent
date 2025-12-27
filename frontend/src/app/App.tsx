@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/shared/theme-provider';
 import { AuthProvider } from '@/features/auth/auth-provider';
+import { IndustryProvider } from '@/contexts/industry-context';
 import { AppRoutes } from './routes';
 
 const queryClient = new QueryClient({
@@ -21,8 +22,9 @@ function App() {
       <ThemeProvider defaultTheme="light" storageKey="algority-theme">
         <BrowserRouter>
           <AuthProvider>
-            <AppRoutes />
-            <Toaster
+            <IndustryProvider>
+              <AppRoutes />
+              <Toaster
               position="top-right"
               toastOptions={{
                 classNames: {
@@ -32,6 +34,7 @@ function App() {
                 },
               }}
             />
+            </IndustryProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

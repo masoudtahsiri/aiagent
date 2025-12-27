@@ -1,12 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Optional
+from typing import Optional, List
 
-from backend.models.business import BusinessCreate, BusinessUpdate, BusinessResponse
+from backend.models.business import (
+    BusinessCreate,
+    BusinessUpdate,
+    BusinessResponse,
+    IndustryType,
+    VALID_INDUSTRIES,
+)
 from backend.services.business_service import BusinessService
 from backend.middleware.auth import get_current_active_user
 
 
 router = APIRouter(prefix="/api/businesses", tags=["Business Management"])
+
+
+@router.get("/industries", response_model=List[str])
+async def get_available_industries():
+    """Get list of available industry types for business registration"""
+    return VALID_INDUSTRIES
 
 
 @router.post("", response_model=BusinessResponse, status_code=status.HTTP_201_CREATED)

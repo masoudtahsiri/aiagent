@@ -29,6 +29,7 @@ import {
   useFAQs,
 } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+import { useIndustry } from '@/contexts/industry-context';
 
 // Format relative time
 const getRelativeTime = (dateString: string) => {
@@ -60,6 +61,13 @@ export default function OverviewPage() {
   const { data: staff } = useStaff();
   const { data: aiRoles } = useAIRoles();
   const { data: faqs } = useFAQs();
+
+  // Get industry-specific terminology
+  const { terminology, meta: industryMeta, navigation } = useIndustry();
+  const appointmentLabel = terminology.appointment;
+  const appointmentLabelPlural = terminology.appointmentPlural;
+  const staffLabel = terminology.staff;
+  const staffLabelPlural = terminology.staffPlural;
 
   // Generate alerts based on actual data
   const alerts: Array<{ type: 'warning' | 'info'; message: string; action?: { label: string; href: string } }> = [];
@@ -113,7 +121,7 @@ export default function OverviewPage() {
               </div>
               <div className="text-center">
                 <p className="text-4xl font-bold">{stats?.appointments_today ?? 0}</p>
-                <p className="text-sm text-muted-foreground">Booked today</p>
+                <p className="text-sm text-muted-foreground">{appointmentLabelPlural} today</p>
               </div>
             </div>
           </div>
@@ -183,7 +191,7 @@ export default function OverviewPage() {
             </div>
             <div>
               <p className="text-2xl font-bold">{stats?.appointments_today ?? 0}</p>
-              <p className="text-xs text-muted-foreground">Booked</p>
+              <p className="text-xs text-muted-foreground">{appointmentLabelPlural}</p>
             </div>
           </div>
         </Card>
@@ -267,11 +275,11 @@ export default function OverviewPage() {
           </CardContent>
         </Card>
 
-        {/* Today's Appointments */}
+        {/* Today's Appointments/Reservations/etc */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Today's Appointments</CardTitle>
+              <CardTitle className="text-base">Today's {appointmentLabelPlural}</CardTitle>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/activity?tab=appointments">
                   View all
@@ -284,7 +292,7 @@ export default function OverviewPage() {
             {!todayAppointments?.length ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No appointments today</p>
+                <p className="text-sm">No {appointmentLabelPlural.toLowerCase()} today</p>
                 <p className="text-xs mt-1">AI will book as calls come in</p>
               </div>
             ) : (
@@ -310,7 +318,7 @@ export default function OverviewPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{apt.customer_name}</p>
                       <p className="text-sm text-muted-foreground truncate">
-                        {apt.service_name || 'Appointment'}
+                        {apt.service_name || appointmentLabel}
                       </p>
                     </div>
                     <Badge
@@ -372,8 +380,8 @@ export default function OverviewPage() {
                 <User className="h-5 w-5 text-success-500" />
               </div>
               <div>
-                <p className="font-medium group-hover:text-primary transition-colors">Team</p>
-                <p className="text-xs text-muted-foreground">Manage staff & calendars</p>
+                <p className="font-medium group-hover:text-primary transition-colors">{staffLabelPlural}</p>
+                <p className="text-xs text-muted-foreground">Manage {staffLabelPlural.toLowerCase()} & calendars</p>
               </div>
             </div>
           </Card>
