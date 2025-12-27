@@ -88,6 +88,7 @@ const CORE_NAV: NavItem[] = [
 ];
 
 const BOTTOM_NAV: NavItem[] = [
+  { id: 'business', label: 'Business Settings', icon: Building2, href: '/business' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '/settings' },
 ];
 
@@ -101,6 +102,7 @@ const RESTAURANT_NAV: NavItem[] = [
   { id: 'events', label: 'Events', icon: PartyPopper, href: '/events' },
   { id: 'waitlist', label: 'Waitlist', icon: ClipboardList, href: '/waitlist' },
   { id: 'menu', label: 'Menu', icon: BookOpen, href: '/menu' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'guests', label: 'Guests', icon: UserCircle, href: '/customers' },
   { id: 'team', label: 'Team', icon: Users, href: '/team' },
   { id: 'activity', label: 'Activity', icon: Activity, href: '/activity' },
@@ -140,6 +142,7 @@ const REAL_ESTATE_NAV: NavItem[] = [
   { id: 'showings', label: 'Showings', icon: CalendarDays, href: '/showings' },
   { id: 'leads', label: 'Leads', icon: UserCircle, href: '/customers' },
   { id: 'agents', label: 'Agents', icon: Users, href: '/team' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'pipeline', label: 'Pipeline', icon: TrendingUp, href: '/pipeline' },
   { id: 'areas', label: 'Service Areas', icon: MapPin, href: '/areas' },
   { id: 'activity', label: 'Activity', icon: Activity, href: '/activity' },
@@ -150,6 +153,7 @@ const LEGAL_NAV: NavItem[] = [
   { id: 'clients', label: 'Clients', icon: UserCircle, href: '/customers' },
   { id: 'cases', label: 'Cases', icon: Briefcase, href: '/cases' },
   { id: 'attorneys', label: 'Attorneys', icon: Scale, href: '/team' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'practice', label: 'Practice Areas', icon: FileCheck, href: '/practice-areas' },
   { id: 'intake', label: 'Intake', icon: ClipboardList, href: '/intake' },
   { id: 'activity', label: 'Activity', icon: Activity, href: '/activity' },
@@ -180,6 +184,7 @@ const FITNESS_NAV: NavItem[] = [
   { id: 'training', label: 'Training', icon: Dumbbell, href: '/training' },
   { id: 'members', label: 'Members', icon: UserCircle, href: '/customers' },
   { id: 'instructors', label: 'Instructors', icon: Trophy, href: '/team' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'memberships', label: 'Memberships', icon: CreditCard, href: '/memberships' },
   { id: 'studios', label: 'Studios', icon: Building2, href: '/studios' },
   { id: 'activity', label: 'Activity', icon: Activity, href: '/activity' },
@@ -201,6 +206,7 @@ const HOTEL_NAV: NavItem[] = [
   { id: 'rooms', label: 'Rooms', icon: BedDouble, href: '/rooms' },
   { id: 'guests', label: 'Guests', icon: UserCircle, href: '/customers' },
   { id: 'room-types', label: 'Room Types', icon: Hotel, href: '/room-types' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'rates', label: 'Rates', icon: CreditCard, href: '/rates' },
   { id: 'amenities', label: 'Amenities', icon: Star, href: '/amenities' },
   { id: 'team', label: 'Team', icon: Users, href: '/team' },
@@ -211,6 +217,7 @@ const THERAPY_NAV: NavItem[] = [
   { id: 'sessions', label: 'Sessions', icon: CalendarDays, href: '/sessions' },
   { id: 'clients', label: 'Clients', icon: UserCircle, href: '/customers' },
   { id: 'therapists', label: 'Therapists', icon: Brain, href: '/team' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'specialties', label: 'Specialties', icon: Heart, href: '/specialties' },
   { id: 'insurance', label: 'Insurance', icon: Shield, href: '/insurance' },
   { id: 'intake', label: 'Intake Forms', icon: ClipboardList, href: '/intake' },
@@ -242,6 +249,7 @@ const PHOTOGRAPHY_NAV: NavItem[] = [
   { id: 'sessions', label: 'Sessions', icon: CalendarDays, href: '/sessions' },
   { id: 'clients', label: 'Clients', icon: UserCircle, href: '/customers' },
   { id: 'session-types', label: 'Session Types', icon: Camera, href: '/session-types' },
+  { id: 'services', label: 'Services', icon: Package, href: '/services' },
   { id: 'packages', label: 'Packages', icon: Package, href: '/packages' },
   { id: 'galleries', label: 'Galleries', icon: Image, href: '/galleries' },
   { id: 'team', label: 'Team', icon: Users, href: '/team' },
@@ -253,7 +261,6 @@ const GENERIC_NAV: NavItem[] = [
   { id: 'customers', label: 'Customers', icon: UserCircle, href: '/customers' },
   { id: 'team', label: 'Team', icon: Users, href: '/team' },
   { id: 'services', label: 'Services', icon: Package, href: '/services' },
-  { id: 'business', label: 'Business', icon: Building2, href: '/business' },
   { id: 'activity', label: 'Activity', icon: Activity, href: '/activity' },
 ];
 
