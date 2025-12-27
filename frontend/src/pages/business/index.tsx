@@ -3,42 +3,27 @@ import { motion } from 'framer-motion';
 import {
   Building2,
   Clock,
-  Briefcase,
   Save,
-  Plus,
-  Edit,
-  Trash2,
   MapPin,
-  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea, Switch } from '@/components/ui/form-elements';
+import { Switch } from '@/components/ui/form-elements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatDuration } from '@/lib/utils/format';
 import {
   useBusiness,
   useUpdateBusiness,
   useBusinessHours,
   useUpdateBusinessHours,
-  useServices,
-  useCreateService,
-  useUpdateService,
-  useDeleteService,
 } from '@/lib/api/hooks';
-import type { Business, BusinessHours, Service } from '@/types';
+import type { Business, BusinessHours } from '@/types';
 import { useIndustry } from '@/contexts/industry-context';
-import {
-  INDUSTRY_META,
-  type BusinessType,
-  getIndustryBadgeClasses,
-} from '@/config/industries';
+import { getIndustryBadgeClasses } from '@/config/industries';
 
 
 const timezones = [
@@ -51,23 +36,11 @@ const timezones = [
   { value: 'Asia/Dubai', label: 'Gulf Time (Dubai)' },
 ];
 
-// Supported business types from config
-const supportedIndustries = Object.values(INDUSTRY_META).filter(meta => meta.id !== 'generic');
-
-const serviceCategories = [
-  { value: 'consultation', label: 'Consultation', color: 'primary' },
-  { value: 'treatment', label: 'Treatment', color: 'secondary' },
-  { value: 'maintenance', label: 'Maintenance', color: 'success' },
-  { value: 'cosmetic', label: 'Cosmetic', color: 'warning' },
-  { value: 'emergency', label: 'Emergency', color: 'error' },
-  { value: 'general', label: 'General', color: 'default' },
-];
-
 export default function BusinessPage() {
   return (
     <PageContainer
       title="Business"
-      description="Manage your business profile, hours, and services"
+      description="Manage your business profile and hours"
     >
       <BusinessContent />
     </PageContainer>
@@ -80,15 +53,10 @@ function BusinessContent() {
   const updateBusiness = useUpdateBusiness();
   const { data: hoursData, isLoading: hoursLoading, refetch: refetchHours } = useBusinessHours();
   const updateHours = useUpdateBusinessHours();
-  const { data: servicesResponse, isLoading: servicesLoading, refetch: refetchServices } = useServices();
-  const createService = useCreateService();
-  const updateService = useUpdateService();
-  const deleteService = useDeleteService();
 
-  // Get industry-specific terminology
-  const { terminology } = useIndustry();
-  const serviceLabel = terminology.service;
-  const serviceLabelPlural = terminology.servicePlural;
+  // Get industry-specific terminology and meta
+  const { meta: industryMeta, businessType } = useIndustry();
+  const badgeClasses = getIndustryBadgeClasses(businessType);
 
   const [formData, setFormData] = useState<Partial<Business>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -98,16 +66,10 @@ function BusinessContent() {
   const [schedule, setSchedule] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
   const [hoursHasChanges, setHoursHasChanges] = useState(false);
 
-  // Services state
-  const [showServiceModal, setShowServiceModal] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
-  const servicesList = servicesResponse?.data || [];
-
   useEffect(() => {
     if (business) {
       setFormData({
         business_name: business.business_name,
-        industry: business.industry,
         timezone: business.timezone,
         default_language: business.default_language,
         address: business.address,
@@ -205,30 +167,12 @@ function BusinessContent() {
     toast.success('Applied Monday schedule to all weekdays');
   };
 
-  const handleDeleteService = async (service: Service) => {
-    if (!confirm(`Delete ${service.name}?`)) return;
-    try {
-      await deleteService.mutateAsync(service.id);
-      toast.success('Service deleted');
-      refetchServices();
-    } catch (error) {
-      toast.error('Failed to delete service');
-    }
-  };
-
-  const handleServiceSuccess = () => {
-    setShowServiceModal(false);
-    setEditingService(null);
-    refetchServices();
-  };
-
-  if (businessLoading || hoursLoading || servicesLoading) {
+  if (businessLoading || hoursLoading) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-80 w-full" />
-        <Skeleton className="h-80 w-full" />
+        <Skeleton className="h-80 w-full lg:col-span-2" />
       </div>
     );
   }
@@ -252,46 +196,19 @@ function BusinessContent() {
               placeholder="Your business name"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <label className="text-sm font-medium text-muted-foreground">Industry</label>
-            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
-              {supportedIndustries.map((meta) => {
-                const badgeClasses = getIndustryBadgeClasses(meta.id);
-                const isSelected = formData.industry === meta.id;
-                const Icon = meta.icon;
-
-                return (
-                  <button
-                    key={meta.id}
-                    type="button"
-                    onClick={() => handleChange('industry', meta.id)}
-                    className={cn(
-                      'relative flex flex-col items-center gap-1.5 p-2.5 rounded-lg border transition-all',
-                      'hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20',
-                      isSelected
-                        ? `border-primary ${badgeClasses.bg}`
-                        : 'border-border bg-card hover:border-primary/50'
-                    )}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-1 right-1">
-                        <Check className="h-3 w-3 text-primary" />
-                      </div>
-                    )}
-                    <Icon className={cn(
-                      'h-5 w-5',
-                      isSelected ? badgeClasses.icon : 'text-muted-foreground'
-                    )} />
-                    <span className={cn(
-                      'text-[10px] font-medium text-center leading-tight',
-                      isSelected ? 'text-foreground' : 'text-muted-foreground'
-                    )}>
-                      {meta.name.split('/')[0].trim().split(' ')[0]}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className={cn(
+              'flex items-center gap-3 p-3 rounded-lg border',
+              badgeClasses.bg,
+              badgeClasses.border
+            )}>
+              <industryMeta.icon className={cn('h-5 w-5', badgeClasses.icon)} />
+              <span className="font-medium">{industryMeta.name}</span>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Industry is set during onboarding and cannot be changed
+            </p>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
@@ -366,56 +283,58 @@ function BusinessContent() {
         </CardContent>
       </Card>
 
-      {/* Row 2, Col 1 - Business Hours */}
-      <Card className="flex flex-col">
-        <CardHeader className="pb-4 shrink-0">
+      {/* Row 2 - Business Hours (full width) */}
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Clock className="h-5 w-5 text-primary" />
               Business Hours
             </CardTitle>
             <Button variant="outline" size="sm" onClick={applyToWeekdays}>
-              Copy Mon
+              Copy Mon to Weekdays
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="flex-1">
-          <div className="space-y-1.5">
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {days.map((day, index) => (
               <div
                 key={day}
                 className={cn(
-                  'flex items-center gap-3 p-2 rounded-lg border transition-colors',
+                  'flex flex-col gap-2 p-3 rounded-lg border transition-colors',
                   schedule[index]?.is_open
                     ? 'bg-card border-border'
                     : 'bg-muted/50 border-border'
                 )}
               >
-                <Switch
-                  checked={schedule[index]?.is_open ?? index < 5}
-                  onCheckedChange={() => handleToggleDay(index)}
-                />
-                <span className={cn(
-                  'font-medium text-sm w-10',
-                  !schedule[index]?.is_open && 'text-muted-foreground'
-                )}>
-                  {day.slice(0, 3)}
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className={cn(
+                    'font-medium text-sm',
+                    !schedule[index]?.is_open && 'text-muted-foreground'
+                  )}>
+                    {day}
+                  </span>
+                  <Switch
+                    checked={schedule[index]?.is_open ?? index < 5}
+                    onCheckedChange={() => handleToggleDay(index)}
+                  />
+                </div>
 
                 {schedule[index]?.is_open ? (
-                  <div className="flex items-center gap-2 flex-1">
+                  <div className="flex items-center gap-2">
                     <Input
                       type="time"
                       value={schedule[index]?.open_time || '09:00'}
                       onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                      className="w-24 h-8 text-xs"
+                      className="h-8 text-xs"
                     />
                     <span className="text-muted-foreground text-xs">-</span>
                     <Input
                       type="time"
                       value={schedule[index]?.close_time || '17:00'}
                       onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                      className="w-24 h-8 text-xs"
+                      className="h-8 text-xs"
                     />
                   </div>
                 ) : (
@@ -424,79 +343,6 @@ function BusinessContent() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Row 2, Col 2 - Services */}
-      <Card className="flex flex-col lg:overflow-hidden lg:max-h-[400px]">
-        <CardHeader className="pb-4 shrink-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Briefcase className="h-5 w-5 text-primary" />
-              {serviceLabelPlural}
-            </CardTitle>
-            <Button size="sm" onClick={() => setShowServiceModal(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
-          {servicesList.length === 0 ? (
-            <div className="py-8 text-center">
-              <Briefcase className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm font-medium mb-1">No {serviceLabelPlural.toLowerCase()} yet</p>
-              <p className="text-xs text-muted-foreground mb-3">
-                Add {serviceLabelPlural.toLowerCase()} for booking
-              </p>
-              <Button size="sm" variant="outline" onClick={() => setShowServiceModal(true)}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add {serviceLabel}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2 lg:h-full lg:overflow-y-auto">
-              {servicesList.map((service) => (
-                <div
-                  key={service.id}
-                  className={cn(
-                    'flex items-center justify-between p-3 rounded-lg border',
-                    !service.is_active && 'opacity-60'
-                  )}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{service.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-muted-foreground">
-                        {formatDuration(service.duration_minutes)}
-                      </span>
-                      {service.price != null && service.price > 0 && (
-                        <span className="text-xs font-medium">
-                          {formatCurrency(service.price)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => setEditingService(service)}
-                    >
-                      <Edit className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => handleDeleteService(service)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -518,193 +364,6 @@ function BusinessContent() {
           </Button>
         </motion.div>
       )}
-
-      {/* Service Modal */}
-      <Dialog
-        open={showServiceModal || !!editingService}
-        onOpenChange={(open) => {
-          if (!open) {
-            setShowServiceModal(false);
-            setEditingService(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingService ? `Edit ${serviceLabel}` : `Add ${serviceLabel}`}</DialogTitle>
-          </DialogHeader>
-          <ServiceForm
-            service={editingService}
-            onSuccess={handleServiceSuccess}
-            serviceLabel={serviceLabel}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
-  );
-}
-
-// Service Form Component
-function ServiceForm({ service, onSuccess, serviceLabel = 'Service' }: { service?: Service | null; onSuccess: () => void; serviceLabel?: string }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    duration_minutes: 30,
-    price: 0,
-    category: 'general',
-    is_active: true,
-  });
-
-  const createService = useCreateService();
-  const updateService = useUpdateService();
-
-  useEffect(() => {
-    if (service) {
-      setFormData({
-        name: service.name,
-        description: service.description || '',
-        duration_minutes: service.duration_minutes,
-        price: service.price || 0,
-        category: service.category || 'general',
-        is_active: service.is_active,
-      });
-    }
-  }, [service]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.name) {
-      toast.error(`Please enter a ${serviceLabel.toLowerCase()} name`);
-      return;
-    }
-
-    try {
-      if (service) {
-        await updateService.mutateAsync({
-          id: service.id,
-          data: {
-            name: formData.name,
-            description: formData.description || undefined,
-            duration_minutes: formData.duration_minutes,
-            price: formData.price || undefined,
-            category: formData.category,
-            is_active: formData.is_active,
-          }
-        });
-        toast.success(`${serviceLabel} updated`);
-      } else {
-        await createService.mutateAsync({
-          name: formData.name,
-          description: formData.description || undefined,
-          duration_minutes: formData.duration_minutes,
-          price: formData.price || undefined,
-          category: formData.category,
-          is_active: formData.is_active,
-          requires_staff: true,
-        });
-        toast.success(`${serviceLabel} added`);
-      }
-      onSuccess();
-    } catch (error) {
-      toast.error(service ? `Failed to update ${serviceLabel.toLowerCase()}` : `Failed to add ${serviceLabel.toLowerCase()}`);
-    }
-  };
-
-  const isLoading = createService.isPending || updateService.isPending;
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">{serviceLabel} Name</label>
-        <Input
-          placeholder={`e.g., ${serviceLabel}`}
-          value={formData.name}
-          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-          required
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Description</label>
-        <Textarea
-          placeholder="Describe this service..."
-          value={formData.description}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Duration</label>
-          <Select
-            value={formData.duration_minutes.toString()}
-            onValueChange={(v) => setFormData(prev => ({ ...prev, duration_minutes: parseInt(v) }))}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="15">15 minutes</SelectItem>
-              <SelectItem value="30">30 minutes</SelectItem>
-              <SelectItem value="45">45 minutes</SelectItem>
-              <SelectItem value="60">1 hour</SelectItem>
-              <SelectItem value="90">1.5 hours</SelectItem>
-              <SelectItem value="120">2 hours</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Price</label>
-          <Input
-            type="number"
-            placeholder="0.00"
-            min="0"
-            step="0.01"
-            value={formData.price || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Category</label>
-        <Select
-          value={formData.category}
-          onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {serviceCategories.map((cat) => (
-              <SelectItem key={cat.value} value={cat.value}>
-                {cat.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-        <div>
-          <p className="font-medium">Active</p>
-          <p className="text-sm text-muted-foreground">{serviceLabel} is available for booking</p>
-        </div>
-        <Switch
-          checked={formData.is_active}
-          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
-        />
-      </div>
-
-      <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onSuccess}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={isLoading}>
-          {service ? 'Save Changes' : `Add ${serviceLabel}`}
-        </Button>
-      </div>
-    </form>
   );
 }
