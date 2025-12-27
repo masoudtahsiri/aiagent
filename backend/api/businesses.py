@@ -7,6 +7,7 @@ from backend.models.business import (
     BusinessResponse,
     IndustryType,
     VALID_INDUSTRIES,
+    SUPPORTED_CURRENCIES,
 )
 from backend.services.business_service import BusinessService
 from backend.middleware.auth import get_current_active_user
@@ -19,6 +20,12 @@ router = APIRouter(prefix="/api/businesses", tags=["Business Management"])
 async def get_available_industries():
     """Get list of available industry types for business registration"""
     return VALID_INDUSTRIES
+
+
+@router.get("/currencies")
+async def get_available_currencies():
+    """Get list of supported currencies"""
+    return SUPPORTED_CURRENCIES
 
 
 @router.post("", response_model=BusinessResponse, status_code=status.HTTP_201_CREATED)

@@ -139,6 +139,27 @@ async def get_staff_exceptions(
     return await StaffService.get_staff_exceptions(staff_id, current_user["id"], start_date, end_date)
 
 
+# Staff-Services Management
+
+@router.get("/{staff_id}/services")
+async def get_staff_services(
+    staff_id: str,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Get services that a staff member can perform"""
+    return await StaffService.get_staff_services(staff_id, current_user["id"])
+
+
+@router.put("/{staff_id}/services")
+async def update_staff_services(
+    staff_id: str,
+    service_ids: List[str],
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Update services that a staff member can perform"""
+    return await StaffService.update_staff_services(staff_id, service_ids, current_user["id"])
+
+
 @router.post("/{staff_id}/generate-slots")
 async def generate_time_slots(
     staff_id: str,

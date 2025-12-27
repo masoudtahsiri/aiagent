@@ -42,6 +42,7 @@ export interface Business {
   owner_id: string;
   business_name: string;
   industry: string;
+  currency: string;
   phone_number?: string;
   ai_phone_number?: string;
   address?: string;

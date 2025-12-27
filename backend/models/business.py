@@ -27,6 +27,17 @@ class IndustryType(str, Enum):
 # List of valid industry values for validation
 VALID_INDUSTRIES = [e.value for e in IndustryType]
 
+# Supported currencies
+SUPPORTED_CURRENCIES = [
+    {"code": "TRY", "symbol": "₺", "name": "Turkish Lira"},
+    {"code": "USD", "symbol": "$", "name": "US Dollar"},
+    {"code": "EUR", "symbol": "€", "name": "Euro"},
+    {"code": "GBP", "symbol": "£", "name": "British Pound"},
+    {"code": "AED", "symbol": "د.إ", "name": "UAE Dirham"},
+]
+
+VALID_CURRENCY_CODES = [c["code"] for c in SUPPORTED_CURRENCIES]
+
 # Common industry aliases for normalization
 INDUSTRY_ALIASES = {
     "healthcare": "medical",
@@ -113,6 +124,7 @@ def normalize_industry_value(value: str) -> str:
 class BusinessBase(BaseModel):
     business_name: str
     industry: str = "generic"  # Default to generic
+    currency: str = "TRY"  # Default to Turkish Lira
     phone_number: Optional[str] = None  # Business contact (not AI phone)
     ai_phone_number: Optional[str] = None  # Dedicated AI receptionist number
     address: Optional[str] = None
@@ -138,6 +150,7 @@ class BusinessCreate(BusinessBase):
 class BusinessUpdate(BaseModel):
     business_name: Optional[str] = None
     industry: Optional[str] = None
+    currency: Optional[str] = None
     phone_number: Optional[str] = None
     ai_phone_number: Optional[str] = None
     address: Optional[str] = None

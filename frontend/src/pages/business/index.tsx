@@ -5,7 +5,12 @@ import {
   Clock,
   Save,
   MapPin,
+  CalendarOff,
+  X,
+  Plus,
 } from 'lucide-react';
+import { DayPicker } from 'react-day-picker';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -14,16 +19,29 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/form-elements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   useBusiness,
   useUpdateBusiness,
   useBusinessHours,
   useUpdateBusinessHours,
+  useBusinessClosures,
+  useAddBusinessClosure,
+  useDeleteBusinessClosure,
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours } from '@/types';
 import { useIndustry } from '@/contexts/industry-context';
 import { getIndustryBadgeClasses } from '@/config/industries';
+
+// Supported currencies
+const currencies = [
+  { code: 'TRY', symbol: '₺', name: 'Turkish Lira' },
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+];
 
 
 const timezones = [
@@ -54,6 +72,11 @@ function BusinessContent() {
   const { data: hoursData, isLoading: hoursLoading, refetch: refetchHours } = useBusinessHours();
   const updateHours = useUpdateBusinessHours();
 
+  // Closures hooks
+  const { data: closuresData, isLoading: closuresLoading, refetch: refetchClosures } = useBusinessClosures();
+  const addClosure = useAddBusinessClosure();
+  const deleteClosure = useDeleteBusinessClosure();
+
   // Get industry-specific terminology and meta
   const { meta: industryMeta, businessType } = useIndustry();
   const badgeClasses = getIndustryBadgeClasses(businessType);
@@ -65,6 +88,10 @@ function BusinessContent() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const [schedule, setSchedule] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
   const [hoursHasChanges, setHoursHasChanges] = useState(false);
+
+  // Closures state
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [closureReason, setClosureReason] = useState('');
 
   useEffect(() => {
     if (business) {
@@ -78,6 +105,7 @@ function BusinessContent() {
         zip_code: business.zip_code,
         phone_number: business.phone_number,
         country: business.country,
+        currency: business.currency || 'TRY',
       });
     }
   }, [business]);
@@ -167,6 +195,39 @@ function BusinessContent() {
     toast.success('Applied Monday schedule to all weekdays');
   };
 
+  const handleAddClosure = async () => {
+    if (!selectedDate) {
+      toast.error('Please select a date');
+      return;
+    }
+
+    try {
+      await addClosure.mutateAsync({
+        closure_date: format(selectedDate, 'yyyy-MM-dd'),
+        reason: closureReason || undefined,
+      });
+      toast.success('Closure added');
+      setSelectedDate(undefined);
+      setClosureReason('');
+      refetchClosures();
+    } catch (error) {
+      toast.error('Failed to add closure');
+    }
+  };
+
+  const handleDeleteClosure = async (closureId: string) => {
+    try {
+      await deleteClosure.mutateAsync(closureId);
+      toast.success('Closure removed');
+      refetchClosures();
+    } catch (error) {
+      toast.error('Failed to remove closure');
+    }
+  };
+
+  // Get dates that are already marked as closed
+  const closedDates = (closuresData || []).map(c => new Date(c.closure_date));
+
   if (businessLoading || hoursLoading) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -218,6 +279,27 @@ function BusinessContent() {
               onChange={(e) => handleChange('phone_number', e.target.value)}
               placeholder="+1 (555) 000-0000"
             />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-muted-foreground">Currency</label>
+            <Select
+              value={formData.currency || 'TRY'}
+              onValueChange={(v) => handleChange('currency', v)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {currencies.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium">{c.symbol}</span>
+                      <span>{c.name}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -342,6 +424,95 @@ function BusinessContent() {
                 )}
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Row 3 - Closed Dates (full width) */}
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <CalendarOff className="h-5 w-5 text-primary" />
+            Closed Dates
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Calendar picker */}
+            <div className="flex flex-col items-center">
+              <DayPicker
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                disabled={[
+                  { before: new Date() },
+                  ...closedDates,
+                ]}
+                modifiers={{
+                  closed: closedDates,
+                }}
+                modifiersStyles={{
+                  closed: { backgroundColor: 'hsl(var(--destructive))', color: 'white', borderRadius: '50%' },
+                }}
+                className="border rounded-lg p-3"
+              />
+              <div className="mt-4 w-full max-w-xs space-y-3">
+                <Input
+                  placeholder="Reason (optional)"
+                  value={closureReason}
+                  onChange={(e) => setClosureReason(e.target.value)}
+                />
+                <Button
+                  className="w-full"
+                  onClick={handleAddClosure}
+                  disabled={!selectedDate}
+                  loading={addClosure.isPending}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Closure
+                </Button>
+              </div>
+            </div>
+
+            {/* Closures list */}
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-3">Scheduled Closures</h4>
+              {closuresLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : (closuresData || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No scheduled closures</p>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {(closuresData || [])
+                    .sort((a, b) => new Date(a.closure_date).getTime() - new Date(b.closure_date).getTime())
+                    .map((closure) => (
+                      <div
+                        key={closure.id}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-muted/50"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {format(new Date(closure.closure_date), 'EEEE, MMMM d, yyyy')}
+                          </p>
+                          {closure.reason && (
+                            <p className="text-sm text-muted-foreground">{closure.reason}</p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleDeleteClosure(closure.id)}
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

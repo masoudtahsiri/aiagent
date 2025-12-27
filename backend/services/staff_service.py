@@ -292,7 +292,59 @@ class StaffService:
             query = query.lte("exception_date", end_date)
         
         result = query.order("exception_date").execute()
-        
+
         return result.data if result.data else []
 
+    # Staff-Services Management
+
+    @staticmethod
+    async def get_staff_services(staff_id: str, user_id: str) -> List[dict]:
+        """Get services that a staff member can perform"""
+        db = get_db()
+
+        # Verify staff belongs to user's business
+        await StaffService.get_staff(staff_id, user_id)
+
+        # Get service IDs from staff_services junction table
+        result = db.table("staff_services").select(
+            "service_id, custom_price, services(id, name, duration_minutes, price, category, is_active)"
+        ).eq("staff_id", staff_id).execute()
+
+        if not result.data:
+            return []
+
+        # Extract service details
+        services = []
+        for item in result.data:
+            if item.get("services"):
+                service = item["services"]
+                service["custom_price"] = item.get("custom_price")
+                services.append(service)
+
+        return services
+
+    @staticmethod
+    async def update_staff_services(staff_id: str, service_ids: List[str], user_id: str) -> dict:
+        """Update services that a staff member can perform"""
+        db = get_db()
+
+        # Verify staff belongs to user's business
+        staff = await StaffService.get_staff(staff_id, user_id)
+
+        # Delete existing staff_services for this staff
+        db.table("staff_services").delete().eq("staff_id", staff_id).execute()
+
+        # Insert new staff_services
+        if service_ids:
+            new_mappings = [
+                {"staff_id": staff_id, "service_id": service_id}
+                for service_id in service_ids
+            ]
+            db.table("staff_services").insert(new_mappings).execute()
+
+        return {
+            "message": "Staff services updated successfully",
+            "staff_id": staff_id,
+            "service_count": len(service_ids)
+        }
 

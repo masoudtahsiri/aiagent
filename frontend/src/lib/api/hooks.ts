@@ -398,29 +398,63 @@ export function useStaffAvailability(staffId: string) {
   });
 }
 
+interface AvailabilityTemplateInput {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+}
+
+export function useUpdateStaffAvailability() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: ({ staffId, templates }: { staffId: string; templates: AvailabilityTemplateInput[] }) =>
+      post(`/api/staff/availability/bulk`, { staff_id: staffId, templates }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-availability', variables.staffId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
+    },
+  });
+}
+
 interface StaffServiceMapping {
   staff_id: string;
   service_id: string;
 }
 
+interface StaffServiceMapping {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price?: number;
+  category?: string;
+  is_active: boolean;
+  custom_price?: number;
+}
+
 export function useStaffServices(staffId: string) {
-  const { data: servicesData } = useServices();
-  
   return useQuery({
     queryKey: ['staff-services', staffId],
-    queryFn: async () => {
-      // Get the staff member to check for service assignments
-      const staff = await get<Staff>(`/api/staff/${staffId}`);
-      // The staff_services relationship is fetched through services endpoint
-      // Filter services that this staff member can perform
-      const allServices = servicesData?.data || [];
-      
-      // For now, return all services since the backend staff endpoint 
-      // doesn't include service_ids directly. This can be enhanced later.
-      return allServices;
-    },
-    enabled: !!staffId && !!servicesData,
+    queryFn: () => get<StaffServiceMapping[]>(`/api/staff/${staffId}/services`),
+    enabled: !!staffId,
     staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useUpdateStaffServices() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: ({ staffId, serviceIds }: { staffId: string; serviceIds: string[] }) =>
+      put(`/api/staff/${staffId}/services`, serviceIds),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-services', variables.staffId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
+    },
   });
 }
 
@@ -801,12 +835,60 @@ export function useBusinessHours() {
 export function useUpdateBusinessHours() {
   const queryClient = useQueryClient();
   const businessId = useBusinessId();
-  
+
   return useMutation({
-    mutationFn: (data: BusinessHours[]) => 
+    mutationFn: (data: BusinessHours[]) =>
       post<BusinessHours[]>(`/api/business-hours/${businessId}`, { hours: data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businessHours(businessId || '') });
+    },
+  });
+}
+
+// =============================================================================
+// BUSINESS CLOSURES HOOKS
+// =============================================================================
+
+interface BusinessClosure {
+  id: string;
+  business_id: string;
+  closure_date: string;
+  reason?: string;
+  created_at: string;
+}
+
+export function useBusinessClosures() {
+  const businessId = useBusinessId();
+
+  return useQuery({
+    queryKey: ['business-closures', businessId],
+    queryFn: () => get<BusinessClosure[]>(`/api/business-hours/${businessId}/closures`),
+    enabled: !!businessId,
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useAddBusinessClosure() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: (data: { closure_date: string; reason?: string }) =>
+      post<BusinessClosure>('/api/business-hours/closures', { ...data, business_id: businessId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-closures', businessId] });
+    },
+  });
+}
+
+export function useDeleteBusinessClosure() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: (closureId: string) => del(`/api/business-hours/closures/${closureId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-closures', businessId] });
     },
   });
 }

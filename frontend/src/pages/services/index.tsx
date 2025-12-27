@@ -52,6 +52,7 @@ const serviceCategories = [
 
 export default function ServicesPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const isMobile = useIsMobile();
@@ -66,8 +67,13 @@ export default function ServicesPage() {
 
   const servicesList = servicesResponse?.data || [];
 
-  // Filter services by search query
+  // Filter services by search query and status
   const filteredServices = servicesList.filter((service) => {
+    // Status filter
+    if (statusFilter === 'active' && !service.is_active) return false;
+    if (statusFilter === 'inactive' && service.is_active) return false;
+
+    // Search filter
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -76,6 +82,10 @@ export default function ServicesPage() {
       service.category?.toLowerCase().includes(query)
     );
   });
+
+  // Count active/inactive for filter badges
+  const activeCount = servicesList.filter(s => s.is_active).length;
+  const inactiveCount = servicesList.filter(s => !s.is_active).length;
 
   const handleDelete = async (service: Service) => {
     if (!confirm(`Delete "${service.name}"?`)) return;
@@ -119,9 +129,9 @@ export default function ServicesPage() {
         </Button>
       }
     >
-      {/* Search */}
-      <div className="mb-6">
-        <div className="relative max-w-md">
+      {/* Search and Filters */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={`Search ${serviceLabelPlural.toLowerCase()}...`}
@@ -129,6 +139,29 @@ export default function ServicesPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={statusFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter('all')}
+          >
+            All ({servicesList.length})
+          </Button>
+          <Button
+            variant={statusFilter === 'active' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter('active')}
+          >
+            Active ({activeCount})
+          </Button>
+          <Button
+            variant={statusFilter === 'inactive' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter('inactive')}
+          >
+            Inactive ({inactiveCount})
+          </Button>
         </div>
       </div>
 
@@ -156,6 +189,7 @@ export default function ServicesPage() {
           serviceLabel={serviceLabel}
           onEdit={setEditingService}
           onDelete={handleDelete}
+          onRefresh={refetch}
         />
       ) : (
         <DesktopServiceTable
@@ -200,12 +234,29 @@ function MobileServiceList({
   serviceLabel,
   onEdit,
   onDelete,
+  onRefresh,
 }: {
   services: Service[];
   serviceLabel: string;
   onEdit: (service: Service) => void;
   onDelete: (service: Service) => void;
+  onRefresh: () => void;
 }) {
+  const updateService = useUpdateService();
+
+  const handleToggleActive = async (service: Service) => {
+    try {
+      await updateService.mutateAsync({
+        id: service.id,
+        data: { is_active: !service.is_active },
+      });
+      toast.success(`${service.name} ${service.is_active ? 'deactivated' : 'activated'}`);
+      onRefresh();
+    } catch (error) {
+      toast.error('Failed to update status');
+    }
+  };
+
   return (
     <div className="space-y-3">
       {services.map((service, i) => (
@@ -256,6 +307,19 @@ function MobileServiceList({
                   <DropdownMenuItem onClick={() => onEdit(service)}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleToggleActive(service)}>
+                    {service.is_active ? (
+                      <>
+                        <ToggleLeft className="h-4 w-4 mr-2" />
+                        Deactivate
+                      </>
+                    ) : (
+                      <>
+                        <ToggleRight className="h-4 w-4 mr-2" />
+                        Activate
+                      </>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
