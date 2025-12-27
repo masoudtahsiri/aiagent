@@ -298,13 +298,14 @@ interface StaffResponse {
   total: number;
 }
 
-export function useStaff() {
+export function useStaff(includeInactive: boolean = true) {
   const businessId = useBusinessId();
-  
+
   return useQuery({
     queryKey: queryKeys.staff(businessId || ''),
     queryFn: async () => {
-      const result = await get<Staff[] | StaffResponse>(`/api/staff/business/${businessId}`);
+      const params = includeInactive ? '?include_inactive=true' : '';
+      const result = await get<Staff[] | StaffResponse>(`/api/staff/business/${businessId}${params}`);
       // Handle both array and wrapped response formats
       if (Array.isArray(result)) {
         return { data: result, total: result.length };
@@ -467,13 +468,14 @@ interface ServicesResponse {
   total: number;
 }
 
-export function useServices() {
+export function useServices(includeInactive: boolean = true) {
   const businessId = useBusinessId();
-  
+
   return useQuery({
     queryKey: queryKeys.services(businessId || ''),
     queryFn: async () => {
-      const result = await get<Service[] | ServicesResponse>(`/api/services/business/${businessId}`);
+      const params = includeInactive ? '?include_inactive=true' : '';
+      const result = await get<Service[] | ServicesResponse>(`/api/services/business/${businessId}${params}`);
       // Handle both array and wrapped response formats
       if (Array.isArray(result)) {
         return { data: result, total: result.length };

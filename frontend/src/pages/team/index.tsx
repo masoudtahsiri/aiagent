@@ -66,6 +66,7 @@ const colorOptions = [
 export default function TeamPage() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Get industry-specific terminology
   const { terminology } = useIndustry();
@@ -76,7 +77,18 @@ export default function TeamPage() {
   const deleteStaff = useDeleteStaff();
   const updateStaff = useUpdateStaff();
 
-  const staffList = staffResponse?.data || [];
+  const allStaff = staffResponse?.data || [];
+
+  // Filter staff by status
+  const staffList = allStaff.filter((member) => {
+    if (statusFilter === 'active') return member.is_active;
+    if (statusFilter === 'inactive') return !member.is_active;
+    return true;
+  });
+
+  // Count for filter badges
+  const activeCount = allStaff.filter(s => s.is_active).length;
+  const inactiveCount = allStaff.filter(s => !s.is_active).length;
 
   const handleToggleActive = async (member: Staff) => {
     try {
@@ -147,8 +159,31 @@ export default function TeamPage() {
         </CardContent>
       </Card>
 
-      {/* Add Staff Button */}
-      <div className="flex justify-end mb-6">
+      {/* Filter and Add Staff */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={statusFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter('all')}
+          >
+            All ({allStaff.length})
+          </Button>
+          <Button
+            variant={statusFilter === 'active' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter('active')}
+          >
+            Active ({activeCount})
+          </Button>
+          <Button
+            variant={statusFilter === 'inactive' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter('inactive')}
+          >
+            Inactive ({inactiveCount})
+          </Button>
+        </div>
         <Button onClick={() => setShowNewModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add {staffLabel}
