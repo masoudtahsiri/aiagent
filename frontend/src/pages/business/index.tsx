@@ -232,7 +232,7 @@ function BusinessContent() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:h-[calc(100vh-320px)] lg:min-h-[400px]">
       {/* Row 1, Col 1 - Business Identity */}
       <Card>
         <CardHeader className="pb-4">
@@ -403,7 +403,7 @@ function BusinessContent() {
       </Card>
 
       {/* Row 2, Col 2 - Services */}
-      <Card className="flex flex-col lg:overflow-hidden">
+      <Card className="flex flex-col lg:overflow-hidden lg:h-full">
         <CardHeader className="pb-4 shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
