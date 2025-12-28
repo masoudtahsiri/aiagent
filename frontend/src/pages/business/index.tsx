@@ -10,6 +10,8 @@ import {
   Globe,
   Trash2,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import { format, isPast, isToday } from 'date-fns';
@@ -19,7 +21,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/form-elements';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -571,16 +573,16 @@ function BusinessContent() {
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
                   {timezoneGroups.map((group) => (
-                    <div key={group.region}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
+                    <SelectGroup key={group.region}>
+                      <SelectLabel className="text-xs font-semibold text-muted-foreground bg-muted/50 py-2">
                         {group.region}
-                      </div>
+                      </SelectLabel>
                       {group.timezones.map((tz) => (
                         <SelectItem key={tz.value} value={tz.value}>
                           {tz.label}
                         </SelectItem>
                       ))}
-                    </div>
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
@@ -747,16 +749,46 @@ function BusinessContent() {
                   modifiers={{
                     closed: closedDates,
                   }}
-                  modifiersStyles={{
-                    closed: {
-                      backgroundColor: 'hsl(var(--destructive))',
-                      color: 'white',
-                      borderRadius: '6px',
-                      fontWeight: '500'
-                    },
+                  modifiersClassNames={{
+                    closed: 'rdp-day_closed',
+                    selected: 'rdp-day_selected',
                   }}
-                  className="border rounded-lg p-2 bg-background mx-auto"
+                  components={{
+                    IconLeft: () => <ChevronLeft className="h-4 w-4" />,
+                    IconRight: () => <ChevronRight className="h-4 w-4" />,
+                  }}
+                  classNames={{
+                    months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0',
+                    month: 'space-y-4',
+                    caption: 'flex justify-center pt-1 relative items-center',
+                    caption_label: 'text-sm font-medium',
+                    nav: 'space-x-1 flex items-center',
+                    nav_button: 'h-7 w-7 bg-transparent p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input hover:bg-accent hover:text-accent-foreground transition-colors',
+                    nav_button_previous: 'absolute left-1',
+                    nav_button_next: 'absolute right-1',
+                    table: 'w-full border-collapse space-y-1',
+                    head_row: 'flex',
+                    head_cell: 'text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]',
+                    row: 'flex w-full mt-2',
+                    cell: 'h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20',
+                    day: 'h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-accent hover:text-accent-foreground rounded-md inline-flex items-center justify-center cursor-pointer transition-colors',
+                    day_range_end: 'day-range-end',
+                    day_selected: 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground',
+                    day_today: 'bg-accent text-accent-foreground font-semibold',
+                    day_outside: 'day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30',
+                    day_disabled: 'text-muted-foreground opacity-50 cursor-not-allowed hover:bg-transparent',
+                    day_hidden: 'invisible',
+                  }}
+                  className="p-3 bg-background rounded-lg border"
                 />
+                <style>{`
+                  .rdp-day_closed {
+                    background-color: hsl(var(--destructive)) !important;
+                    color: hsl(var(--destructive-foreground)) !important;
+                    border-radius: 0.375rem;
+                    font-weight: 500;
+                  }
+                `}</style>
                 <div className="space-y-2">
                   <Input
                     placeholder="Reason (optional, e.g., Holiday, Renovation)"
