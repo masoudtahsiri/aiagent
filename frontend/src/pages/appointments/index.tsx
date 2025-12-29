@@ -188,7 +188,7 @@ export default function AppointmentsPage() {
   };
 
   const hasActiveFilters = searchQuery || filterStaff !== 'all' || filterService !== 'all' ||
-    filterStatus !== 'all' || filterCustomer !== 'all' || selectedDate;
+    filterStatus !== 'all' || filterCustomer !== 'all';
 
   const isLoading = appointmentsLoading || staffLoading || servicesLoading;
 
@@ -375,31 +375,6 @@ export default function AppointmentsPage() {
           />
         )}
 
-        {/* Stats Summary */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-2xl font-bold">{filteredAppointments.length}</p>
-              <p className="text-sm text-muted-foreground">Total</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-2xl font-bold text-blue-600">
-                {filteredAppointments.filter((a) => a.status === 'scheduled').length}
-              </p>
-              <p className="text-sm text-muted-foreground">Scheduled</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-2xl font-bold text-red-600">
-                {filteredAppointments.filter((a) => a.status === 'cancelled').length}
-              </p>
-              <p className="text-sm text-muted-foreground">Cancelled</p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
 
       {/* Reschedule Modal */}
