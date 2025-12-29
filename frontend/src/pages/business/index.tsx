@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2,
@@ -323,6 +323,7 @@ function BusinessContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const hasAutoRefreshedHolidays = useRef(false);
 
   // File input ref for logo upload
   const fileInputRef = useCallback((node: HTMLInputElement | null) => {
@@ -443,11 +444,14 @@ function BusinessContent() {
           countryCode: countryCode,
           year: currentYear,
         });
-        if (result.added > 0) {
-          toast.success(`Added ${result.added} national holidays for ${country.name}`);
+        if (result.unsupported) {
+          toast.info(`Holiday data not available for ${country.name}. You can add closures manually.`);
+        } else if (result.added > 0) {
+          toast.success(`Added ${result.added} national holidays for ${country.name} (${currentYear}-${currentYear + 2})`);
+        } else if (result.total > 0) {
+          toast.info(`All holidays for ${country.name} already added`);
         }
       } catch (error) {
-        // Silently fail - holidays are optional
         console.warn('Could not fetch holidays:', error);
       }
     }
@@ -556,6 +560,30 @@ function BusinessContent() {
   };
 
   const closedDates = (closuresData || []).map(c => new Date(c.closure_date));
+
+  // Auto-refresh holidays if latest closure is less than 1 year away (runs once per session)
+  useEffect(() => {
+    if (!closuresData || !formData.country || fetchHolidays.isPending || hasAutoRefreshedHolidays.current) return;
+
+    const now = new Date();
+    const oneYearFromNow = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+
+    // Find the latest closure date
+    const latestClosure = closuresData.reduce((latest, c) => {
+      const date = new Date(c.closure_date);
+      return date > latest ? date : latest;
+    }, new Date(0));
+
+    // If latest closure is less than 1 year away, fetch more (silently)
+    if (latestClosure < oneYearFromNow && closuresData.length > 0) {
+      hasAutoRefreshedHolidays.current = true;
+      const currentYear = getYear(new Date());
+      fetchHolidays.mutate({
+        countryCode: formData.country,
+        year: currentYear,
+      });
+    }
+  }, [closuresData, formData.country]);
 
   // Filter closures by selected calendar month
   const monthClosures = (closuresData || [])
