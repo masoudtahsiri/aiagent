@@ -43,8 +43,8 @@ export interface Business {
   business_name: string;
   industry: string;
   currency: string;
-  phone_number?: string;
   ai_phone_number?: string;
+  alternative_phone_numbers?: string[];
   email?: string;
   address?: string;
   city?: string;
@@ -55,8 +55,14 @@ export interface Business {
   timezone: string;
   default_language: string;
   logo_url?: string;
+  // Social media
   instagram_url?: string;
   facebook_url?: string;
+  whatsapp?: string;
+  tiktok_url?: string;
+  youtube_url?: string;
+  linkedin_url?: string;
+  twitter_url?: string;
   subscription_status: 'active' | 'trial' | 'expired' | 'cancelled';
   created_at: string;
   updated_at: string;

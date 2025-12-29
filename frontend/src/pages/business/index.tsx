@@ -17,6 +17,10 @@ import {
   Instagram,
   Facebook,
   Loader2,
+  MessageCircle,
+  Youtube,
+  Linkedin,
+  Twitter,
 } from 'lucide-react';
 import { DayPicker, DateRange } from 'react-day-picker';
 import { format, isToday, eachDayOfInterval, isSameMonth } from 'date-fns';
@@ -46,71 +50,74 @@ import {
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours } from '@/types';
 
-// Comprehensive list of countries with their default timezone, currency, and flag emoji
+// Comprehensive list of countries with their default timezone, currency, flag, and phone prefix
 const countries = [
-  { code: 'US', name: 'United States', timezone: 'America/New_York', currency: 'USD', flag: '🇺🇸' },
-  { code: 'GB', name: 'United Kingdom', timezone: 'Europe/London', currency: 'GBP', flag: '🇬🇧' },
-  { code: 'CA', name: 'Canada', timezone: 'America/Toronto', currency: 'CAD', flag: '🇨🇦' },
-  { code: 'AU', name: 'Australia', timezone: 'Australia/Sydney', currency: 'AUD', flag: '🇦🇺' },
-  { code: 'DE', name: 'Germany', timezone: 'Europe/Berlin', currency: 'EUR', flag: '🇩🇪' },
-  { code: 'FR', name: 'France', timezone: 'Europe/Paris', currency: 'EUR', flag: '🇫🇷' },
-  { code: 'IT', name: 'Italy', timezone: 'Europe/Rome', currency: 'EUR', flag: '🇮🇹' },
-  { code: 'ES', name: 'Spain', timezone: 'Europe/Madrid', currency: 'EUR', flag: '🇪🇸' },
-  { code: 'NL', name: 'Netherlands', timezone: 'Europe/Amsterdam', currency: 'EUR', flag: '🇳🇱' },
-  { code: 'BE', name: 'Belgium', timezone: 'Europe/Brussels', currency: 'EUR', flag: '🇧🇪' },
-  { code: 'AT', name: 'Austria', timezone: 'Europe/Vienna', currency: 'EUR', flag: '🇦🇹' },
-  { code: 'CH', name: 'Switzerland', timezone: 'Europe/Zurich', currency: 'CHF', flag: '🇨🇭' },
-  { code: 'SE', name: 'Sweden', timezone: 'Europe/Stockholm', currency: 'SEK', flag: '🇸🇪' },
-  { code: 'NO', name: 'Norway', timezone: 'Europe/Oslo', currency: 'NOK', flag: '🇳🇴' },
-  { code: 'DK', name: 'Denmark', timezone: 'Europe/Copenhagen', currency: 'DKK', flag: '🇩🇰' },
-  { code: 'FI', name: 'Finland', timezone: 'Europe/Helsinki', currency: 'EUR', flag: '🇫🇮' },
-  { code: 'IE', name: 'Ireland', timezone: 'Europe/Dublin', currency: 'EUR', flag: '🇮🇪' },
-  { code: 'PT', name: 'Portugal', timezone: 'Europe/Lisbon', currency: 'EUR', flag: '🇵🇹' },
-  { code: 'PL', name: 'Poland', timezone: 'Europe/Warsaw', currency: 'PLN', flag: '🇵🇱' },
-  { code: 'CZ', name: 'Czech Republic', timezone: 'Europe/Prague', currency: 'CZK', flag: '🇨🇿' },
-  { code: 'HU', name: 'Hungary', timezone: 'Europe/Budapest', currency: 'HUF', flag: '🇭🇺' },
-  { code: 'RO', name: 'Romania', timezone: 'Europe/Bucharest', currency: 'RON', flag: '🇷🇴' },
-  { code: 'BG', name: 'Bulgaria', timezone: 'Europe/Sofia', currency: 'BGN', flag: '🇧🇬' },
-  { code: 'GR', name: 'Greece', timezone: 'Europe/Athens', currency: 'EUR', flag: '🇬🇷' },
-  { code: 'TR', name: 'Turkey', timezone: 'Europe/Istanbul', currency: 'TRY', flag: '🇹🇷' },
-  { code: 'RU', name: 'Russia', timezone: 'Europe/Moscow', currency: 'RUB', flag: '🇷🇺' },
-  { code: 'UA', name: 'Ukraine', timezone: 'Europe/Kiev', currency: 'UAH', flag: '🇺🇦' },
-  { code: 'JP', name: 'Japan', timezone: 'Asia/Tokyo', currency: 'JPY', flag: '🇯🇵' },
-  { code: 'CN', name: 'China', timezone: 'Asia/Shanghai', currency: 'CNY', flag: '🇨🇳' },
-  { code: 'KR', name: 'South Korea', timezone: 'Asia/Seoul', currency: 'KRW', flag: '🇰🇷' },
-  { code: 'IN', name: 'India', timezone: 'Asia/Kolkata', currency: 'INR', flag: '🇮🇳' },
-  { code: 'SG', name: 'Singapore', timezone: 'Asia/Singapore', currency: 'SGD', flag: '🇸🇬' },
-  { code: 'HK', name: 'Hong Kong', timezone: 'Asia/Hong_Kong', currency: 'HKD', flag: '🇭🇰' },
-  { code: 'TW', name: 'Taiwan', timezone: 'Asia/Taipei', currency: 'TWD', flag: '🇹🇼' },
-  { code: 'TH', name: 'Thailand', timezone: 'Asia/Bangkok', currency: 'THB', flag: '🇹🇭' },
-  { code: 'MY', name: 'Malaysia', timezone: 'Asia/Kuala_Lumpur', currency: 'MYR', flag: '🇲🇾' },
-  { code: 'ID', name: 'Indonesia', timezone: 'Asia/Jakarta', currency: 'IDR', flag: '🇮🇩' },
-  { code: 'PH', name: 'Philippines', timezone: 'Asia/Manila', currency: 'PHP', flag: '🇵🇭' },
-  { code: 'VN', name: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh', currency: 'VND', flag: '🇻🇳' },
-  { code: 'AE', name: 'United Arab Emirates', timezone: 'Asia/Dubai', currency: 'AED', flag: '🇦🇪' },
-  { code: 'SA', name: 'Saudi Arabia', timezone: 'Asia/Riyadh', currency: 'SAR', flag: '🇸🇦' },
-  { code: 'QA', name: 'Qatar', timezone: 'Asia/Qatar', currency: 'QAR', flag: '🇶🇦' },
-  { code: 'KW', name: 'Kuwait', timezone: 'Asia/Kuwait', currency: 'KWD', flag: '🇰🇼' },
-  { code: 'BH', name: 'Bahrain', timezone: 'Asia/Bahrain', currency: 'BHD', flag: '🇧🇭' },
-  { code: 'OM', name: 'Oman', timezone: 'Asia/Muscat', currency: 'OMR', flag: '🇴🇲' },
-  { code: 'IL', name: 'Israel', timezone: 'Asia/Jerusalem', currency: 'ILS', flag: '🇮🇱' },
-  { code: 'EG', name: 'Egypt', timezone: 'Africa/Cairo', currency: 'EGP', flag: '🇪🇬' },
-  { code: 'ZA', name: 'South Africa', timezone: 'Africa/Johannesburg', currency: 'ZAR', flag: '🇿🇦' },
-  { code: 'NG', name: 'Nigeria', timezone: 'Africa/Lagos', currency: 'NGN', flag: '🇳🇬' },
-  { code: 'KE', name: 'Kenya', timezone: 'Africa/Nairobi', currency: 'KES', flag: '🇰🇪' },
-  { code: 'MA', name: 'Morocco', timezone: 'Africa/Casablanca', currency: 'MAD', flag: '🇲🇦' },
-  { code: 'BR', name: 'Brazil', timezone: 'America/Sao_Paulo', currency: 'BRL', flag: '🇧🇷' },
-  { code: 'MX', name: 'Mexico', timezone: 'America/Mexico_City', currency: 'MXN', flag: '🇲🇽' },
-  { code: 'AR', name: 'Argentina', timezone: 'America/Buenos_Aires', currency: 'ARS', flag: '🇦🇷' },
-  { code: 'CL', name: 'Chile', timezone: 'America/Santiago', currency: 'CLP', flag: '🇨🇱' },
-  { code: 'CO', name: 'Colombia', timezone: 'America/Bogota', currency: 'COP', flag: '🇨🇴' },
-  { code: 'PE', name: 'Peru', timezone: 'America/Lima', currency: 'PEN', flag: '🇵🇪' },
-  { code: 'NZ', name: 'New Zealand', timezone: 'Pacific/Auckland', currency: 'NZD', flag: '🇳🇿' },
-  { code: 'PK', name: 'Pakistan', timezone: 'Asia/Karachi', currency: 'PKR', flag: '🇵🇰' },
-  { code: 'BD', name: 'Bangladesh', timezone: 'Asia/Dhaka', currency: 'BDT', flag: '🇧🇩' },
-  { code: 'LK', name: 'Sri Lanka', timezone: 'Asia/Colombo', currency: 'LKR', flag: '🇱🇰' },
-  { code: 'NP', name: 'Nepal', timezone: 'Asia/Kathmandu', currency: 'NPR', flag: '🇳🇵' },
+  { code: 'US', name: 'United States', timezone: 'America/New_York', currency: 'USD', flag: '🇺🇸', phonePrefix: '+1' },
+  { code: 'GB', name: 'United Kingdom', timezone: 'Europe/London', currency: 'GBP', flag: '🇬🇧', phonePrefix: '+44' },
+  { code: 'CA', name: 'Canada', timezone: 'America/Toronto', currency: 'CAD', flag: '🇨🇦', phonePrefix: '+1' },
+  { code: 'AU', name: 'Australia', timezone: 'Australia/Sydney', currency: 'AUD', flag: '🇦🇺', phonePrefix: '+61' },
+  { code: 'DE', name: 'Germany', timezone: 'Europe/Berlin', currency: 'EUR', flag: '🇩🇪', phonePrefix: '+49' },
+  { code: 'FR', name: 'France', timezone: 'Europe/Paris', currency: 'EUR', flag: '🇫🇷', phonePrefix: '+33' },
+  { code: 'IT', name: 'Italy', timezone: 'Europe/Rome', currency: 'EUR', flag: '🇮🇹', phonePrefix: '+39' },
+  { code: 'ES', name: 'Spain', timezone: 'Europe/Madrid', currency: 'EUR', flag: '🇪🇸', phonePrefix: '+34' },
+  { code: 'NL', name: 'Netherlands', timezone: 'Europe/Amsterdam', currency: 'EUR', flag: '🇳🇱', phonePrefix: '+31' },
+  { code: 'BE', name: 'Belgium', timezone: 'Europe/Brussels', currency: 'EUR', flag: '🇧🇪', phonePrefix: '+32' },
+  { code: 'AT', name: 'Austria', timezone: 'Europe/Vienna', currency: 'EUR', flag: '🇦🇹', phonePrefix: '+43' },
+  { code: 'CH', name: 'Switzerland', timezone: 'Europe/Zurich', currency: 'CHF', flag: '🇨🇭', phonePrefix: '+41' },
+  { code: 'SE', name: 'Sweden', timezone: 'Europe/Stockholm', currency: 'SEK', flag: '🇸🇪', phonePrefix: '+46' },
+  { code: 'NO', name: 'Norway', timezone: 'Europe/Oslo', currency: 'NOK', flag: '🇳🇴', phonePrefix: '+47' },
+  { code: 'DK', name: 'Denmark', timezone: 'Europe/Copenhagen', currency: 'DKK', flag: '🇩🇰', phonePrefix: '+45' },
+  { code: 'FI', name: 'Finland', timezone: 'Europe/Helsinki', currency: 'EUR', flag: '🇫🇮', phonePrefix: '+358' },
+  { code: 'IE', name: 'Ireland', timezone: 'Europe/Dublin', currency: 'EUR', flag: '🇮🇪', phonePrefix: '+353' },
+  { code: 'PT', name: 'Portugal', timezone: 'Europe/Lisbon', currency: 'EUR', flag: '🇵🇹', phonePrefix: '+351' },
+  { code: 'PL', name: 'Poland', timezone: 'Europe/Warsaw', currency: 'PLN', flag: '🇵🇱', phonePrefix: '+48' },
+  { code: 'CZ', name: 'Czech Republic', timezone: 'Europe/Prague', currency: 'CZK', flag: '🇨🇿', phonePrefix: '+420' },
+  { code: 'HU', name: 'Hungary', timezone: 'Europe/Budapest', currency: 'HUF', flag: '🇭🇺', phonePrefix: '+36' },
+  { code: 'RO', name: 'Romania', timezone: 'Europe/Bucharest', currency: 'RON', flag: '🇷🇴', phonePrefix: '+40' },
+  { code: 'BG', name: 'Bulgaria', timezone: 'Europe/Sofia', currency: 'BGN', flag: '🇧🇬', phonePrefix: '+359' },
+  { code: 'GR', name: 'Greece', timezone: 'Europe/Athens', currency: 'EUR', flag: '🇬🇷', phonePrefix: '+30' },
+  { code: 'TR', name: 'Turkey', timezone: 'Europe/Istanbul', currency: 'TRY', flag: '🇹🇷', phonePrefix: '+90' },
+  { code: 'RU', name: 'Russia', timezone: 'Europe/Moscow', currency: 'RUB', flag: '🇷🇺', phonePrefix: '+7' },
+  { code: 'UA', name: 'Ukraine', timezone: 'Europe/Kiev', currency: 'UAH', flag: '🇺🇦', phonePrefix: '+380' },
+  { code: 'JP', name: 'Japan', timezone: 'Asia/Tokyo', currency: 'JPY', flag: '🇯🇵', phonePrefix: '+81' },
+  { code: 'CN', name: 'China', timezone: 'Asia/Shanghai', currency: 'CNY', flag: '🇨🇳', phonePrefix: '+86' },
+  { code: 'KR', name: 'South Korea', timezone: 'Asia/Seoul', currency: 'KRW', flag: '🇰🇷', phonePrefix: '+82' },
+  { code: 'IN', name: 'India', timezone: 'Asia/Kolkata', currency: 'INR', flag: '🇮🇳', phonePrefix: '+91' },
+  { code: 'SG', name: 'Singapore', timezone: 'Asia/Singapore', currency: 'SGD', flag: '🇸🇬', phonePrefix: '+65' },
+  { code: 'HK', name: 'Hong Kong', timezone: 'Asia/Hong_Kong', currency: 'HKD', flag: '🇭🇰', phonePrefix: '+852' },
+  { code: 'TW', name: 'Taiwan', timezone: 'Asia/Taipei', currency: 'TWD', flag: '🇹🇼', phonePrefix: '+886' },
+  { code: 'TH', name: 'Thailand', timezone: 'Asia/Bangkok', currency: 'THB', flag: '🇹🇭', phonePrefix: '+66' },
+  { code: 'MY', name: 'Malaysia', timezone: 'Asia/Kuala_Lumpur', currency: 'MYR', flag: '🇲🇾', phonePrefix: '+60' },
+  { code: 'ID', name: 'Indonesia', timezone: 'Asia/Jakarta', currency: 'IDR', flag: '🇮🇩', phonePrefix: '+62' },
+  { code: 'PH', name: 'Philippines', timezone: 'Asia/Manila', currency: 'PHP', flag: '🇵🇭', phonePrefix: '+63' },
+  { code: 'VN', name: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh', currency: 'VND', flag: '🇻🇳', phonePrefix: '+84' },
+  { code: 'AE', name: 'United Arab Emirates', timezone: 'Asia/Dubai', currency: 'AED', flag: '🇦🇪', phonePrefix: '+971' },
+  { code: 'SA', name: 'Saudi Arabia', timezone: 'Asia/Riyadh', currency: 'SAR', flag: '🇸🇦', phonePrefix: '+966' },
+  { code: 'QA', name: 'Qatar', timezone: 'Asia/Qatar', currency: 'QAR', flag: '🇶🇦', phonePrefix: '+974' },
+  { code: 'KW', name: 'Kuwait', timezone: 'Asia/Kuwait', currency: 'KWD', flag: '🇰🇼', phonePrefix: '+965' },
+  { code: 'BH', name: 'Bahrain', timezone: 'Asia/Bahrain', currency: 'BHD', flag: '🇧🇭', phonePrefix: '+973' },
+  { code: 'OM', name: 'Oman', timezone: 'Asia/Muscat', currency: 'OMR', flag: '🇴🇲', phonePrefix: '+968' },
+  { code: 'IL', name: 'Israel', timezone: 'Asia/Jerusalem', currency: 'ILS', flag: '🇮🇱', phonePrefix: '+972' },
+  { code: 'EG', name: 'Egypt', timezone: 'Africa/Cairo', currency: 'EGP', flag: '🇪🇬', phonePrefix: '+20' },
+  { code: 'ZA', name: 'South Africa', timezone: 'Africa/Johannesburg', currency: 'ZAR', flag: '🇿🇦', phonePrefix: '+27' },
+  { code: 'NG', name: 'Nigeria', timezone: 'Africa/Lagos', currency: 'NGN', flag: '🇳🇬', phonePrefix: '+234' },
+  { code: 'KE', name: 'Kenya', timezone: 'Africa/Nairobi', currency: 'KES', flag: '🇰🇪', phonePrefix: '+254' },
+  { code: 'MA', name: 'Morocco', timezone: 'Africa/Casablanca', currency: 'MAD', flag: '🇲🇦', phonePrefix: '+212' },
+  { code: 'BR', name: 'Brazil', timezone: 'America/Sao_Paulo', currency: 'BRL', flag: '🇧🇷', phonePrefix: '+55' },
+  { code: 'MX', name: 'Mexico', timezone: 'America/Mexico_City', currency: 'MXN', flag: '🇲🇽', phonePrefix: '+52' },
+  { code: 'AR', name: 'Argentina', timezone: 'America/Buenos_Aires', currency: 'ARS', flag: '🇦🇷', phonePrefix: '+54' },
+  { code: 'CL', name: 'Chile', timezone: 'America/Santiago', currency: 'CLP', flag: '🇨🇱', phonePrefix: '+56' },
+  { code: 'CO', name: 'Colombia', timezone: 'America/Bogota', currency: 'COP', flag: '🇨🇴', phonePrefix: '+57' },
+  { code: 'PE', name: 'Peru', timezone: 'America/Lima', currency: 'PEN', flag: '🇵🇪', phonePrefix: '+51' },
+  { code: 'NZ', name: 'New Zealand', timezone: 'Pacific/Auckland', currency: 'NZD', flag: '🇳🇿', phonePrefix: '+64' },
+  { code: 'PK', name: 'Pakistan', timezone: 'Asia/Karachi', currency: 'PKR', flag: '🇵🇰', phonePrefix: '+92' },
+  { code: 'BD', name: 'Bangladesh', timezone: 'Asia/Dhaka', currency: 'BDT', flag: '🇧🇩', phonePrefix: '+880' },
+  { code: 'LK', name: 'Sri Lanka', timezone: 'Asia/Colombo', currency: 'LKR', flag: '🇱🇰', phonePrefix: '+94' },
+  { code: 'NP', name: 'Nepal', timezone: 'Asia/Kathmandu', currency: 'NPR', flag: '🇳🇵', phonePrefix: '+977' },
 ].sort((a, b) => a.name.localeCompare(b.name));
+
+// Default country
+const DEFAULT_COUNTRY = 'TR';
 
 // Supported currencies
 const currencies = [
@@ -341,22 +348,37 @@ function BusinessContent() {
 
   useEffect(() => {
     if (business) {
+      const countryCode = business.country || DEFAULT_COUNTRY;
+      const country = countries.find(c => c.code === countryCode);
+
+      // Extract local phone number (remove prefix if present)
+      let localPhone = business.ai_phone_number || '';
+      if (country && localPhone.startsWith(country.phonePrefix)) {
+        localPhone = localPhone.slice(country.phonePrefix.length);
+      }
+
       setFormData({
         business_name: business.business_name,
-        timezone: business.timezone,
+        timezone: business.timezone || country?.timezone || 'Europe/Istanbul',
         default_language: business.default_language,
         address: business.address,
         city: business.city,
         state: business.state,
         zip_code: business.zip_code,
-        phone_number: business.phone_number,
+        ai_phone_number: localPhone,
+        alternative_phone_numbers: business.alternative_phone_numbers || [],
         email: business.email,
         website: business.website,
         instagram_url: business.instagram_url,
         facebook_url: business.facebook_url,
+        whatsapp: business.whatsapp,
+        tiktok_url: business.tiktok_url,
+        youtube_url: business.youtube_url,
+        linkedin_url: business.linkedin_url,
+        twitter_url: business.twitter_url,
         logo_url: business.logo_url,
-        country: business.country,
-        currency: business.currency || 'USD',
+        country: countryCode,
+        currency: business.currency || country?.currency || 'TRY',
       });
     }
   }, [business]);
@@ -486,7 +508,16 @@ function BusinessContent() {
     setIsSaving(true);
     try {
       if (hasChanges) {
-        await updateBusiness.mutateAsync(formData);
+        // Combine phone prefix with local number for storage
+        const country = countries.find(c => c.code === formData.country);
+        const fullPhoneNumber = formData.ai_phone_number
+          ? `${country?.phonePrefix || ''}${formData.ai_phone_number.replace(/^0+/, '')}`
+          : '';
+
+        await updateBusiness.mutateAsync({
+          ...formData,
+          ai_phone_number: fullPhoneNumber,
+        });
         setHasChanges(false);
         refetchBusiness();
       }
@@ -726,18 +757,19 @@ function BusinessContent() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <label className="text-sm font-medium text-foreground">Phone Number</label>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1">
                           <Select
-                            value={formData.country || 'US'}
+                            value={formData.country || DEFAULT_COUNTRY}
                             onValueChange={(code) => handleChange('country', code)}
                           >
-                            <SelectTrigger className="w-[90px] h-10 flex-shrink-0">
+                            <SelectTrigger className="w-[120px] h-10 flex-shrink-0">
                               <SelectValue>
                                 {currentCountry ? (
-                                  <span className="flex items-center gap-1">
+                                  <span className="flex items-center gap-1.5">
                                     <span className="text-base">{currentCountry.flag}</span>
+                                    <span className="text-xs text-muted-foreground">{currentCountry.phonePrefix}</span>
                                   </span>
-                                ) : '🇺🇸'}
+                                ) : '🇹🇷 +90'}
                               </SelectValue>
                             </SelectTrigger>
                             <SelectContent className="max-h-[300px]">
@@ -745,6 +777,7 @@ function BusinessContent() {
                                 <SelectItem key={country.code} value={country.code}>
                                   <span className="flex items-center gap-2">
                                     <span>{country.flag}</span>
+                                    <span className="text-muted-foreground">{country.phonePrefix}</span>
                                     <span>{country.name}</span>
                                   </span>
                                 </SelectItem>
@@ -753,9 +786,9 @@ function BusinessContent() {
                           </Select>
                           <Input
                             type="tel"
-                            value={formData.phone_number || ''}
-                            onChange={(e) => handleChange('phone_number', e.target.value)}
-                            placeholder="(555) 000-0000"
+                            value={formData.ai_phone_number || ''}
+                            onChange={(e) => handleChange('ai_phone_number', e.target.value.replace(/^0+/, ''))}
+                            placeholder="5XX XXX XXXX"
                             className="h-10 flex-1"
                           />
                         </div>
@@ -784,33 +817,163 @@ function BusinessContent() {
                       />
                     </div>
 
-                    {/* Row 4: Social Media */}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                          <Instagram className="h-4 w-4 text-pink-500" />
-                          Instagram
-                        </label>
-                        <Input
-                          type="url"
-                          value={formData.instagram_url || ''}
-                          onChange={(e) => handleChange('instagram_url', e.target.value)}
-                          placeholder="instagram.com/yourbusiness"
-                          className="h-10"
-                        />
+                    {/* Row 4: Alternative Phone Numbers */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-foreground">Alternative Phone Numbers</label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => {
+                            const newPhones = [...(formData.alternative_phone_numbers || []), ''];
+                            setFormData(prev => ({ ...prev, alternative_phone_numbers: newPhones }));
+                            setHasChanges(true);
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Add Phone
+                        </Button>
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                          <Facebook className="h-4 w-4 text-blue-600" />
-                          Facebook
-                        </label>
-                        <Input
-                          type="url"
-                          value={formData.facebook_url || ''}
-                          onChange={(e) => handleChange('facebook_url', e.target.value)}
-                          placeholder="facebook.com/yourbusiness"
-                          className="h-10"
-                        />
+                      {(formData.alternative_phone_numbers || []).length > 0 ? (
+                        <div className="space-y-2">
+                          {(formData.alternative_phone_numbers || []).map((phone, index) => (
+                            <div key={index} className="flex gap-2">
+                              <div className="flex gap-1 flex-1">
+                                <div className="w-[80px] h-10 flex items-center justify-center border rounded-md bg-muted/50 text-sm">
+                                  {currentCountry?.flag} {currentCountry?.phonePrefix}
+                                </div>
+                                <Input
+                                  type="tel"
+                                  value={phone.replace(currentCountry?.phonePrefix || '', '')}
+                                  onChange={(e) => {
+                                    const newPhones = [...(formData.alternative_phone_numbers || [])];
+                                    const localNumber = e.target.value.replace(/^0+/, '');
+                                    newPhones[index] = `${currentCountry?.phonePrefix || ''}${localNumber}`;
+                                    setFormData(prev => ({ ...prev, alternative_phone_numbers: newPhones }));
+                                    setHasChanges(true);
+                                  }}
+                                  placeholder="5XX XXX XXXX"
+                                  className="h-10 flex-1"
+                                />
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  const newPhones = (formData.alternative_phone_numbers || []).filter((_, i) => i !== index);
+                                  setFormData(prev => ({ ...prev, alternative_phone_numbers: newPhones }));
+                                  setHasChanges(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No alternative phone numbers added</p>
+                      )}
+                    </div>
+
+                    {/* Row 5: Social Media */}
+                    <div className="space-y-4">
+                      <label className="text-sm font-medium text-foreground">Social Media</label>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <MessageCircle className="h-3.5 w-3.5 text-green-500" />
+                            WhatsApp
+                          </label>
+                          <Input
+                            type="tel"
+                            value={formData.whatsapp || ''}
+                            onChange={(e) => handleChange('whatsapp', e.target.value)}
+                            placeholder="+90 5XX XXX XXXX"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Instagram className="h-3.5 w-3.5 text-pink-500" />
+                            Instagram
+                          </label>
+                          <Input
+                            type="url"
+                            value={formData.instagram_url || ''}
+                            onChange={(e) => handleChange('instagram_url', e.target.value)}
+                            placeholder="instagram.com/yourbusiness"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Facebook className="h-3.5 w-3.5 text-blue-600" />
+                            Facebook
+                          </label>
+                          <Input
+                            type="url"
+                            value={formData.facebook_url || ''}
+                            onChange={(e) => handleChange('facebook_url', e.target.value)}
+                            placeholder="facebook.com/yourbusiness"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
+                            </svg>
+                            TikTok
+                          </label>
+                          <Input
+                            type="url"
+                            value={formData.tiktok_url || ''}
+                            onChange={(e) => handleChange('tiktok_url', e.target.value)}
+                            placeholder="tiktok.com/@yourbusiness"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Youtube className="h-3.5 w-3.5 text-red-500" />
+                            YouTube
+                          </label>
+                          <Input
+                            type="url"
+                            value={formData.youtube_url || ''}
+                            onChange={(e) => handleChange('youtube_url', e.target.value)}
+                            placeholder="youtube.com/@yourbusiness"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Linkedin className="h-3.5 w-3.5 text-blue-700" />
+                            LinkedIn
+                          </label>
+                          <Input
+                            type="url"
+                            value={formData.linkedin_url || ''}
+                            onChange={(e) => handleChange('linkedin_url', e.target.value)}
+                            placeholder="linkedin.com/company/yourbusiness"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Twitter className="h-3.5 w-3.5 text-sky-500" />
+                            X (Twitter)
+                          </label>
+                          <Input
+                            type="url"
+                            value={formData.twitter_url || ''}
+                            onChange={(e) => handleChange('twitter_url', e.target.value)}
+                            placeholder="x.com/yourbusiness"
+                            className="h-10"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, Literal
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
@@ -171,20 +171,26 @@ def normalize_industry_value(value: str) -> str:
 class BusinessBase(BaseModel):
     business_name: str
     industry: str = "generic"  # Default to generic
-    currency: str = "USD"  # Default to US Dollar
-    phone_number: Optional[str] = None  # Business contact (not AI phone)
-    ai_phone_number: Optional[str] = None  # Dedicated AI receptionist number
+    currency: str = "TRY"  # Default to Turkish Lira
+    ai_phone_number: Optional[str] = None  # Main business phone (AI receptionist)
+    alternative_phone_numbers: Optional[List[str]] = None  # Additional phone numbers
     email: Optional[str] = None  # Business contact email
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     zip_code: Optional[str] = None
-    country: str = "US"  # ISO 3166-1 alpha-2 country code
+    country: str = "TR"  # ISO 3166-1 alpha-2 country code (default Turkey)
     website: Optional[str] = None
-    timezone: str = "America/New_York"
+    timezone: str = "Europe/Istanbul"  # Default to Istanbul
     logo_url: Optional[str] = None  # Business logo URL
-    instagram_url: Optional[str] = None  # Instagram profile URL
-    facebook_url: Optional[str] = None  # Facebook page URL
+    # Social media
+    instagram_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    whatsapp: Optional[str] = None  # WhatsApp number with country code
+    tiktok_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
 
     @field_validator('industry', mode='before')
     @classmethod
@@ -203,8 +209,8 @@ class BusinessUpdate(BaseModel):
     business_name: Optional[str] = None
     industry: Optional[str] = None
     currency: Optional[str] = None
-    phone_number: Optional[str] = None
-    ai_phone_number: Optional[str] = None
+    ai_phone_number: Optional[str] = None  # Main business phone (AI receptionist)
+    alternative_phone_numbers: Optional[List[str]] = None  # Additional phone numbers
     email: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
@@ -214,8 +220,14 @@ class BusinessUpdate(BaseModel):
     website: Optional[str] = None
     timezone: Optional[str] = None
     logo_url: Optional[str] = None
+    # Social media
     instagram_url: Optional[str] = None
     facebook_url: Optional[str] = None
+    whatsapp: Optional[str] = None  # WhatsApp number with country code
+    tiktok_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
 
     @field_validator('industry', mode='before')
     @classmethod
