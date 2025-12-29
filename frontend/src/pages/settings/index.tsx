@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import {
   User,
   CreditCard,
   Save,
   Shield,
   Building2,
+  Calendar,
+  Download,
+  FileText,
 } from 'lucide-react';
+import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
@@ -13,53 +18,45 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useBusiness } from '@/lib/api/hooks';
-import { cn } from '@/lib/utils';
-
-const settingsSections = [
-  { id: 'profile', label: 'Profile', icon: User },
-  { id: 'billing', label: 'Billing', icon: CreditCard },
-];
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState('profile');
+  const [activeTab, setActiveTab] = useState('profile');
 
   return (
     <PageContainer
       title="Settings"
       description="Manage your account settings"
     >
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar Navigation */}
-        <div className="lg:w-64 shrink-0">
-          <Card className="p-2">
-            <nav className="space-y-1">
-              {settingsSections.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveSection(item.id)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    activeSection === item.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-          </Card>
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="profile" className="gap-2">
+            <User className="h-4 w-4" />
+            Profile
+          </TabsTrigger>
+          <TabsTrigger value="billing" className="gap-2">
+            <CreditCard className="h-4 w-4" />
+            Billing
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Content */}
-        <div className="flex-1">
-          {activeSection === 'profile' && <ProfileSettings />}
-          {activeSection === 'billing' && <BillingSettings />}
-        </div>
-      </div>
+        <TabsContent value="profile">
+          <ProfileSettings />
+        </TabsContent>
+
+        <TabsContent value="billing">
+          <BillingSettings />
+        </TabsContent>
+      </Tabs>
     </PageContainer>
   );
 }
@@ -113,7 +110,11 @@ function ProfileSettings() {
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
       {/* Profile Card */}
       <Card>
         <CardHeader>
@@ -231,77 +232,205 @@ function ProfileSettings() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
 }
 
-// Billing Settings
+// Billing Settings - Two Column Layout
 function BillingSettings() {
+  const [dateFilter, setDateFilter] = useState('all');
+
+  // Mock billing history data
+  const allInvoices = [
+    { id: '1', date: '2024-12-15', amount: 99.00, status: 'paid', plan: 'Professional Plan' },
+    { id: '2', date: '2024-11-15', amount: 99.00, status: 'paid', plan: 'Professional Plan' },
+    { id: '3', date: '2024-10-15', amount: 99.00, status: 'paid', plan: 'Professional Plan' },
+    { id: '4', date: '2024-09-15', amount: 99.00, status: 'paid', plan: 'Professional Plan' },
+    { id: '5', date: '2024-08-15', amount: 99.00, status: 'paid', plan: 'Professional Plan' },
+    { id: '6', date: '2024-07-15', amount: 99.00, status: 'paid', plan: 'Professional Plan' },
+    { id: '7', date: '2024-06-15', amount: 79.00, status: 'paid', plan: 'Starter Plan' },
+    { id: '8', date: '2024-05-15', amount: 79.00, status: 'paid', plan: 'Starter Plan' },
+    { id: '9', date: '2024-04-15', amount: 79.00, status: 'paid', plan: 'Starter Plan' },
+  ];
+
+  // Filter invoices based on date selection
+  const filteredInvoices = useMemo(() => {
+    if (dateFilter === 'all') return allInvoices;
+
+    const now = new Date();
+    let startDate: Date;
+    let endDate = now;
+
+    switch (dateFilter) {
+      case 'this_month':
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+        break;
+      case 'last_month':
+        startDate = startOfMonth(subMonths(now, 1));
+        endDate = endOfMonth(subMonths(now, 1));
+        break;
+      case 'last_3_months':
+        startDate = subMonths(now, 3);
+        break;
+      case 'last_6_months':
+        startDate = subMonths(now, 6);
+        break;
+      case 'last_year':
+        startDate = subMonths(now, 12);
+        break;
+      default:
+        return allInvoices;
+    }
+
+    return allInvoices.filter(invoice => {
+      const invoiceDate = parseISO(invoice.date);
+      return isWithinInterval(invoiceDate, { start: startDate, end: endDate });
+    });
+  }, [dateFilter]);
+
+  const totalSpent = filteredInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Current Plan</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold">Professional Plan</h3>
-                <Badge variant="success">Active</Badge>
-              </div>
-              <p className="text-muted-foreground mt-1">$99/month • Renews Jan 15, 2025</p>
-            </div>
-            <Button variant="outline">Manage Plan</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Method</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 rounded-lg border border-border">
-            <div className="flex items-center gap-4">
-              <div className="h-10 w-16 rounded bg-gradient-to-r from-blue-600 to-blue-800 flex items-center justify-center text-white text-xs font-bold">
-                VISA
-              </div>
-              <div>
-                <p className="font-medium">•••• •••• •••• 4242</p>
-                <p className="text-sm text-muted-foreground">Expires 12/2026</p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm">Update</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Billing History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {[
-              { date: 'Dec 15, 2024', amount: '$99.00', status: 'Paid' },
-              { date: 'Nov 15, 2024', amount: '$99.00', status: 'Paid' },
-              { date: 'Oct 15, 2024', amount: '$99.00', status: 'Paid' },
-            ].map((invoice, i) => (
-              <div key={i} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                <div>
-                  <p className="font-medium">{invoice.date}</p>
-                  <p className="text-sm text-muted-foreground">Professional Plan</p>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column - Current Plan & Payment Method */}
+        <div className="space-y-6">
+          {/* Current Plan */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Current Plan
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xl font-bold">Professional Plan</h3>
+                    <Badge variant="success">Active</Badge>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium">{invoice.amount}</p>
-                  <Badge variant="success" size="sm">{invoice.status}</Badge>
+                <p className="text-2xl font-bold">$99<span className="text-sm font-normal text-muted-foreground">/month</span></p>
+                <p className="text-sm text-muted-foreground mt-1">Renews Jan 15, 2025</p>
+                <div className="mt-4 pt-4 border-t border-border/50">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">AI Minutes</p>
+                      <p className="font-medium">500 / 1,000</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Staff Members</p>
+                      <p className="font-medium">3 / 10</p>
+                    </div>
+                  </div>
                 </div>
+                <Button variant="outline" className="w-full mt-4">
+                  Manage Plan
+                </Button>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            </CardContent>
+          </Card>
+
+          {/* Payment Method */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Method</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
+                <div className="flex items-center gap-4">
+                  <div className="h-10 w-16 rounded bg-gradient-to-r from-blue-600 to-blue-800 flex items-center justify-center text-white text-xs font-bold">
+                    VISA
+                  </div>
+                  <div>
+                    <p className="font-medium">•••• •••• •••• 4242</p>
+                    <p className="text-sm text-muted-foreground">Expires 12/2026</p>
+                  </div>
+                </div>
+                <Badge variant="outline">Default</Badge>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1">Update Card</Button>
+                <Button variant="outline" className="flex-1">Add New</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column - Billing History */}
+        <Card className="h-fit">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Billing History
+              </CardTitle>
+              <Select value={dateFilter} onValueChange={setDateFilter}>
+                <SelectTrigger className="w-[160px] h-9">
+                  <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Filter by date" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="this_month">This Month</SelectItem>
+                  <SelectItem value="last_month">Last Month</SelectItem>
+                  <SelectItem value="last_3_months">Last 3 Months</SelectItem>
+                  <SelectItem value="last_6_months">Last 6 Months</SelectItem>
+                  <SelectItem value="last_year">Last Year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {dateFilter !== 'all' && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {filteredInvoices.length} invoices • Total: ${totalSpent.toFixed(2)}
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            {filteredInvoices.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p>No invoices found for this period</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                {filteredInvoices.map((invoice) => (
+                  <div
+                    key={invoice.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{format(parseISO(invoice.date), 'MMM d, yyyy')}</p>
+                        <p className="text-xs text-muted-foreground">{invoice.plan}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="font-medium">${invoice.amount.toFixed(2)}</p>
+                        <Badge variant="success" className="text-[10px] h-5">
+                          {invoice.status === 'paid' ? 'Paid' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </motion.div>
   );
 }

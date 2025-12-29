@@ -21,6 +21,7 @@ const TeamPage = lazy(() => import('@/pages/team'));
 const CustomersPage = lazy(() => import('@/pages/customers'));
 const CustomerDetailPage = lazy(() => import('@/pages/customers/detail'));
 const ActivityPage = lazy(() => import('@/pages/activity'));
+const AppointmentsPage = lazy(() => import('@/pages/appointments'));
 const SettingsPage = lazy(() => import('@/pages/settings'));
 const ComingSoonPage = lazy(() => import('@/pages/coming-soon'));
 
@@ -52,6 +53,7 @@ export function AppRoutes() {
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/services" element={<ServicesPage />} />
 
@@ -68,7 +70,6 @@ export function AppRoutes() {
             <Route path="/staff/*" element={<Navigate to="/team" replace />} />
             <Route path="/hours" element={<Navigate to="/business?tab=hours" replace />} />
             <Route path="/calls" element={<Navigate to="/activity?tab=calls" replace />} />
-            <Route path="/appointments" element={<Navigate to="/activity?tab=appointments" replace />} />
             <Route path="/integrations" element={<Navigate to="/settings" replace />} />
             <Route path="/messaging" element={<Navigate to="/settings" replace />} />
           </Route>

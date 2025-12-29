@@ -1,522 +1,1104 @@
-import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  Calendar, ChevronLeft, ChevronRight, Plus, Filter,
-  LayoutGrid, List, Clock, User
+import { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Calendar as CalendarIcon,
+  LayoutGrid,
+  Filter,
+  Search,
+  X,
+  Clock,
+  User,
+  Phone,
+  Trash2,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Check,
+  AlertCircle,
+  XCircle,
+  Scissors,
 } from 'lucide-react';
-import { format, addDays, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  isToday,
+  addMonths,
+  subMonths,
+  startOfWeek,
+  endOfWeek,
+  parseISO,
+} from 'date-fns';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge, AppointmentStatusBadge } from '@/components/ui/badge';
-import { Avatar } from '@/components/ui/avatar';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { useUIStore } from '@/stores/ui-store';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { formatTime, formatDate } from '@/lib/utils/format';
-import { 
-  useAppointments, 
-  useStaff, 
-  useCustomers,
+import {
+  useAppointments,
+  useStaff,
   useServices,
-  useCreateAppointment,
-  useCancelAppointment 
+  useUpdateAppointment,
+  useCancelAppointment,
+  useAvailableSlots,
+  useCustomers,
 } from '@/lib/api/hooks';
-import type { AppointmentWithDetails, Staff } from '@/types';
+import type { AppointmentWithDetails, Staff, Service } from '@/types';
+
+type ViewMode = 'calendar' | 'grid';
+type AppointmentStatusType = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
+
+const statusConfig: Record<AppointmentStatusType, { label: string; color: string; icon: typeof Check }> = {
+  scheduled: { label: 'Scheduled', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
+  confirmed: { label: 'Confirmed', color: 'bg-green-100 text-green-700 border-green-200', icon: Check },
+  completed: { label: 'Completed', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: Check },
+  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
+  no_show: { label: 'No Show', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: AlertCircle },
+};
 
 export default function AppointmentsPage() {
-  const { calendarView, setCalendarView, calendarDate, setCalendarDate } = useUIStore();
-  const [selectedStaff, setSelectedStaff] = useState<string>('all');
-  const [showNewModal, setShowNewModal] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('calendar');
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStaff, setFilterStaff] = useState<string>('all');
+  const [filterService, setFilterService] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterCustomer, setFilterCustomer] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Calculate date range based on view
+  // Reschedule modal state
+  const [rescheduleModal, setRescheduleModal] = useState<{
+    open: boolean;
+    appointment: AppointmentWithDetails | null;
+  }>({ open: false, appointment: null });
+
+  // Cancel modal state
+  const [cancelModal, setCancelModal] = useState<{
+    open: boolean;
+    appointment: AppointmentWithDetails | null;
+  }>({ open: false, appointment: null });
+
+  // Fetch data
+  const { data: staffData, isLoading: staffLoading } = useStaff();
+  const { data: servicesData, isLoading: servicesLoading } = useServices();
+  const { data: customersData } = useCustomers();
+  const staff = staffData?.data || [];
+  const services = servicesData?.data || [];
+  const customers = customersData?.data || [];
+
+  // Get date range for current view
   const dateRange = useMemo(() => {
-    const today = calendarDate;
-    if (calendarView === 'day') {
-      return { 
-        startDate: format(today, 'yyyy-MM-dd'), 
-        endDate: format(today, 'yyyy-MM-dd') 
-      };
-    } else if (calendarView === 'week') {
-      return { 
-        startDate: format(startOfWeek(today), 'yyyy-MM-dd'), 
-        endDate: format(endOfWeek(today), 'yyyy-MM-dd') 
-      };
-    } else {
-      // Month or Agenda view - show current month
-      const start = new Date(today.getFullYear(), today.getMonth(), 1);
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      return { 
-        startDate: format(start, 'yyyy-MM-dd'), 
-        endDate: format(end, 'yyyy-MM-dd') 
-      };
-    }
-  }, [calendarView, calendarDate]);
+    const start = startOfMonth(currentMonth);
+    const end = endOfMonth(currentMonth);
+    return {
+      startDate: format(start, 'yyyy-MM-dd'),
+      endDate: format(end, 'yyyy-MM-dd'),
+    };
+  }, [currentMonth]);
 
-  // Fetch appointments
-  const { data: appointments, isLoading: appointmentsLoading, refetch } = useAppointments({
+  const { data: appointments = [], isLoading: appointmentsLoading, refetch } = useAppointments({
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
-    staffId: selectedStaff !== 'all' ? selectedStaff : undefined,
+    staffId: filterStaff !== 'all' ? filterStaff : undefined,
   });
 
-  // Fetch staff for filter
-  const { data: staffResponse } = useStaff();
-  const staffList = staffResponse?.data || [];
+  // Filter appointments
+  const filteredAppointments = useMemo(() => {
+    return appointments.filter((apt) => {
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch =
+          apt.customer_name?.toLowerCase().includes(query) ||
+          apt.customer_phone?.includes(query) ||
+          apt.service_name?.toLowerCase().includes(query) ||
+          apt.staff_name?.toLowerCase().includes(query);
+        if (!matchesSearch) return false;
+      }
 
-  const navigateDate = (direction: 'prev' | 'next') => {
-    if (calendarView === 'day') {
-      setCalendarDate(direction === 'next' ? addDays(calendarDate, 1) : subDays(calendarDate, 1));
-    } else if (calendarView === 'week') {
-      setCalendarDate(direction === 'next' ? addWeeks(calendarDate, 1) : subWeeks(calendarDate, 1));
-    } else {
-      const newDate = new Date(calendarDate);
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1));
-      setCalendarDate(newDate);
-    }
+      // Service filter
+      if (filterService !== 'all' && apt.service_id !== filterService) return false;
+
+      // Status filter
+      if (filterStatus !== 'all' && apt.status !== filterStatus) return false;
+
+      // Customer filter
+      if (filterCustomer !== 'all' && apt.customer_id !== filterCustomer) return false;
+
+      // Date filter (for grid view)
+      if (selectedDate && viewMode === 'grid') {
+        const aptDate = parseISO(apt.appointment_date);
+        if (!isSameDay(aptDate, selectedDate)) return false;
+      }
+
+      return true;
+    });
+  }, [appointments, searchQuery, filterService, filterStatus, filterCustomer, selectedDate, viewMode]);
+
+  // Group appointments by date for calendar view
+  const appointmentsByDate = useMemo(() => {
+    const grouped: Record<string, AppointmentWithDetails[]> = {};
+    filteredAppointments.forEach((apt) => {
+      const date = apt.appointment_date;
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(apt);
+    });
+    return grouped;
+  }, [filteredAppointments]);
+
+  const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+  const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const handleToday = () => {
+    setCurrentMonth(new Date());
+    setSelectedDate(new Date());
   };
 
-  const getDateRangeLabel = () => {
-    if (calendarView === 'day') {
-      return format(calendarDate, 'EEEE, MMMM d, yyyy');
-    } else if (calendarView === 'week') {
-      const start = startOfWeek(calendarDate);
-      const end = endOfWeek(calendarDate);
-      return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
-    } else {
-      return format(calendarDate, 'MMMM yyyy');
-    }
+  const clearFilters = () => {
+    setSearchQuery('');
+    setFilterStaff('all');
+    setFilterService('all');
+    setFilterStatus('all');
+    setFilterCustomer('all');
+    setSelectedDate(null);
   };
 
-  const handleNewAppointmentSuccess = () => {
-    setShowNewModal(false);
-    refetch();
-  };
+  const hasActiveFilters = searchQuery || filterStaff !== 'all' || filterService !== 'all' ||
+    filterStatus !== 'all' || filterCustomer !== 'all' || selectedDate;
+
+  const isLoading = appointmentsLoading || staffLoading || servicesLoading;
 
   return (
     <PageContainer
       title="Appointments"
-      description="Manage your appointment calendar"
+      description="Manage and view all appointments"
       actions={
-        <Button onClick={() => setShowNewModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          New Appointment
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center border rounded-lg p-1 bg-muted/50">
+            <Button
+              variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('calendar')}
+              className="h-8"
+            >
+              <CalendarIcon className="h-4 w-4 mr-1.5" />
+              Calendar
+            </Button>
+            <Button
+              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('grid')}
+              className="h-8"
+            >
+              <LayoutGrid className="h-4 w-4 mr-1.5" />
+              Grid
+            </Button>
+          </div>
+        </div>
       }
     >
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        {/* View Toggle */}
-        <Tabs value={calendarView} onValueChange={(v) => setCalendarView(v as typeof calendarView)}>
-          <TabsList>
-            <TabsTrigger value="day">Day</TabsTrigger>
-            <TabsTrigger value="week">Week</TabsTrigger>
-            <TabsTrigger value="month">Month</TabsTrigger>
-            <TabsTrigger value="agenda">Agenda</TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="space-y-4">
+        {/* Filters Bar */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by customer, phone, service..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
 
-        {/* Date Navigation */}
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => navigateDate('prev')}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={() => setCalendarDate(new Date())}>
-            Today
-          </Button>
-          <Button variant="outline" size="icon" onClick={() => navigateDate('next')}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <span className="font-medium ml-2">{getDateRangeLabel()}</span>
-        </div>
+              {/* Filter Toggle */}
+              <Button
+                variant={showFilters ? 'secondary' : 'outline'}
+                onClick={() => setShowFilters(!showFilters)}
+                className="shrink-0"
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Filters
+                {hasActiveFilters && (
+                  <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                    !
+                  </span>
+                )}
+              </Button>
 
-        {/* Staff Filter */}
-        <div className="sm:ml-auto">
-          <Select value={selectedStaff} onValueChange={setSelectedStaff}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All Staff" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Staff</SelectItem>
-              {staffList.map((staff) => (
-                <SelectItem key={staff.id} value={staff.id}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: staff.color_code }} />
-                    {staff.name}
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {/* Expanded Filters */}
+            <AnimatePresence>
+              {showFilters && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 mt-4 border-t">
+                    {/* Staff Filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Staff</label>
+                      <Select value={filterStaff} onValueChange={setFilterStaff}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="All Staff" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Staff</SelectItem>
+                          {staff.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Service Filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Service</label>
+                      <Select value={filterService} onValueChange={setFilterService}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="All Services" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Services</SelectItem>
+                          {services.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Customer Filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Customer</label>
+                      <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="All Customers" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Customers</SelectItem>
+                          {customers.slice(0, 50).map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.first_name} {c.last_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Status</label>
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          {Object.entries(statusConfig).map(([key, config]) => (
+                            <SelectItem key={key} value={key}>
+                              {config.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
+
+        {/* Main Content */}
+        {isLoading ? (
+          <LoadingSkeleton viewMode={viewMode} />
+        ) : viewMode === 'calendar' ? (
+          <CalendarView
+            currentMonth={currentMonth}
+            appointmentsByDate={appointmentsByDate}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            onPrevMonth={handlePrevMonth}
+            onNextMonth={handleNextMonth}
+            onToday={handleToday}
+            onReschedule={(apt) => setRescheduleModal({ open: true, appointment: apt })}
+            onCancel={(apt) => setCancelModal({ open: true, appointment: apt })}
+            staff={staff}
+          />
+        ) : (
+          <GridView
+            appointments={filteredAppointments}
+            onReschedule={(apt) => setRescheduleModal({ open: true, appointment: apt })}
+            onCancel={(apt) => setCancelModal({ open: true, appointment: apt })}
+          />
+        )}
+
+        {/* Stats Summary */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold">{filteredAppointments.length}</p>
+              <p className="text-sm text-muted-foreground">Total</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold text-green-600">
+                {filteredAppointments.filter((a) => a.status === 'confirmed').length}
+              </p>
+              <p className="text-sm text-muted-foreground">Confirmed</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold text-blue-600">
+                {filteredAppointments.filter((a) => a.status === 'scheduled').length}
+              </p>
+              <p className="text-sm text-muted-foreground">Scheduled</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold text-red-600">
+                {filteredAppointments.filter((a) => a.status === 'cancelled').length}
+              </p>
+              <p className="text-sm text-muted-foreground">Cancelled</p>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
-      {/* Calendar View / Agenda List */}
-      {calendarView === 'agenda' ? (
-        <AgendaView 
-          appointments={appointments || []} 
-          loading={appointmentsLoading} 
-          onRefresh={refetch}
-        />
-      ) : (
-        <CalendarGrid 
-          view={calendarView} 
-          date={calendarDate}
-          appointments={appointments || []}
-          loading={appointmentsLoading}
-        />
-      )}
+      {/* Reschedule Modal */}
+      <RescheduleModal
+        open={rescheduleModal.open}
+        appointment={rescheduleModal.appointment}
+        staff={staff}
+        services={services}
+        onClose={() => setRescheduleModal({ open: false, appointment: null })}
+        onSuccess={() => {
+          setRescheduleModal({ open: false, appointment: null });
+          refetch();
+        }}
+      />
 
-      {/* New Appointment Modal */}
-      <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Appointment</DialogTitle>
-          </DialogHeader>
-          <NewAppointmentForm onSuccess={handleNewAppointmentSuccess} />
-        </DialogContent>
-      </Dialog>
+      {/* Cancel Modal */}
+      <CancelModal
+        open={cancelModal.open}
+        appointment={cancelModal.appointment}
+        onClose={() => setCancelModal({ open: false, appointment: null })}
+        onSuccess={() => {
+          setCancelModal({ open: false, appointment: null });
+          refetch();
+        }}
+      />
     </PageContainer>
   );
 }
 
-// Agenda View Component
-function AgendaView({ 
-  appointments, 
-  loading,
-  onRefresh 
-}: { 
-  appointments: AppointmentWithDetails[]; 
-  loading: boolean;
-  onRefresh: () => void;
+// Calendar View Component
+function CalendarView({
+  currentMonth,
+  appointmentsByDate,
+  selectedDate,
+  onSelectDate,
+  onPrevMonth,
+  onNextMonth,
+  onToday,
+  onReschedule,
+  onCancel,
+  staff,
+}: {
+  currentMonth: Date;
+  appointmentsByDate: Record<string, AppointmentWithDetails[]>;
+  selectedDate: Date | null;
+  onSelectDate: (date: Date | null) => void;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onToday: () => void;
+  onReschedule: (apt: AppointmentWithDetails) => void;
+  onCancel: (apt: AppointmentWithDetails) => void;
+  staff: Staff[];
 }) {
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+
+  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  // Get appointments for selected date
+  const selectedDateAppointments = selectedDate
+    ? appointmentsByDate[format(selectedDate, 'yyyy-MM-dd')] || []
+    : [];
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
+      {/* Calendar */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">{format(currentMonth, 'MMMM yyyy')}</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={onToday}>
+                Today
+              </Button>
+              <Button variant="ghost" size="icon" onClick={onPrevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={onNextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Week days header */}
+          <div className="grid grid-cols-7 mb-2">
+            {weekDays.map((day) => (
+              <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7 gap-1">
+            {days.map((day) => {
+              const dateKey = format(day, 'yyyy-MM-dd');
+              const dayAppointments = appointmentsByDate[dateKey] || [];
+              const isCurrentMonth = isSameMonth(day, currentMonth);
+              const isSelected = selectedDate && isSameDay(day, selectedDate);
+              const dayIsToday = isToday(day);
+
+              return (
+                <button
+                  key={dateKey}
+                  onClick={() => onSelectDate(isSelected ? null : day)}
+                  className={cn(
+                    'relative p-2 min-h-[80px] rounded-lg border transition-all text-left',
+                    isCurrentMonth ? 'bg-card' : 'bg-muted/30',
+                    isSelected && 'ring-2 ring-primary border-primary',
+                    !isSelected && 'hover:border-primary/50',
+                    dayIsToday && !isSelected && 'border-primary/30'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      !isCurrentMonth && 'text-muted-foreground',
+                      dayIsToday && 'text-primary'
+                    )}
+                  >
+                    {format(day, 'd')}
+                  </span>
+
+                  {dayAppointments.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {dayAppointments.slice(0, 3).map((apt) => {
+                        const staffMember = staff.find((s) => s.id === apt.staff_id);
+                        return (
+                          <div
+                            key={apt.id}
+                            className="text-[10px] px-1 py-0.5 rounded truncate"
+                            style={{
+                              backgroundColor: staffMember?.color_code
+                                ? `${staffMember.color_code}20`
+                                : '#e5e7eb',
+                              borderLeft: `2px solid ${staffMember?.color_code || '#9ca3af'}`,
+                            }}
+                          >
+                            {apt.appointment_time.slice(0, 5)}
+                          </div>
+                        );
+                      })}
+                      {dayAppointments.length > 3 && (
+                        <div className="text-[10px] text-muted-foreground px-1">
+                          +{dayAppointments.length - 3} more
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Selected Date Details */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">
+            {selectedDate ? format(selectedDate, 'EEEE, MMMM d') : 'Select a date'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!selectedDate ? (
+            <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground">
+              <CalendarIcon className="h-12 w-12 mb-4 opacity-20" />
+              <p>Click on a date to view appointments</p>
+            </div>
+          ) : selectedDateAppointments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground">
+              <CalendarIcon className="h-12 w-12 mb-4 opacity-20" />
+              <p>No appointments on this date</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+              {selectedDateAppointments
+                .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
+                .map((apt) => (
+                  <AppointmentCard
+                    key={apt.id}
+                    appointment={apt}
+                    onReschedule={() => onReschedule(apt)}
+                    onCancel={() => onCancel(apt)}
+                  />
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Grid View Component
+function GridView({
+  appointments,
+  onReschedule,
+  onCancel,
+}: {
+  appointments: AppointmentWithDetails[];
+  onReschedule: (apt: AppointmentWithDetails) => void;
+  onCancel: (apt: AppointmentWithDetails) => void;
+}) {
+  const sortedAppointments = [...appointments].sort((a, b) => {
+    const dateCompare = a.appointment_date.localeCompare(b.appointment_date);
+    if (dateCompare !== 0) return dateCompare;
+    return a.appointment_time.localeCompare(b.appointment_time);
+  });
+
+  if (appointments.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
+            <CalendarIcon className="h-12 w-12 mb-4 opacity-20" />
+            <p className="font-medium">No appointments found</p>
+            <p className="text-sm">Try adjusting your filters</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground">Date & Time</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground">Customer</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground">Service</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground">Staff</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground">Status</th>
+                <th className="text-right p-4 text-sm font-medium text-muted-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedAppointments.map((apt) => {
+                const status = statusConfig[apt.status as AppointmentStatusType];
+                const StatusIcon = status?.icon || Clock;
+
+                return (
+                  <tr key={apt.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="p-4">
+                      <div className="font-medium">{format(parseISO(apt.appointment_date), 'MMM d, yyyy')}</div>
+                      <div className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {apt.appointment_time.slice(0, 5)}
+                        <span className="text-xs">({apt.duration_minutes}min)</span>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="font-medium">{apt.customer_name}</div>
+                      <div className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {apt.customer_phone}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <Scissors className="h-4 w-4 text-muted-foreground" />
+                        {apt.service_name || '-'}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: apt.staff_color || '#9ca3af' }}
+                        />
+                        <span>{apt.staff_name}</span>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <Badge variant="outline" className={cn('gap-1', status?.color)}>
+                        <StatusIcon className="h-3 w-3" />
+                        {status?.label}
+                      </Badge>
+                    </td>
+                    <td className="p-4 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => onReschedule(apt)}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Reschedule
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => onCancel(apt)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Cancel
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Appointment Card Component
+function AppointmentCard({
+  appointment,
+  onReschedule,
+  onCancel,
+}: {
+  appointment: AppointmentWithDetails;
+  onReschedule: () => void;
+  onCancel: () => void;
+}) {
+  const status = statusConfig[appointment.status as AppointmentStatusType];
+  const StatusIcon = status?.icon || Clock;
+
+  return (
+    <div
+      className="p-3 rounded-lg border bg-card hover:shadow-sm transition-all"
+      style={{ borderLeftWidth: 3, borderLeftColor: appointment.staff_color || '#9ca3af' }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-sm">{appointment.appointment_time.slice(0, 5)}</span>
+            <Badge variant="outline" className={cn('text-[10px] h-5', status?.color)}>
+              <StatusIcon className="h-3 w-3 mr-1" />
+              {status?.label}
+            </Badge>
+          </div>
+          <p className="font-medium truncate">{appointment.customer_name}</p>
+          <p className="text-sm text-muted-foreground truncate">{appointment.service_name || 'No service'}</p>
+          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+            <User className="h-3 w-3" />
+            {appointment.staff_name}
+          </p>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onReschedule}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Reschedule
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onCancel} className="text-destructive focus:text-destructive">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Cancel
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+// Reschedule Modal Component
+function RescheduleModal({
+  open,
+  appointment,
+  staff,
+  services,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  appointment: AppointmentWithDetails | null;
+  staff: Staff[];
+  services: Service[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [selectedStaff, setSelectedStaff] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedTime, setSelectedTime] = useState<string>('');
+
+  const updateAppointment = useUpdateAppointment();
+
+  // Reset form when appointment changes
+  useEffect(() => {
+    if (appointment && open) {
+      setSelectedStaff(appointment.staff_id);
+      setSelectedService(appointment.service_id || '');
+      setSelectedDate(appointment.appointment_date);
+      setSelectedTime(appointment.appointment_time.slice(0, 5));
+    }
+  }, [appointment, open]);
+
+  // Fetch available slots for selected staff and date
+  const { data: availableSlots = [], isLoading: slotsLoading } = useAvailableSlots(
+    selectedStaff,
+    selectedDate,
+    selectedDate
+  );
+
+  // Generate time slots for display
+  const timeSlots = useMemo(() => {
+    if (!selectedDate || !selectedStaff) return [];
+
+    // Get available times from the API response
+    const available = availableSlots
+      .filter((slot) => slot.is_available)
+      .map((slot) => slot.time.slice(0, 5));
+
+    // If no slots from API, generate default business hours
+    if (available.length === 0) {
+      const slots = [];
+      for (let hour = 9; hour < 18; hour++) {
+        for (let min = 0; min < 60; min += 30) {
+          slots.push(`${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`);
+        }
+      }
+      return slots;
+    }
+
+    return available;
+  }, [availableSlots, selectedDate, selectedStaff]);
+
+  const handleSubmit = async () => {
+    if (!appointment || !selectedStaff || !selectedDate || !selectedTime) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    try {
+      await updateAppointment.mutateAsync({
+        id: appointment.id,
+        data: {
+          staff_id: selectedStaff,
+          service_id: selectedService || undefined,
+          appointment_date: selectedDate,
+          appointment_time: selectedTime + ':00',
+        },
+      });
+      toast.success('Appointment rescheduled successfully');
+      onSuccess();
+    } catch (error) {
+      toast.error('Failed to reschedule appointment');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reschedule Appointment</DialogTitle>
+          <DialogDescription>
+            Change the date, time, staff, or service for this appointment.
+          </DialogDescription>
+        </DialogHeader>
+
+        {appointment && (
+          <div className="space-y-4 py-4">
+            {/* Current appointment info */}
+            <div className="p-3 rounded-lg bg-muted/50 text-sm">
+              <p className="font-medium">{appointment.customer_name}</p>
+              <p className="text-muted-foreground">
+                Currently: {format(parseISO(appointment.appointment_date), 'MMM d, yyyy')} at{' '}
+                {appointment.appointment_time.slice(0, 5)}
+              </p>
+            </div>
+
+            {/* Staff Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Staff Member</label>
+              <Select value={selectedStaff} onValueChange={(v) => {
+                setSelectedStaff(v);
+                setSelectedTime(''); // Reset time when staff changes
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select staff" />
+                </SelectTrigger>
+                <SelectContent>
+                  {staff.filter((s) => s.is_active).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: s.color_code }}
+                        />
+                        {s.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Service Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Service</label>
+              <Select value={selectedService} onValueChange={setSelectedService}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select service (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.filter((s) => s.is_active).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} ({s.duration_minutes}min)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Date</label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value);
+                  setSelectedTime(''); // Reset time when date changes
+                }}
+                min={format(new Date(), 'yyyy-MM-dd')}
+              />
+            </div>
+
+            {/* Time Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Time</label>
+              {slotsLoading ? (
+                <Skeleton className="h-10 w-full" />
+              ) : (
+                <Select value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedDate || !selectedStaff}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={!selectedDate || !selectedStaff ? 'Select staff & date first' : 'Select time'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timeSlots.map((time) => (
+                      <SelectItem key={time} value={time}>
+                        {time}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {selectedStaff && selectedDate && timeSlots.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {timeSlots.length} available time slots
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            loading={updateAppointment.isPending}
+            disabled={!selectedStaff || !selectedDate || !selectedTime}
+          >
+            Reschedule
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Cancel Modal Component
+function CancelModal({
+  open,
+  appointment,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  appointment: AppointmentWithDetails | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [reason, setReason] = useState('');
   const cancelAppointment = useCancelAppointment();
 
-  const handleCancel = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this appointment?')) return;
-    
+  const handleCancel = async () => {
+    if (!appointment) return;
+
     try {
-      await cancelAppointment.mutateAsync({ id });
+      await cancelAppointment.mutateAsync({
+        id: appointment.id,
+        reason: reason || undefined,
+      });
       toast.success('Appointment cancelled');
-      onRefresh();
+      setReason('');
+      onSuccess();
     } catch (error) {
       toast.error('Failed to cancel appointment');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-24 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
-
-  if (appointments.length === 0) {
-    return (
-      <Card className="p-12 text-center">
-        <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-        <h3 className="font-semibold text-lg mb-2">No appointments</h3>
-        <p className="text-muted-foreground">There are no appointments scheduled for this period.</p>
-      </Card>
-    );
-  }
-
-  // Group by date
-  const groupedByDate = appointments.reduce((acc, apt) => {
-    const date = apt.appointment_date;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(apt);
-    return acc;
-  }, {} as Record<string, AppointmentWithDetails[]>);
-
   return (
-    <div className="space-y-6">
-      {Object.entries(groupedByDate).sort().map(([date, dateAppointments]) => (
-        <div key={date}>
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">
-            {formatDate(date)}
-          </h3>
-          <div className="space-y-3">
-            {dateAppointments.map((apt, i) => (
-              <motion.div
-                key={apt.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="flex items-center gap-4">
-                    <div 
-                      className="w-1 h-16 rounded-full"
-                      style={{ backgroundColor: apt.staff_color || '#3B82F6' }}
-                    />
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold truncate">{apt.customer_name}</h4>
-                        <AppointmentStatusBadge status={apt.status} />
-                      </div>
-                      <p className="text-sm text-muted-foreground">{apt.service_name || 'Appointment'}</p>
-                      <p className="text-sm text-muted-foreground">with {apt.staff_name}</p>
-                    </div>
-                    
-                    <div className="text-right">
-                      <div className="flex items-center gap-1 text-sm font-medium">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        {apt.appointment_time?.slice(0, 5)}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {apt.duration_minutes} min
-                      </p>
-                      {apt.status !== 'cancelled' && apt.status !== 'completed' && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="mt-1 text-destructive text-xs h-6"
-                          onClick={() => handleCancel(apt.id)}
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel Appointment</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to cancel this appointment? This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+
+        {appointment && (
+          <div className="py-4 space-y-4">
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+              <p className="font-medium">{appointment.customer_name}</p>
+              <p className="text-sm text-muted-foreground">
+                {format(parseISO(appointment.appointment_date), 'EEEE, MMMM d, yyyy')} at{' '}
+                {appointment.appointment_time.slice(0, 5)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {appointment.service_name} with {appointment.staff_name}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cancellation Reason (optional)</label>
+              <Input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Enter reason for cancellation"
+              />
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+        )}
 
-// Calendar Grid Component
-function CalendarGrid({ 
-  view, 
-  date, 
-  appointments,
-  loading 
-}: { 
-  view: string; 
-  date: Date;
-  appointments: AppointmentWithDetails[];
-  loading: boolean;
-}) {
-  const hours = Array.from({ length: 12 }, (_, i) => i + 8); // 8 AM to 7 PM
-  const todayStr = format(date, 'yyyy-MM-dd');
-
-  // Filter appointments for the current day (for day view)
-  const dayAppointments = view === 'day' 
-    ? appointments.filter(apt => apt.appointment_date === todayStr)
-    : appointments;
-
-  if (loading) {
-    return <Skeleton className="h-[600px] rounded-xl" />;
-  }
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <div className="min-w-[600px]">
-          {/* Time slots */}
-          <div className="divide-y divide-border">
-            {hours.map((hour) => {
-              const hourAppointments = dayAppointments.filter(apt => {
-                if (!apt.appointment_time) return false;
-                const aptHour = parseInt(apt.appointment_time.split(':')[0]);
-                return aptHour === hour;
-              });
-
-              return (
-                <div key={hour} className="flex min-h-[80px]">
-                  <div className="w-20 p-2 text-xs text-muted-foreground border-r border-border bg-muted/30">
-                    {hour > 12 ? `${hour - 12} PM` : hour === 12 ? '12 PM' : `${hour} AM`}
-                  </div>
-                  <div className="flex-1 p-2 relative">
-                    {hourAppointments.map((apt, idx) => (
-                      <div
-                        key={apt.id}
-                        className="rounded-lg p-2 text-white text-xs mb-1"
-                        style={{ 
-                          backgroundColor: apt.staff_color || '#3B82F6',
-                        }}
-                      >
-                        <p className="font-medium truncate">{apt.customer_name}</p>
-                        <p className="opacity-80 truncate">{apt.service_name || 'Appointment'}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// New Appointment Form
-function NewAppointmentForm({ onSuccess }: { onSuccess: () => void }) {
-  const [formData, setFormData] = useState({
-    customer_id: '',
-    staff_id: '',
-    service_id: '',
-    date: new Date().toISOString().split('T')[0],
-    time: '',
-  });
-
-  // Fetch data for dropdowns
-  const { data: customersResponse } = useCustomers(undefined, 100, 0);
-  const { data: staffResponse } = useStaff();
-  const { data: servicesResponse } = useServices();
-  
-  const customers = customersResponse?.data || [];
-  const staffList = staffResponse?.data || [];
-  const services = servicesResponse?.data || [];
-
-  const createAppointment = useCreateAppointment();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.customer_id || !formData.staff_id || !formData.date || !formData.time) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    try {
-      await createAppointment.mutateAsync({
-        customer_id: formData.customer_id,
-        staff_id: formData.staff_id,
-        service_id: formData.service_id || undefined,
-        appointment_date: formData.date,
-        appointment_time: formData.time,
-        duration_minutes: 30,
-        status: 'scheduled',
-        created_via: 'dashboard',
-      });
-      toast.success('Appointment created');
-      onSuccess();
-    } catch (error) {
-      toast.error('Failed to create appointment');
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Customer *</label>
-        <Select 
-          value={formData.customer_id} 
-          onValueChange={(v) => setFormData(prev => ({ ...prev, customer_id: v }))}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select customer" />
-          </SelectTrigger>
-          <SelectContent>
-            {customers.map((customer) => (
-              <SelectItem key={customer.id} value={customer.id}>
-                {customer.first_name} {customer.last_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Staff Member *</label>
-        <Select 
-          value={formData.staff_id} 
-          onValueChange={(v) => setFormData(prev => ({ ...prev, staff_id: v }))}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select staff" />
-          </SelectTrigger>
-          <SelectContent>
-            {staffList.map((staff) => (
-              <SelectItem key={staff.id} value={staff.id}>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: staff.color_code }} />
-                  {staff.name}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Service</label>
-        <Select 
-          value={formData.service_id} 
-          onValueChange={(v) => setFormData(prev => ({ ...prev, service_id: v }))}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select service (optional)" />
-          </SelectTrigger>
-          <SelectContent>
-            {services.map((service) => (
-              <SelectItem key={service.id} value={service.id}>
-                {service.name} ({service.duration_minutes} min)
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Date *</label>
-          <Input
-            type="date"
-            value={formData.date}
-            onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-            min={new Date().toISOString().split('T')[0]}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Time *</label>
-          <Select 
-            value={formData.time} 
-            onValueChange={(v) => setFormData(prev => ({ ...prev, time: v }))}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Keep Appointment
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleCancel}
+            loading={cancelAppointment.isPending}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select time" />
-            </SelectTrigger>
-            <SelectContent>
-              {['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
-                '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
-                '15:00', '15:30', '16:00', '16:30', '17:00'].map((time) => (
-                <SelectItem key={time} value={time}>
-                  {parseInt(time) > 12 
-                    ? `${parseInt(time) - 12}:${time.split(':')[1]} PM`
-                    : parseInt(time) === 12 
-                      ? `12:${time.split(':')[1]} PM`
-                      : `${parseInt(time)}:${time.split(':')[1]} AM`
-                  }
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            Cancel Appointment
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onSuccess}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={createAppointment.isPending}>
-          Create Appointment
-        </Button>
+// Loading Skeleton
+function LoadingSkeleton({ viewMode }: { viewMode: ViewMode }) {
+  if (viewMode === 'calendar') {
+    return (
+      <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
+        <Skeleton className="h-[500px] rounded-xl" />
+        <Skeleton className="h-[500px] rounded-xl" />
       </div>
-    </form>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full rounded-lg" />
+        ))}
+      </CardContent>
+    </Card>
   );
 }
