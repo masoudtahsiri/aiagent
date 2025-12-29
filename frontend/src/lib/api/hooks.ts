@@ -954,12 +954,22 @@ const NAGER_SUPPORTED_COUNTRIES = new Set([
   'US', 'UY', 'VA', 'VE', 'VN', 'ZA', 'ZW'
 ]);
 
+interface FetchHolidaysParams {
+  countryCode: string;
+  year: number;
+  businessId: string;
+}
+
 export function useFetchPublicHolidays() {
   const queryClient = useQueryClient();
-  const businessId = useBusinessId();
 
   return useMutation({
-    mutationFn: async ({ countryCode, year }: { countryCode: string; year: number }) => {
+    mutationFn: async ({ countryCode, year, businessId }: FetchHolidaysParams) => {
+      // Ensure businessId exists
+      if (!businessId) {
+        throw new Error('Business ID is required');
+      }
+
       // Check if country is supported
       if (!NAGER_SUPPORTED_COUNTRIES.has(countryCode)) {
         return { added: 0, total: 0, unsupported: true };
@@ -1018,8 +1028,8 @@ export function useFetchPublicHolidays() {
 
       return { added: addedCount.count, total: futureHolidays.length, unsupported: false };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['business-closures', businessId] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['business-closures', variables.businessId] });
     },
   });
 }
