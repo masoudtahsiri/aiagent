@@ -926,6 +926,75 @@ export function useDeleteBusinessClosure() {
 }
 
 // =============================================================================
+// PUBLIC HOLIDAYS API (Nager.Date)
+// =============================================================================
+
+interface NagerHoliday {
+  date: string;
+  localName: string;
+  name: string;
+  countryCode: string;
+  fixed: boolean;
+  global: boolean;
+  counties: string[] | null;
+  launchYear: number | null;
+  types: string[];
+}
+
+export function useFetchPublicHolidays() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: async ({ countryCode, year }: { countryCode: string; year: number }) => {
+      // Fetch holidays from Nager.Date API
+      const response = await fetch(
+        `https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch holidays');
+      }
+
+      const holidays: NagerHoliday[] = await response.json();
+
+      // Filter to only include future holidays and global/national holidays
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const futureHolidays = holidays.filter(h => {
+        const holidayDate = new Date(h.date);
+        return holidayDate >= today && (h.global || h.types.includes('Public'));
+      });
+
+      // Get existing closures to avoid duplicates
+      const existingClosures = await get<BusinessClosure[]>(
+        `/api/business-hours/${businessId}/closures`
+      );
+      const existingDates = new Set(existingClosures.map(c => c.closure_date));
+
+      // Add each holiday as a closure
+      const addedCount = { count: 0 };
+      for (const holiday of futureHolidays) {
+        if (!existingDates.has(holiday.date)) {
+          await post<BusinessClosure>('/api/business-hours/closures', {
+            business_id: businessId,
+            closure_date: holiday.date,
+            reason: holiday.localName || holiday.name,
+          });
+          addedCount.count++;
+        }
+      }
+
+      return { added: addedCount.count, total: futureHolidays.length };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-closures', businessId] });
+    },
+  });
+}
+
+// =============================================================================
 // MESSAGING HOOKS
 // =============================================================================
 

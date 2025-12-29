@@ -12,16 +12,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Camera,
-  Copy,
   Sparkles,
-  Moon,
   Info,
   Instagram,
   Facebook,
   Loader2,
 } from 'lucide-react';
 import { DayPicker, DateRange } from 'react-day-picker';
-import { format, isPast, isToday, eachDayOfInterval, getYear } from 'date-fns';
+import { format, isToday, eachDayOfInterval, getYear, isSameMonth } from 'date-fns';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -43,6 +41,7 @@ import {
   useBusinessClosures,
   useAddBusinessClosure,
   useDeleteBusinessClosure,
+  useFetchPublicHolidays,
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours } from '@/types';
 
@@ -272,144 +271,6 @@ const timezoneGroups = [
 // Flatten timezones for easy lookup
 const allTimezones = timezoneGroups.flatMap(g => g.timezones);
 
-// National holidays by country (month is 0-indexed)
-const nationalHolidays: Record<string, Array<{ month: number; day: number; name: string }>> = {
-  US: [
-    { month: 0, day: 1, name: "New Year's Day" },
-    { month: 0, day: 15, name: 'Martin Luther King Jr. Day' },
-    { month: 1, day: 19, name: "Presidents' Day" },
-    { month: 4, day: 27, name: 'Memorial Day' },
-    { month: 6, day: 4, name: 'Independence Day' },
-    { month: 8, day: 1, name: 'Labor Day' },
-    { month: 9, day: 14, name: 'Columbus Day' },
-    { month: 10, day: 11, name: 'Veterans Day' },
-    { month: 10, day: 28, name: 'Thanksgiving Day' },
-    { month: 11, day: 25, name: 'Christmas Day' },
-  ],
-  GB: [
-    { month: 0, day: 1, name: "New Year's Day" },
-    { month: 3, day: 18, name: 'Good Friday' },
-    { month: 3, day: 21, name: 'Easter Monday' },
-    { month: 4, day: 6, name: 'Early May Bank Holiday' },
-    { month: 4, day: 27, name: 'Spring Bank Holiday' },
-    { month: 7, day: 26, name: 'Summer Bank Holiday' },
-    { month: 11, day: 25, name: 'Christmas Day' },
-    { month: 11, day: 26, name: 'Boxing Day' },
-  ],
-  CA: [
-    { month: 0, day: 1, name: "New Year's Day" },
-    { month: 1, day: 19, name: 'Family Day' },
-    { month: 3, day: 18, name: 'Good Friday' },
-    { month: 4, day: 20, name: 'Victoria Day' },
-    { month: 6, day: 1, name: 'Canada Day' },
-    { month: 8, day: 2, name: 'Labour Day' },
-    { month: 9, day: 14, name: 'Thanksgiving' },
-    { month: 10, day: 11, name: 'Remembrance Day' },
-    { month: 11, day: 25, name: 'Christmas Day' },
-    { month: 11, day: 26, name: 'Boxing Day' },
-  ],
-  AU: [
-    { month: 0, day: 1, name: "New Year's Day" },
-    { month: 0, day: 26, name: 'Australia Day' },
-    { month: 3, day: 18, name: 'Good Friday' },
-    { month: 3, day: 21, name: 'Easter Monday' },
-    { month: 3, day: 25, name: 'Anzac Day' },
-    { month: 5, day: 10, name: "Queen's Birthday" },
-    { month: 11, day: 25, name: 'Christmas Day' },
-    { month: 11, day: 26, name: 'Boxing Day' },
-  ],
-  DE: [
-    { month: 0, day: 1, name: 'Neujahr' },
-    { month: 3, day: 18, name: 'Karfreitag' },
-    { month: 3, day: 21, name: 'Ostermontag' },
-    { month: 4, day: 1, name: 'Tag der Arbeit' },
-    { month: 4, day: 29, name: 'Christi Himmelfahrt' },
-    { month: 5, day: 9, name: 'Pfingstmontag' },
-    { month: 9, day: 3, name: 'Tag der Deutschen Einheit' },
-    { month: 11, day: 25, name: 'Weihnachten' },
-    { month: 11, day: 26, name: '2. Weihnachtsfeiertag' },
-  ],
-  FR: [
-    { month: 0, day: 1, name: 'Jour de l\'An' },
-    { month: 3, day: 21, name: 'Lundi de Pâques' },
-    { month: 4, day: 1, name: 'Fête du Travail' },
-    { month: 4, day: 8, name: 'Victoire 1945' },
-    { month: 4, day: 29, name: 'Ascension' },
-    { month: 5, day: 9, name: 'Lundi de Pentecôte' },
-    { month: 6, day: 14, name: 'Fête Nationale' },
-    { month: 7, day: 15, name: 'Assomption' },
-    { month: 10, day: 1, name: 'Toussaint' },
-    { month: 10, day: 11, name: 'Armistice' },
-    { month: 11, day: 25, name: 'Noël' },
-  ],
-  NL: [
-    { month: 0, day: 1, name: 'Nieuwjaarsdag' },
-    { month: 3, day: 21, name: 'Tweede Paasdag' },
-    { month: 3, day: 27, name: 'Koningsdag' },
-    { month: 4, day: 5, name: 'Bevrijdingsdag' },
-    { month: 4, day: 29, name: 'Hemelvaartsdag' },
-    { month: 5, day: 9, name: 'Tweede Pinksterdag' },
-    { month: 11, day: 25, name: 'Eerste Kerstdag' },
-    { month: 11, day: 26, name: 'Tweede Kerstdag' },
-  ],
-  JP: [
-    { month: 0, day: 1, name: '元日' },
-    { month: 0, day: 8, name: '成人の日' },
-    { month: 1, day: 11, name: '建国記念の日' },
-    { month: 1, day: 23, name: '天皇誕生日' },
-    { month: 2, day: 20, name: '春分の日' },
-    { month: 3, day: 29, name: '昭和の日' },
-    { month: 4, day: 3, name: '憲法記念日' },
-    { month: 4, day: 4, name: 'みどりの日' },
-    { month: 4, day: 5, name: 'こどもの日' },
-    { month: 6, day: 15, name: '海の日' },
-    { month: 7, day: 11, name: '山の日' },
-    { month: 8, day: 16, name: '敬老の日' },
-    { month: 8, day: 22, name: '秋分の日' },
-    { month: 9, day: 14, name: 'スポーツの日' },
-    { month: 10, day: 3, name: '文化の日' },
-    { month: 10, day: 23, name: '勤労感謝の日' },
-  ],
-  AE: [
-    { month: 0, day: 1, name: "New Year's Day" },
-    { month: 11, day: 2, name: 'UAE National Day' },
-    { month: 11, day: 3, name: 'UAE National Day' },
-  ],
-  IN: [
-    { month: 0, day: 26, name: 'Republic Day' },
-    { month: 7, day: 15, name: 'Independence Day' },
-    { month: 9, day: 2, name: 'Gandhi Jayanti' },
-  ],
-  BR: [
-    { month: 0, day: 1, name: 'Confraternização Universal' },
-    { month: 3, day: 21, name: 'Tiradentes' },
-    { month: 4, day: 1, name: 'Dia do Trabalhador' },
-    { month: 8, day: 7, name: 'Independência do Brasil' },
-    { month: 9, day: 12, name: 'Nossa Sra. Aparecida' },
-    { month: 10, day: 2, name: 'Finados' },
-    { month: 10, day: 15, name: 'Proclamação da República' },
-    { month: 11, day: 25, name: 'Natal' },
-  ],
-  MX: [
-    { month: 0, day: 1, name: 'Año Nuevo' },
-    { month: 1, day: 5, name: 'Día de la Constitución' },
-    { month: 2, day: 18, name: 'Natalicio de Benito Juárez' },
-    { month: 4, day: 1, name: 'Día del Trabajo' },
-    { month: 8, day: 16, name: 'Día de la Independencia' },
-    { month: 10, day: 18, name: 'Revolución Mexicana' },
-    { month: 11, day: 25, name: 'Navidad' },
-  ],
-};
-
-// Helper to get holidays for a country and year
-function getHolidaysForYear(countryCode: string, year: number): Array<{ date: Date; name: string }> {
-  const holidays = nationalHolidays[countryCode] || [];
-  return holidays.map(h => ({
-    date: new Date(year, h.month, h.day),
-    name: h.name,
-  }));
-}
-
 // Day names
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const shortDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -449,6 +310,7 @@ function BusinessContent() {
   const { data: closuresData, isLoading: closuresLoading, refetch: refetchClosures } = useBusinessClosures();
   const addClosure = useAddBusinessClosure();
   const deleteClosure = useDeleteBusinessClosure();
+  const fetchHolidays = useFetchPublicHolidays();
 
 
   const [activeTab, setActiveTab] = useState('profile');
@@ -460,7 +322,7 @@ function BusinessContent() {
   const [closureReason, setClosureReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [isAddingHolidays, setIsAddingHolidays] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
 
   // File input ref for logo upload
   const fileInputRef = useCallback((node: HTMLInputElement | null) => {
@@ -562,7 +424,7 @@ function BusinessContent() {
     setHasChanges(true);
   }, []);
 
-  const handleCountryChange = useCallback((countryCode: string) => {
+  const handleCountryChange = useCallback(async (countryCode: string) => {
     const country = countries.find(c => c.code === countryCode);
     if (country) {
       setFormData(prev => ({
@@ -573,8 +435,23 @@ function BusinessContent() {
       }));
       setHasChanges(true);
       toast.success(`Updated to ${country.name} defaults`);
+
+      // Auto-fetch national holidays for the selected country
+      const currentYear = getYear(new Date());
+      try {
+        const result = await fetchHolidays.mutateAsync({
+          countryCode: countryCode,
+          year: currentYear,
+        });
+        if (result.added > 0) {
+          toast.success(`Added ${result.added} national holidays for ${country.name}`);
+        }
+      } catch (error) {
+        // Silently fail - holidays are optional
+        console.warn('Could not fetch holidays:', error);
+      }
     }
-  }, []);
+  }, [fetchHolidays]);
 
   const currentTimezoneLabel = useMemo(() => {
     const tz = allTimezones.find(t => t.value === formData.timezone);
@@ -634,31 +511,6 @@ function BusinessContent() {
     }
   };
 
-  const applyToWeekdays = useCallback(() => {
-    const monday = schedule[0];
-    if (!monday) return;
-
-    setSchedule(prev => {
-      const newSchedule = { ...prev };
-      for (let i = 0; i <= 4; i++) {
-        newSchedule[i] = { ...monday };
-      }
-      return newSchedule;
-    });
-    setHoursHasChanges(true);
-    toast.success('Applied Monday schedule to all weekdays');
-  }, [schedule]);
-
-  const setAllClosed = useCallback((days: number[]) => {
-    setSchedule(prev => {
-      const newSchedule = { ...prev };
-      days.forEach(i => {
-        newSchedule[i] = { ...prev[i], is_open: false };
-      });
-      return newSchedule;
-    });
-    setHoursHasChanges(true);
-  }, []);
 
   const handleAddClosure = async () => {
     if (!dateRange?.from) {
@@ -693,44 +545,6 @@ function BusinessContent() {
     }
   };
 
-  const handleAddNationalHolidays = async () => {
-    const countryCode = formData.country || 'US';
-    const currentYear = getYear(new Date());
-    const holidays = getHolidaysForYear(countryCode, currentYear);
-
-    if (holidays.length === 0) {
-      toast.error('No holidays available for this country');
-      return;
-    }
-
-    setIsAddingHolidays(true);
-    try {
-      const existingDates = new Set((closuresData || []).map(c => c.closure_date));
-      const futureHolidays = holidays.filter(h =>
-        !isPast(h.date) && !existingDates.has(format(h.date, 'yyyy-MM-dd'))
-      );
-
-      if (futureHolidays.length === 0) {
-        toast.info('All holidays are already added or have passed');
-        return;
-      }
-
-      for (const holiday of futureHolidays) {
-        await addClosure.mutateAsync({
-          closure_date: format(holiday.date, 'yyyy-MM-dd'),
-          reason: holiday.name,
-        });
-      }
-
-      toast.success(`Added ${futureHolidays.length} national holidays`);
-      refetchClosures();
-    } catch (error) {
-      toast.error('Failed to add holidays');
-    } finally {
-      setIsAddingHolidays(false);
-    }
-  };
-
   const handleDeleteClosure = async (closureId: string) => {
     try {
       await deleteClosure.mutateAsync(closureId);
@@ -742,8 +556,10 @@ function BusinessContent() {
   };
 
   const closedDates = (closuresData || []).map(c => new Date(c.closure_date));
-  const upcomingClosures = (closuresData || [])
-    .filter(c => !isPast(new Date(c.closure_date)) || isToday(new Date(c.closure_date)))
+
+  // Filter closures by selected calendar month
+  const monthClosures = (closuresData || [])
+    .filter(c => isSameMonth(new Date(c.closure_date), calendarMonth))
     .sort((a, b) => new Date(a.closure_date).getTime() - new Date(b.closure_date).getTime());
 
   if (businessLoading || hoursLoading) {
@@ -1228,20 +1044,16 @@ function BusinessContent() {
                         </div>
                         Operating Hours
                       </h3>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={applyToWeekdays} className="h-8 text-xs">
-                          <Copy className="h-3.5 w-3.5 mr-1.5" />
-                          Apply to weekdays
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setAllClosed([5, 6])}
-                          className="h-8 text-xs text-destructive hover:text-destructive"
-                        >
-                          <Moon className="h-3.5 w-3.5 mr-1.5" />
-                          Close weekend
-                        </Button>
+                    </div>
+
+                    {/* Column Headers */}
+                    <div className="flex items-center py-2 px-4 mb-2 text-xs font-medium text-muted-foreground">
+                      <div className="w-[52px]"></div>
+                      <div className="w-12"></div>
+                      <div className="flex-1 flex items-center justify-end gap-3">
+                        <span className="w-28 text-center">Open</span>
+                        <span className="w-4"></span>
+                        <span className="w-28 text-center">Close</span>
                       </div>
                     </div>
 
@@ -1305,27 +1117,13 @@ function BusinessContent() {
 
                   {/* Right: Scheduled Closures */}
                   <motion.div variants={fadeInUp} className="lg:border-l lg:pl-8">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center mb-4">
                       <h3 className="text-base font-semibold flex items-center gap-2">
                         <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center">
                           <CalendarOff className="h-4 w-4 text-destructive" />
                         </div>
                         Scheduled Closures
                       </h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddNationalHolidays}
-                        disabled={isAddingHolidays}
-                        className="h-8 text-xs"
-                      >
-                        {isAddingHolidays ? (
-                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                        ) : (
-                          <Plus className="h-3.5 w-3.5 mr-1.5" />
-                        )}
-                        Add holidays
-                      </Button>
                     </div>
 
                     <div className="grid gap-6 sm:grid-cols-2">
@@ -1335,6 +1133,8 @@ function BusinessContent() {
                           mode="range"
                           selected={dateRange}
                           onSelect={setDateRange}
+                          month={calendarMonth}
+                          onMonthChange={setCalendarMonth}
                           disabled={[{ before: new Date() }]}
                           modifiers={{
                             closed: closedDates,
@@ -1401,12 +1201,14 @@ function BusinessContent() {
                         </div>
                       </div>
 
-                      {/* Upcoming Closures List */}
+                      {/* Monthly Closures List */}
                       <div>
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-medium text-muted-foreground">Upcoming closures</span>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            {format(calendarMonth, 'MMMM yyyy')}
+                          </span>
                           <Badge variant="secondary">
-                            {upcomingClosures.length}
+                            {monthClosures.length}
                           </Badge>
                         </div>
 
@@ -1416,18 +1218,18 @@ function BusinessContent() {
                             <Skeleton className="h-14 w-full rounded-xl" />
                             <Skeleton className="h-14 w-full rounded-xl" />
                           </div>
-                        ) : upcomingClosures.length === 0 ? (
+                        ) : monthClosures.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-[280px] text-center bg-muted/20 rounded-xl border-2 border-dashed border-muted-foreground/20">
                             <CalendarOff className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                            <p className="text-sm font-medium text-muted-foreground">No closures scheduled</p>
+                            <p className="text-sm font-medium text-muted-foreground">No closures in {format(calendarMonth, 'MMMM')}</p>
                             <p className="text-xs text-muted-foreground/70 mt-1 max-w-[180px]">
-                              Select dates on the calendar to add closure days
+                              Select dates to add closure days
                             </p>
                           </div>
                         ) : (
                           <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                             <AnimatePresence mode="popLayout">
-                              {upcomingClosures.map((closure) => {
+                              {monthClosures.map((closure) => {
                                 const closureDate = new Date(closure.closure_date);
                                 const isClosureToday = isToday(closureDate);
 
