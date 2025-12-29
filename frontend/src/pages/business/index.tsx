@@ -1214,272 +1214,279 @@ function BusinessContent() {
             initial="hidden"
             animate="visible"
             variants={staggerContainer}
-            className="grid gap-4 lg:grid-cols-2"
+            className="max-w-4xl mx-auto"
           >
-            {/* Left Column: Operating Hours - Compact */}
-            <motion.div variants={fadeInUp}>
-              <Card>
-                <CardHeader className="pb-2 pt-4 px-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Clock className="h-4 w-4 text-purple-600" />
-                      Operating Hours
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={applyToWeekdays} className="h-6 px-2 text-[10px]">
-                        <Copy className="h-2.5 w-2.5 mr-1" />
-                        Weekdays
-                      </Button>
+            <div className="grid gap-6 md:grid-cols-5">
+              {/* Left Column: Operating Hours - Takes 2/5 */}
+              <motion.div variants={fadeInUp} className="md:col-span-2">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-sm">
+                        <div className="h-7 w-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                          <Clock className="h-3.5 w-3.5 text-purple-600" />
+                        </div>
+                        Hours
+                      </CardTitle>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={applyToWeekdays} className="h-7 px-2 text-xs">
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="space-y-1.5">
+                      {days.map((day, index) => {
+                        const isOpen = schedule[index]?.is_open ?? index < 5;
+
+                        return (
+                          <div
+                            key={day}
+                            className={cn(
+                              'flex items-center gap-3 py-2 px-3 rounded-lg transition-all',
+                              isOpen ? 'bg-muted/40' : 'bg-muted/20'
+                            )}
+                          >
+                            <Switch
+                              checked={isOpen}
+                              onCheckedChange={() => handleToggleDay(index)}
+                            />
+                            <span className={cn(
+                              'text-sm font-medium min-w-[36px]',
+                              !isOpen && 'text-muted-foreground'
+                            )}>
+                              {shortDays[index]}
+                            </span>
+                            {isOpen ? (
+                              <div className="flex items-center gap-2 ml-auto">
+                                <Input
+                                  type="time"
+                                  value={schedule[index]?.open_time || '09:00'}
+                                  onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
+                                  className="h-8 w-[90px] text-xs text-center"
+                                />
+                                <span className="text-muted-foreground text-xs">to</span>
+                                <Input
+                                  type="time"
+                                  value={schedule[index]?.close_time || '17:00'}
+                                  onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
+                                  className="h-8 w-[90px] text-xs text-center"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground ml-auto">Closed</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        Open {Object.values(schedule).filter(s => s.is_open).length} days/week
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setAllClosed([5, 6])}
-                        className="h-6 px-2 text-[10px] text-destructive hover:text-destructive"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
                       >
-                        <Moon className="h-2.5 w-2.5 mr-1" />
-                        Weekend
+                        <Moon className="h-3 w-3 mr-1" />
+                        Close weekend
                       </Button>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 pt-2">
-                  <div className="space-y-1">
-                    {days.map((day, index) => {
-                      const isOpen = schedule[index]?.is_open ?? index < 5;
+                  </CardContent>
+                </Card>
+              </motion.div>
 
-                      return (
-                        <div
-                          key={day}
-                          className={cn(
-                            'flex items-center gap-2 py-1.5 px-2 rounded-md transition-all',
-                            isOpen ? 'bg-card' : 'bg-muted/30'
-                          )}
-                        >
-                          <Switch
-                            checked={isOpen}
-                            onCheckedChange={() => handleToggleDay(index)}
-                            className="scale-75"
-                          />
-                          <span className={cn(
-                            'text-xs font-medium w-8',
-                            !isOpen && 'text-muted-foreground'
-                          )}>
-                            {shortDays[index]}
-                          </span>
-                          {isOpen ? (
-                            <div className="flex items-center gap-1 ml-auto">
-                              <Input
-                                type="time"
-                                value={schedule[index]?.open_time || '09:00'}
-                                onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                                className="h-6 w-[80px] text-[10px] text-center px-1"
-                              />
-                              <span className="text-muted-foreground text-[10px]">-</span>
-                              <Input
-                                type="time"
-                                value={schedule[index]?.close_time || '17:00'}
-                                onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                                className="h-6 w-[80px] text-[10px] text-center px-1"
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground ml-auto">Closed</span>
-                          )}
+              {/* Right Column: Closures - Takes 3/5 */}
+              <motion.div variants={fadeInUp} className="md:col-span-3">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-sm">
+                        <div className="h-7 w-7 rounded-lg bg-red-500/10 flex items-center justify-center">
+                          <CalendarOff className="h-3.5 w-3.5 text-red-600" />
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 p-2 rounded-md bg-primary/5 border border-primary/10 flex items-center gap-2">
-                    <Sparkles className="h-3 w-3 text-primary" />
-                    <span className="text-[11px] text-muted-foreground">
-                      Open {Object.values(schedule).filter(s => s.is_open).length} days/week
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Right Column: Closures - Two Column Inside */}
-            <motion.div variants={fadeInUp}>
-              <Card>
-                <CardHeader className="pb-2 pt-4 px-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <CalendarOff className="h-4 w-4 text-red-600" />
-                      Scheduled Closures
-                    </CardTitle>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAddNationalHolidays}
-                      disabled={isAddingHolidays}
-                      className="h-7 text-xs"
-                    >
-                      {isAddingHolidays ? (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <Plus className="h-3 w-3 mr-1" />
-                      )}
-                      Add Holidays
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 pt-2">
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    {/* Left: Calendar */}
-                    <div className="space-y-2">
-                      <DayPicker
-                        mode="range"
-                        selected={dateRange}
-                        onSelect={setDateRange}
-                        disabled={[{ before: new Date() }]}
-                        modifiers={{
-                          closed: closedDates,
-                        }}
-                        modifiersClassNames={{
-                          closed: 'bg-destructive/20 text-destructive rounded-md',
-                        }}
-                        components={{
-                          IconLeft: () => <ChevronLeft className="h-3 w-3" />,
-                          IconRight: () => <ChevronRight className="h-3 w-3" />,
-                        }}
-                        classNames={{
-                          months: 'flex flex-col',
-                          month: 'space-y-2',
-                          caption: 'flex justify-center pt-0.5 relative items-center',
-                          caption_label: 'text-xs font-medium',
-                          nav: 'flex items-center',
-                          nav_button: 'h-6 w-6 bg-transparent p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded border border-input hover:bg-accent transition-colors',
-                          nav_button_previous: 'absolute left-0',
-                          nav_button_next: 'absolute right-0',
-                          table: 'w-full border-collapse',
-                          head_row: 'flex',
-                          head_cell: 'text-muted-foreground w-8 font-medium text-[10px] flex-1 text-center',
-                          row: 'flex w-full mt-0.5',
-                          cell: 'flex-1 h-8 text-center text-xs p-0 relative',
-                          day: 'h-8 w-8 p-0 font-normal hover:bg-accent hover:text-accent-foreground rounded inline-flex items-center justify-center cursor-pointer transition-colors mx-auto text-[11px]',
-                          day_selected: 'bg-primary text-primary-foreground hover:bg-primary',
-                          day_today: 'bg-accent text-accent-foreground font-semibold',
-                          day_outside: 'text-muted-foreground opacity-50',
-                          day_disabled: 'text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent',
-                          day_range_middle: 'bg-primary/20 rounded-none',
-                          day_range_start: 'bg-primary text-primary-foreground rounded-l-md rounded-r-none',
-                          day_range_end: 'bg-primary text-primary-foreground rounded-r-md rounded-l-none',
-                          day_hidden: 'invisible',
-                        }}
-                        className="p-2 bg-muted/30 rounded-lg border"
-                      />
-                      <div className="flex gap-1.5">
-                        <Input
-                          placeholder="Reason (optional)"
-                          value={closureReason}
-                          onChange={(e) => setClosureReason(e.target.value)}
-                          className="h-8 text-xs flex-1"
+                        Closures
+                      </CardTitle>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddNationalHolidays}
+                        disabled={isAddingHolidays}
+                        className="h-7 text-xs"
+                      >
+                        {isAddingHolidays ? (
+                          <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                        ) : (
+                          <Plus className="h-3 w-3 mr-1.5" />
+                        )}
+                        Add Holidays
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      {/* Calendar */}
+                      <div className="flex-shrink-0">
+                        <DayPicker
+                          mode="range"
+                          selected={dateRange}
+                          onSelect={setDateRange}
+                          disabled={[{ before: new Date() }]}
+                          modifiers={{
+                            closed: closedDates,
+                          }}
+                          modifiersClassNames={{
+                            closed: 'bg-destructive/20 text-destructive rounded-md',
+                          }}
+                          components={{
+                            IconLeft: () => <ChevronLeft className="h-4 w-4" />,
+                            IconRight: () => <ChevronRight className="h-4 w-4" />,
+                          }}
+                          classNames={{
+                            months: 'flex flex-col',
+                            month: 'space-y-3',
+                            caption: 'flex justify-center relative items-center h-8',
+                            caption_label: 'text-sm font-medium',
+                            nav: 'flex items-center',
+                            nav_button: 'h-7 w-7 bg-transparent p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input hover:bg-accent transition-colors',
+                            nav_button_previous: 'absolute left-0',
+                            nav_button_next: 'absolute right-0',
+                            table: 'w-full border-collapse',
+                            head_row: 'flex',
+                            head_cell: 'text-muted-foreground w-9 font-medium text-xs flex-1 text-center',
+                            row: 'flex w-full mt-1',
+                            cell: 'flex-1 h-9 text-center text-sm p-0 relative',
+                            day: 'h-9 w-9 p-0 font-normal hover:bg-accent hover:text-accent-foreground rounded-md inline-flex items-center justify-center cursor-pointer transition-colors mx-auto text-sm',
+                            day_selected: 'bg-primary text-primary-foreground hover:bg-primary',
+                            day_today: 'bg-accent text-accent-foreground font-semibold',
+                            day_outside: 'text-muted-foreground opacity-50',
+                            day_disabled: 'text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent',
+                            day_range_middle: 'bg-primary/15 rounded-none',
+                            day_range_start: 'bg-primary text-primary-foreground rounded-l-md rounded-r-none',
+                            day_range_end: 'bg-primary text-primary-foreground rounded-r-md rounded-l-none',
+                            day_hidden: 'invisible',
+                          }}
+                          className="p-3 bg-muted/30 rounded-xl border"
                         />
-                        <Button
-                          size="sm"
-                          className="h-8 px-3"
-                          onClick={handleAddClosure}
-                          disabled={!dateRange?.from}
-                          loading={addClosure.isPending}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add
-                        </Button>
-                      </div>
-                      {dateRange?.from && (
-                        <p className="text-[10px] text-muted-foreground text-center">
-                          {dateRange.to
-                            ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d')}`
-                            : format(dateRange.from, 'MMM d, yyyy')}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Right: Closures List */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-muted-foreground">Upcoming</span>
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                          {upcomingClosures.length}
-                        </Badge>
-                      </div>
-                      {closuresLoading ? (
-                        <div className="space-y-1.5">
-                          <Skeleton className="h-10 w-full rounded-md" />
-                          <Skeleton className="h-10 w-full rounded-md" />
+                        <div className="mt-3 space-y-2">
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Reason (optional)"
+                              value={closureReason}
+                              onChange={(e) => setClosureReason(e.target.value)}
+                              className="h-9 text-sm flex-1"
+                            />
+                            <Button
+                              className="h-9 px-4"
+                              onClick={handleAddClosure}
+                              disabled={!dateRange?.from}
+                              loading={addClosure.isPending}
+                            >
+                              <Plus className="h-4 w-4 mr-1.5" />
+                              Add
+                            </Button>
+                          </div>
+                          {dateRange?.from && (
+                            <p className="text-xs text-muted-foreground text-center">
+                              {dateRange.to
+                                ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d, yyyy')}`
+                                : format(dateRange.from, 'MMMM d, yyyy')}
+                            </p>
+                          )}
                         </div>
-                      ) : upcomingClosures.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/30 rounded-lg border border-dashed">
-                          <CalendarOff className="h-5 w-5 text-muted-foreground/40 mb-1" />
-                          <p className="text-[10px] text-muted-foreground">No closures scheduled</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
-                          <AnimatePresence mode="popLayout">
-                            {upcomingClosures.map((closure) => {
-                              const closureDate = new Date(closure.closure_date);
-                              const isClosureToday = isToday(closureDate);
+                      </div>
 
-                              return (
-                                <motion.div
-                                  key={closure.id}
-                                  layout
-                                  initial={{ opacity: 0, y: -5 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, x: -10 }}
-                                  className={cn(
-                                    'group flex items-center gap-2 p-2 rounded-md border transition-all',
-                                    isClosureToday
-                                      ? 'bg-destructive/5 border-destructive/30'
-                                      : 'bg-card border-border hover:border-primary/30'
-                                  )}
-                                >
-                                  <div className={cn(
-                                    'flex flex-col items-center justify-center w-9 h-9 rounded text-center flex-shrink-0',
-                                    isClosureToday
-                                      ? 'bg-destructive text-destructive-foreground'
-                                      : 'bg-muted'
-                                  )}>
-                                    <span className="text-[8px] font-bold uppercase leading-tight">
-                                      {format(closureDate, 'MMM')}
-                                    </span>
-                                    <span className="text-xs font-bold leading-none">
-                                      {format(closureDate, 'd')}
-                                    </span>
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium flex items-center gap-1">
-                                      {format(closureDate, 'EEE')}
-                                      {isClosureToday && (
-                                        <Badge variant="error" className="text-[8px] h-3.5 px-1">
-                                          Today
-                                        </Badge>
-                                      )}
-                                    </p>
-                                    <p className="text-[10px] text-muted-foreground truncate">
-                                      {closure.reason || 'No reason'}
-                                    </p>
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteClosure(closure.id)}
-                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                      {/* Closures List */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-sm font-medium">Upcoming</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {upcomingClosures.length}
+                          </Badge>
+                        </div>
+                        {closuresLoading ? (
+                          <div className="space-y-2">
+                            <Skeleton className="h-12 w-full rounded-lg" />
+                            <Skeleton className="h-12 w-full rounded-lg" />
+                          </div>
+                        ) : upcomingClosures.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/30 rounded-xl border border-dashed">
+                            <CalendarOff className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                            <p className="text-sm text-muted-foreground">No closures scheduled</p>
+                            <p className="text-xs text-muted-foreground/70 mt-1">Select dates to add closures</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                            <AnimatePresence mode="popLayout">
+                              {upcomingClosures.map((closure) => {
+                                const closureDate = new Date(closure.closure_date);
+                                const isClosureToday = isToday(closureDate);
+
+                                return (
+                                  <motion.div
+                                    key={closure.id}
+                                    layout
+                                    initial={{ opacity: 0, y: -5 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, x: -10 }}
+                                    className={cn(
+                                      'group flex items-center gap-3 p-2.5 rounded-lg border transition-all',
+                                      isClosureToday
+                                        ? 'bg-destructive/5 border-destructive/30'
+                                        : 'bg-card border-border hover:border-primary/30'
+                                    )}
                                   >
-                                    <Trash2 className="h-2.5 w-2.5" />
-                                  </Button>
-                                </motion.div>
-                              );
-                            })}
-                          </AnimatePresence>
-                        </div>
-                      )}
+                                    <div className={cn(
+                                      'flex flex-col items-center justify-center w-11 h-11 rounded-lg text-center flex-shrink-0',
+                                      isClosureToday
+                                        ? 'bg-destructive text-destructive-foreground'
+                                        : 'bg-muted'
+                                    )}>
+                                      <span className="text-[10px] font-bold uppercase leading-tight">
+                                        {format(closureDate, 'MMM')}
+                                      </span>
+                                      <span className="text-sm font-bold leading-none">
+                                        {format(closureDate, 'd')}
+                                      </span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium flex items-center gap-1.5">
+                                        {format(closureDate, 'EEEE')}
+                                        {isClosureToday && (
+                                          <Badge variant="error" className="text-[10px] h-4 px-1.5">
+                                            Today
+                                          </Badge>
+                                        )}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {closure.reason || 'No reason specified'}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDeleteClosure(closure.id)}
+                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </motion.div>
+                                );
+                              })}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </div>
           </motion.div>
         </TabsContent>
       </Tabs>
