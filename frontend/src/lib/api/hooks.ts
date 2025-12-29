@@ -8,6 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { get, post, put, del, upload } from './client';
 import { useAuth } from '@/features/auth/auth-provider';
+import Holidays from 'date-holidays';
 import type {
   Customer,
   Staff,
@@ -926,33 +927,8 @@ export function useDeleteBusinessClosure() {
 }
 
 // =============================================================================
-// PUBLIC HOLIDAYS API (Nager.Date)
+// PUBLIC HOLIDAYS (using date-holidays - offline, no API)
 // =============================================================================
-
-interface NagerHoliday {
-  date: string;
-  localName: string;
-  name: string;
-  countryCode: string;
-  fixed: boolean;
-  global: boolean;
-  counties: string[] | null;
-  launchYear: number | null;
-  types: string[];
-}
-
-// Countries supported by Nager.Date API
-const NAGER_SUPPORTED_COUNTRIES = new Set([
-  'AD', 'AL', 'AR', 'AT', 'AU', 'AX', 'BA', 'BB', 'BE', 'BG', 'BJ', 'BO', 'BR',
-  'BS', 'BW', 'BY', 'BZ', 'CA', 'CH', 'CL', 'CN', 'CO', 'CR', 'CU', 'CY', 'CZ',
-  'DE', 'DK', 'DO', 'EC', 'EE', 'EG', 'ES', 'FI', 'FO', 'FR', 'GA', 'GB', 'GD',
-  'GI', 'GL', 'GM', 'GR', 'GT', 'GU', 'GY', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE',
-  'IM', 'IS', 'IT', 'JE', 'JM', 'JP', 'KR', 'LI', 'LS', 'LT', 'LU', 'LV', 'MA',
-  'MC', 'MD', 'ME', 'MG', 'MK', 'MN', 'MS', 'MT', 'MX', 'MZ', 'NA', 'NE', 'NG',
-  'NI', 'NL', 'NO', 'NZ', 'PA', 'PE', 'PG', 'PH', 'PL', 'PR', 'PT', 'PY', 'RO',
-  'RS', 'RU', 'SE', 'SG', 'SI', 'SJ', 'SK', 'SM', 'SR', 'SV', 'TN', 'TR', 'UA',
-  'US', 'UY', 'VA', 'VE', 'VN', 'ZA', 'ZW'
-]);
 
 interface FetchHolidaysParams {
   countryCode: string;
@@ -970,27 +946,37 @@ export function useFetchPublicHolidays() {
         throw new Error('Business ID is required');
       }
 
+      // Initialize holidays for the country
+      const hd = new Holidays(countryCode);
+
       // Check if country is supported
-      if (!NAGER_SUPPORTED_COUNTRIES.has(countryCode)) {
+      if (!hd.getCountries()[countryCode]) {
         return { added: 0, total: 0, unsupported: true };
       }
 
-      // Fetch holidays for current year + next 2 years (rolling 3-year window)
+      // Delete all existing closures first (overwrite mode)
+      const existingClosures = await get<BusinessClosure[]>(
+        `/api/business-hours/${businessId}/closures`
+      );
+      for (const closure of existingClosures) {
+        await del(`/api/business-hours/closures/${closure.id}`);
+      }
+
+      // Get holidays for current year + next 2 years (rolling 3-year window)
       const yearsToFetch = [year, year + 1, year + 2];
-      const allHolidays: NagerHoliday[] = [];
+      const allHolidays: { date: string; name: string }[] = [];
 
       for (const fetchYear of yearsToFetch) {
-        try {
-          const response = await fetch(
-            `https://date.nager.at/api/v3/PublicHolidays/${fetchYear}/${countryCode}`
-          );
-
-          if (response.ok) {
-            const holidays: NagerHoliday[] = await response.json();
-            allHolidays.push(...holidays);
+        const holidays = hd.getHolidays(fetchYear);
+        for (const holiday of holidays) {
+          // Only include public holidays (type: 'public')
+          if (holiday.type === 'public') {
+            const dateStr = holiday.date.split(' ')[0]; // "2025-01-01 00:00:00" -> "2025-01-01"
+            allHolidays.push({
+              date: dateStr,
+              name: holiday.name,
+            });
           }
-        } catch {
-          // Continue with other years if one fails
         }
       }
 
@@ -998,35 +984,27 @@ export function useFetchPublicHolidays() {
         return { added: 0, total: 0, unsupported: false };
       }
 
-      // Filter to only include future holidays and global/national holidays
+      // Filter to only include future holidays
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const futureHolidays = allHolidays.filter(h => {
         const holidayDate = new Date(h.date);
-        return holidayDate >= today && (h.global || h.types.includes('Public'));
+        return holidayDate >= today;
       });
 
-      // Get existing closures to avoid duplicates
-      const existingClosures = await get<BusinessClosure[]>(
-        `/api/business-hours/${businessId}/closures`
-      );
-      const existingDates = new Set(existingClosures.map(c => c.closure_date));
-
       // Add each holiday as a closure
-      const addedCount = { count: 0 };
+      let addedCount = 0;
       for (const holiday of futureHolidays) {
-        if (!existingDates.has(holiday.date)) {
-          await post<BusinessClosure>('/api/business-hours/closures', {
-            business_id: businessId,
-            closure_date: holiday.date,
-            reason: holiday.localName || holiday.name,
-          });
-          addedCount.count++;
-        }
+        await post<BusinessClosure>('/api/business-hours/closures', {
+          business_id: businessId,
+          closure_date: holiday.date,
+          reason: holiday.name,
+        });
+        addedCount++;
       }
 
-      return { added: addedCount.count, total: futureHolidays.length, unsupported: false };
+      return { added: addedCount, total: futureHolidays.length, unsupported: false };
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['business-closures', variables.businessId] });
