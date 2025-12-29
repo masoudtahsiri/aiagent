@@ -75,3 +75,15 @@ export async function del<T>(url: string): Promise<T> {
   const response = await apiClient.delete<T>(url);
   return response.data;
 }
+
+export async function upload<T>(url: string, file: File, fieldName: string = 'file'): Promise<T> {
+  const formData = new FormData();
+  formData.append(fieldName, file);
+
+  const response = await apiClient.post<T>(url, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+}

@@ -45,13 +45,18 @@ export interface Business {
   currency: string;
   phone_number?: string;
   ai_phone_number?: string;
+  email?: string;
   address?: string;
   city?: string;
   state?: string;
   zip_code?: string;
   country: string;
+  website?: string;
   timezone: string;
   default_language: string;
+  logo_url?: string;
+  instagram_url?: string;
+  facebook_url?: string;
   subscription_status: 'active' | 'trial' | 'expired' | 'cancelled';
   created_at: string;
   updated_at: string;

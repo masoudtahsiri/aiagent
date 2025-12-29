@@ -22,6 +22,12 @@ import {
   Coffee,
   X,
   Info,
+  Mail,
+  Link2,
+  Instagram,
+  Facebook,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import { format, isPast, isToday } from 'date-fns';
@@ -39,6 +45,8 @@ import { cn } from '@/lib/utils';
 import {
   useBusiness,
   useUpdateBusiness,
+  useUploadBusinessLogo,
+  useDeleteBusinessLogo,
   useBusinessHours,
   useUpdateBusinessHours,
   useBusinessClosures,
@@ -307,6 +315,8 @@ export default function BusinessPage() {
 function BusinessContent() {
   const { data: business, isLoading: businessLoading, refetch: refetchBusiness } = useBusiness();
   const updateBusiness = useUpdateBusiness();
+  const uploadLogo = useUploadBusinessLogo();
+  const deleteLogo = useDeleteBusinessLogo();
   const { data: hoursData, isLoading: hoursLoading, refetch: refetchHours } = useBusinessHours();
   const updateHours = useUpdateBusinessHours();
   const { data: closuresData, isLoading: closuresLoading, refetch: refetchClosures } = useBusinessClosures();
@@ -324,6 +334,19 @@ function BusinessContent() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [closureReason, setClosureReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  // File input ref for logo upload
+  const fileInputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      node.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          await handleLogoUpload(file);
+        }
+      };
+    }
+  }, []);
 
   useEffect(() => {
     if (business) {
@@ -336,11 +359,54 @@ function BusinessContent() {
         state: business.state,
         zip_code: business.zip_code,
         phone_number: business.phone_number,
+        email: business.email,
+        website: business.website,
+        instagram_url: business.instagram_url,
+        facebook_url: business.facebook_url,
+        logo_url: business.logo_url,
         country: business.country,
-        currency: business.currency || 'TRY',
+        currency: business.currency || 'USD',
       });
     }
   }, [business]);
+
+  const handleLogoUpload = async (file: File) => {
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Invalid file type. Please upload a PNG, JPG, GIF, or WebP image.');
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 5MB.');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const result = await uploadLogo.mutateAsync(file);
+      setFormData(prev => ({ ...prev, logo_url: result.logo_url }));
+      toast.success('Logo uploaded successfully');
+      refetchBusiness();
+    } catch (error) {
+      toast.error('Failed to upload logo');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    try {
+      await deleteLogo.mutateAsync();
+      setFormData(prev => ({ ...prev, logo_url: undefined }));
+      toast.success('Logo removed');
+      refetchBusiness();
+    } catch (error) {
+      toast.error('Failed to remove logo');
+    }
+  };
 
   useEffect(() => {
     if (hoursData) {
@@ -603,21 +669,73 @@ function BusinessContent() {
                   {/* Business Avatar/Logo */}
                   <div className="flex items-center gap-4">
                     <div className="relative group">
-                      <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center border-2 border-dashed border-primary/30 transition-all group-hover:border-primary/50">
-                        <Building2 className="h-8 w-8 text-primary/60" />
-                      </div>
-                      <button className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors">
+                      {formData.logo_url ? (
+                        <div className="h-20 w-20 rounded-2xl overflow-hidden border-2 border-border">
+                          <img
+                            src={formData.logo_url}
+                            alt="Business logo"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center border-2 border-dashed border-primary/30 transition-all group-hover:border-primary/50">
+                          {isUploadingLogo ? (
+                            <Loader2 className="h-6 w-6 text-primary/60 animate-spin" />
+                          ) : (
+                            <Building2 className="h-8 w-8 text-primary/60" />
+                          )}
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        className="hidden"
+                        id="logo-upload"
+                        ref={fileInputRef}
+                      />
+                      <label
+                        htmlFor="logo-upload"
+                        className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors cursor-pointer"
+                      >
                         <Camera className="h-3.5 w-3.5" />
-                      </button>
+                      </label>
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">Business Logo</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Recommended: 512x512px, PNG or JPG
                       </p>
-                      <Button variant="outline" size="sm" className="mt-2 h-8">
-                        Upload Logo
-                      </Button>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => document.getElementById('logo-upload')?.click()}
+                          disabled={isUploadingLogo}
+                        >
+                          {isUploadingLogo ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-3.5 w-3.5 mr-1.5" />
+                              Upload Logo
+                            </>
+                          )}
+                        </Button>
+                        {formData.logo_url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={handleLogoDelete}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -673,11 +791,11 @@ function BusinessContent() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10">
                       <Phone className="h-4 w-4 text-green-600" />
                     </div>
-                    Contact Information
+                    Contact & Social
                   </CardTitle>
-                  <CardDescription>How customers can reach you</CardDescription>
+                  <CardDescription>How customers can reach and find you</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-4">
                   {/* Phone Number */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Phone Number</label>
@@ -688,42 +806,73 @@ function BusinessContent() {
                         value={formData.phone_number || ''}
                         onChange={(e) => handleChange('phone_number', e.target.value)}
                         placeholder="+1 (555) 000-0000"
-                        className="h-11 pl-10"
+                        className="h-10 pl-10"
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Include country code for international calls
-                    </p>
                   </div>
 
-                  {/* Quick Stats */}
-                  <div className="pt-4 border-t">
-                    <h4 className="text-sm font-medium text-muted-foreground mb-3">Profile Completion</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Business name</span>
-                        {formData.business_name ? (
-                          <Check className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <X className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Phone number</span>
-                        {formData.phone_number ? (
-                          <Check className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <X className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Address</span>
-                        {formData.address ? (
-                          <Check className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <X className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </div>
+                  {/* Email */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        value={formData.email || ''}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        placeholder="contact@yourbusiness.com"
+                        className="h-10 pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Website */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Website</label>
+                    <div className="relative">
+                      <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="url"
+                        value={formData.website || ''}
+                        onChange={(e) => handleChange('website', e.target.value)}
+                        placeholder="https://yourbusiness.com"
+                        className="h-10 pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Social Links */}
+                  <div className="pt-3 border-t space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Social Media</h4>
+
+                    {/* Instagram */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                        <Instagram className="h-3.5 w-3.5 text-pink-500" />
+                        Instagram
+                      </label>
+                      <Input
+                        type="url"
+                        value={formData.instagram_url || ''}
+                        onChange={(e) => handleChange('instagram_url', e.target.value)}
+                        placeholder="https://instagram.com/yourbusiness"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+
+                    {/* Facebook */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                        <Facebook className="h-3.5 w-3.5 text-blue-600" />
+                        Facebook
+                      </label>
+                      <Input
+                        type="url"
+                        value={formData.facebook_url || ''}
+                        onChange={(e) => handleChange('facebook_url', e.target.value)}
+                        placeholder="https://facebook.com/yourbusiness"
+                        className="h-9 text-sm"
+                      />
                     </div>
                   </div>
                 </CardContent>

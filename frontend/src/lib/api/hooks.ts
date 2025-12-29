@@ -6,7 +6,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, put, del } from './client';
+import { get, post, put, del, upload } from './client';
 import { useAuth } from '@/features/auth/auth-provider';
 import type {
   Customer,
@@ -813,10 +813,40 @@ export function useBusiness() {
 export function useUpdateBusiness() {
   const queryClient = useQueryClient();
   const businessId = useBusinessId();
-  
+
   return useMutation({
-    mutationFn: (data: Partial<Business>) => 
+    mutationFn: (data: Partial<Business>) =>
       put<Business>(`/api/businesses/${businessId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.business(businessId || '') });
+    },
+  });
+}
+
+interface LogoUploadResponse {
+  logo_url: string;
+  message: string;
+}
+
+export function useUploadBusinessLogo() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: (file: File) =>
+      upload<LogoUploadResponse>('/api/businesses/me/logo', file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.business(businessId || '') });
+    },
+  });
+}
+
+export function useDeleteBusinessLogo() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: () => del('/api/businesses/me/logo'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.business(businessId || '') });
     },

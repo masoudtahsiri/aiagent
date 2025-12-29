@@ -174,6 +174,7 @@ class BusinessBase(BaseModel):
     currency: str = "USD"  # Default to US Dollar
     phone_number: Optional[str] = None  # Business contact (not AI phone)
     ai_phone_number: Optional[str] = None  # Dedicated AI receptionist number
+    email: Optional[str] = None  # Business contact email
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
@@ -181,6 +182,9 @@ class BusinessBase(BaseModel):
     country: str = "US"  # ISO 3166-1 alpha-2 country code
     website: Optional[str] = None
     timezone: str = "America/New_York"
+    logo_url: Optional[str] = None  # Business logo URL
+    instagram_url: Optional[str] = None  # Instagram profile URL
+    facebook_url: Optional[str] = None  # Facebook page URL
 
     @field_validator('industry', mode='before')
     @classmethod
@@ -201,6 +205,7 @@ class BusinessUpdate(BaseModel):
     currency: Optional[str] = None
     phone_number: Optional[str] = None
     ai_phone_number: Optional[str] = None
+    email: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
@@ -208,6 +213,9 @@ class BusinessUpdate(BaseModel):
     country: Optional[str] = None  # ISO 3166-1 alpha-2 country code
     website: Optional[str] = None
     timezone: Optional[str] = None
+    logo_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    facebook_url: Optional[str] = None
 
     @field_validator('industry', mode='before')
     @classmethod
