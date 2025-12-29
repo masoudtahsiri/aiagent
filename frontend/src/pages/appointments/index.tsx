@@ -14,8 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
-  Check,
-  AlertCircle,
   XCircle,
   Scissors,
 } from 'lucide-react';
@@ -75,14 +73,11 @@ import {
 import type { AppointmentWithDetails, Staff, Service } from '@/types';
 
 type ViewMode = 'calendar' | 'grid';
-type AppointmentStatusType = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
+type AppointmentStatusType = 'scheduled' | 'cancelled';
 
-const statusConfig: Record<AppointmentStatusType, { label: string; color: string; icon: typeof Check }> = {
+const statusConfig: Record<AppointmentStatusType, { label: string; color: string; icon: typeof Clock }> = {
   scheduled: { label: 'Scheduled', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
-  confirmed: { label: 'Confirmed', color: 'bg-green-100 text-green-700 border-green-200', icon: Check },
-  completed: { label: 'Completed', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: Check },
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
-  no_show: { label: 'No Show', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: AlertCircle },
 };
 
 export default function AppointmentsPage() {
@@ -381,19 +376,11 @@ export default function AppointmentsPage() {
         )}
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
               <p className="text-2xl font-bold">{filteredAppointments.length}</p>
               <p className="text-sm text-muted-foreground">Total</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-2xl font-bold text-green-600">
-                {filteredAppointments.filter((a) => a.status === 'confirmed').length}
-              </p>
-              <p className="text-sm text-muted-foreground">Confirmed</p>
             </CardContent>
           </Card>
           <Card>
@@ -544,10 +531,14 @@ function CalendarView({
                     <div className="mt-1 space-y-0.5">
                       {dayAppointments.slice(0, 3).map((apt) => {
                         const staffMember = staff.find((s) => s.id === apt.staff_id);
+                        const isCancelled = apt.status === 'cancelled';
                         return (
                           <div
                             key={apt.id}
-                            className="text-[10px] px-1 py-0.5 rounded truncate"
+                            className={cn(
+                              'text-[10px] px-1 py-0.5 rounded truncate',
+                              isCancelled && 'line-through opacity-60'
+                            )}
                             style={{
                               backgroundColor: staffMember?.color_code
                                 ? `${staffMember.color_code}20`
@@ -940,42 +931,46 @@ function RescheduleModal({
               </Select>
             </div>
 
-            {/* Date Selection */}
+            {/* Date & Time Selection Combined */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Date</label>
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => {
-                  setSelectedDate(e.target.value);
-                  setSelectedTime(''); // Reset time when date changes
-                }}
-                min={format(new Date(), 'yyyy-MM-dd')}
-              />
-            </div>
-
-            {/* Time Selection */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Time</label>
-              {slotsLoading ? (
-                <Skeleton className="h-10 w-full" />
-              ) : (
-                <Select value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedDate || !selectedStaff}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={!selectedDate || !selectedStaff ? 'Select staff & date first' : 'Select time'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeSlots.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <label className="text-sm font-medium">Date & Time</label>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    setSelectedTime(''); // Reset time when date changes
+                  }}
+                  min={format(new Date(), 'yyyy-MM-dd')}
+                  disabled={!selectedStaff}
+                  className="h-10"
+                />
+                {slotsLoading ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <Select value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedDate || !selectedStaff}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder={!selectedStaff ? 'Select staff first' : !selectedDate ? 'Select date' : 'Select time'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeSlots.map((time) => (
+                        <SelectItem key={time} value={time}>
+                          {time}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
               {selectedStaff && selectedDate && timeSlots.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {timeSlots.length} available time slots
+                  {timeSlots.length} available time slots for {format(parseISO(selectedDate), 'MMM d')}
+                </p>
+              )}
+              {selectedStaff && selectedDate && timeSlots.length === 0 && !slotsLoading && (
+                <p className="text-xs text-amber-600">
+                  No available slots for this date
                 </p>
               )}
             </div>

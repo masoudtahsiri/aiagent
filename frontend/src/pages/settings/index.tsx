@@ -113,125 +113,126 @@ function ProfileSettings() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
     >
-      {/* Profile Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Profile Settings
-          </CardTitle>
-          <CardDescription>Manage your personal account information</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Avatar using business logo */}
-          <div className="flex items-center gap-4">
-            {business?.logo_url ? (
-              <div className="h-16 w-16 rounded-full overflow-hidden border-2 border-border">
-                <img
-                  src={business.logo_url}
-                  alt="Business logo"
-                  className="h-full w-full object-cover"
-                />
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column - Profile Settings */}
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Profile Settings
+            </CardTitle>
+            <CardDescription>Manage your personal account information</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Avatar using business logo */}
+            <div className="flex items-center gap-4">
+              {business?.logo_url ? (
+                <div className="h-16 w-16 rounded-full overflow-hidden border-2 border-border">
+                  <img
+                    src={business.logo_url}
+                    alt="Business logo"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-border">
+                  <Building2 className="h-8 w-8 text-primary/60" />
+                </div>
+              )}
+              <div>
+                <p className="font-medium">{user?.full_name || 'User'}</p>
+                <p className="text-sm text-muted-foreground">{user?.email}</p>
               </div>
-            ) : (
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-border">
-                <Building2 className="h-8 w-8 text-primary/60" />
-              </div>
-            )}
-            <div>
-              <p className="font-medium">{user?.full_name || 'User'}</p>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
             </div>
-          </div>
 
-          <Separator />
+            <Separator />
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Full Name</label>
-            <Input
-              value={formData.full_name}
-              onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Email</label>
-            <Input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <Button onClick={handleSave} loading={isSaving}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Security Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Security
-          </CardTitle>
-          <CardDescription>Manage your password and account security</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium">Change Password</h4>
             <div className="space-y-1.5">
-              <label className="text-sm text-muted-foreground">Current Password</label>
+              <label className="text-sm font-medium">Full Name</label>
               <Input
-                type="password"
-                value={passwordData.current_password}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, current_password: e.target.value }))}
+                value={formData.full_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
               />
             </div>
+
             <div className="space-y-1.5">
-              <label className="text-sm text-muted-foreground">New Password</label>
+              <label className="text-sm font-medium">Email</label>
               <Input
-                type="password"
-                value={passwordData.new_password}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm text-muted-foreground">Confirm New Password</label>
-              <Input
-                type="password"
-                value={passwordData.confirm_password}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, confirm_password: e.target.value }))}
-              />
-            </div>
+
             <div className="flex justify-end">
-              <Button
-                onClick={handlePasswordSave}
-                loading={isSavingPassword}
-                disabled={!passwordData.current_password || !passwordData.new_password || !passwordData.confirm_password}
-              >
-                Update Password
+              <Button onClick={handleSave} loading={isSaving}>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
               </Button>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Two-Factor Authentication</p>
-              <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
+        {/* Right Column - Security */}
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Security
+            </CardTitle>
+            <CardDescription>Manage your password and account security</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium">Change Password</h4>
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">Current Password</label>
+                <Input
+                  type="password"
+                  value={passwordData.current_password}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, current_password: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">New Password</label>
+                <Input
+                  type="password"
+                  value={passwordData.new_password}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">Confirm New Password</label>
+                <Input
+                  type="password"
+                  value={passwordData.confirm_password}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, confirm_password: e.target.value }))}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handlePasswordSave}
+                  loading={isSavingPassword}
+                  disabled={!passwordData.current_password || !passwordData.new_password || !passwordData.confirm_password}
+                >
+                  Update Password
+                </Button>
+              </div>
             </div>
-            <Button variant="outline">Enable</Button>
-          </div>
-        </CardContent>
-      </Card>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Two-Factor Authentication</p>
+                <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
+              </div>
+              <Button variant="outline">Enable</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </motion.div>
   );
 }
