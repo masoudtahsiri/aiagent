@@ -9,28 +9,19 @@ import {
   Plus,
   Globe,
   Trash2,
-  Calendar,
   ChevronLeft,
   ChevronRight,
-  Phone,
   Camera,
-  Check,
   Copy,
   Sparkles,
-  Sun,
   Moon,
-  Coffee,
-  X,
   Info,
-  Mail,
-  Link2,
   Instagram,
   Facebook,
-  Upload,
   Loader2,
 } from 'lucide-react';
-import { DayPicker } from 'react-day-picker';
-import { format, isPast, isToday } from 'date-fns';
+import { DayPicker, DateRange } from 'react-day-picker';
+import { format, isPast, isToday, eachDayOfInterval, getYear } from 'date-fns';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -54,8 +45,6 @@ import {
   useDeleteBusinessClosure,
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours } from '@/types';
-import { useIndustry } from '@/contexts/industry-context';
-import { getIndustryBadgeClasses } from '@/config/industries';
 
 // Comprehensive list of countries with their default timezone, currency, and flag emoji
 const countries = [
@@ -283,6 +272,144 @@ const timezoneGroups = [
 // Flatten timezones for easy lookup
 const allTimezones = timezoneGroups.flatMap(g => g.timezones);
 
+// National holidays by country (month is 0-indexed)
+const nationalHolidays: Record<string, Array<{ month: number; day: number; name: string }>> = {
+  US: [
+    { month: 0, day: 1, name: "New Year's Day" },
+    { month: 0, day: 15, name: 'Martin Luther King Jr. Day' },
+    { month: 1, day: 19, name: "Presidents' Day" },
+    { month: 4, day: 27, name: 'Memorial Day' },
+    { month: 6, day: 4, name: 'Independence Day' },
+    { month: 8, day: 1, name: 'Labor Day' },
+    { month: 9, day: 14, name: 'Columbus Day' },
+    { month: 10, day: 11, name: 'Veterans Day' },
+    { month: 10, day: 28, name: 'Thanksgiving Day' },
+    { month: 11, day: 25, name: 'Christmas Day' },
+  ],
+  GB: [
+    { month: 0, day: 1, name: "New Year's Day" },
+    { month: 3, day: 18, name: 'Good Friday' },
+    { month: 3, day: 21, name: 'Easter Monday' },
+    { month: 4, day: 6, name: 'Early May Bank Holiday' },
+    { month: 4, day: 27, name: 'Spring Bank Holiday' },
+    { month: 7, day: 26, name: 'Summer Bank Holiday' },
+    { month: 11, day: 25, name: 'Christmas Day' },
+    { month: 11, day: 26, name: 'Boxing Day' },
+  ],
+  CA: [
+    { month: 0, day: 1, name: "New Year's Day" },
+    { month: 1, day: 19, name: 'Family Day' },
+    { month: 3, day: 18, name: 'Good Friday' },
+    { month: 4, day: 20, name: 'Victoria Day' },
+    { month: 6, day: 1, name: 'Canada Day' },
+    { month: 8, day: 2, name: 'Labour Day' },
+    { month: 9, day: 14, name: 'Thanksgiving' },
+    { month: 10, day: 11, name: 'Remembrance Day' },
+    { month: 11, day: 25, name: 'Christmas Day' },
+    { month: 11, day: 26, name: 'Boxing Day' },
+  ],
+  AU: [
+    { month: 0, day: 1, name: "New Year's Day" },
+    { month: 0, day: 26, name: 'Australia Day' },
+    { month: 3, day: 18, name: 'Good Friday' },
+    { month: 3, day: 21, name: 'Easter Monday' },
+    { month: 3, day: 25, name: 'Anzac Day' },
+    { month: 5, day: 10, name: "Queen's Birthday" },
+    { month: 11, day: 25, name: 'Christmas Day' },
+    { month: 11, day: 26, name: 'Boxing Day' },
+  ],
+  DE: [
+    { month: 0, day: 1, name: 'Neujahr' },
+    { month: 3, day: 18, name: 'Karfreitag' },
+    { month: 3, day: 21, name: 'Ostermontag' },
+    { month: 4, day: 1, name: 'Tag der Arbeit' },
+    { month: 4, day: 29, name: 'Christi Himmelfahrt' },
+    { month: 5, day: 9, name: 'Pfingstmontag' },
+    { month: 9, day: 3, name: 'Tag der Deutschen Einheit' },
+    { month: 11, day: 25, name: 'Weihnachten' },
+    { month: 11, day: 26, name: '2. Weihnachtsfeiertag' },
+  ],
+  FR: [
+    { month: 0, day: 1, name: 'Jour de l\'An' },
+    { month: 3, day: 21, name: 'Lundi de Pâques' },
+    { month: 4, day: 1, name: 'Fête du Travail' },
+    { month: 4, day: 8, name: 'Victoire 1945' },
+    { month: 4, day: 29, name: 'Ascension' },
+    { month: 5, day: 9, name: 'Lundi de Pentecôte' },
+    { month: 6, day: 14, name: 'Fête Nationale' },
+    { month: 7, day: 15, name: 'Assomption' },
+    { month: 10, day: 1, name: 'Toussaint' },
+    { month: 10, day: 11, name: 'Armistice' },
+    { month: 11, day: 25, name: 'Noël' },
+  ],
+  NL: [
+    { month: 0, day: 1, name: 'Nieuwjaarsdag' },
+    { month: 3, day: 21, name: 'Tweede Paasdag' },
+    { month: 3, day: 27, name: 'Koningsdag' },
+    { month: 4, day: 5, name: 'Bevrijdingsdag' },
+    { month: 4, day: 29, name: 'Hemelvaartsdag' },
+    { month: 5, day: 9, name: 'Tweede Pinksterdag' },
+    { month: 11, day: 25, name: 'Eerste Kerstdag' },
+    { month: 11, day: 26, name: 'Tweede Kerstdag' },
+  ],
+  JP: [
+    { month: 0, day: 1, name: '元日' },
+    { month: 0, day: 8, name: '成人の日' },
+    { month: 1, day: 11, name: '建国記念の日' },
+    { month: 1, day: 23, name: '天皇誕生日' },
+    { month: 2, day: 20, name: '春分の日' },
+    { month: 3, day: 29, name: '昭和の日' },
+    { month: 4, day: 3, name: '憲法記念日' },
+    { month: 4, day: 4, name: 'みどりの日' },
+    { month: 4, day: 5, name: 'こどもの日' },
+    { month: 6, day: 15, name: '海の日' },
+    { month: 7, day: 11, name: '山の日' },
+    { month: 8, day: 16, name: '敬老の日' },
+    { month: 8, day: 22, name: '秋分の日' },
+    { month: 9, day: 14, name: 'スポーツの日' },
+    { month: 10, day: 3, name: '文化の日' },
+    { month: 10, day: 23, name: '勤労感謝の日' },
+  ],
+  AE: [
+    { month: 0, day: 1, name: "New Year's Day" },
+    { month: 11, day: 2, name: 'UAE National Day' },
+    { month: 11, day: 3, name: 'UAE National Day' },
+  ],
+  IN: [
+    { month: 0, day: 26, name: 'Republic Day' },
+    { month: 7, day: 15, name: 'Independence Day' },
+    { month: 9, day: 2, name: 'Gandhi Jayanti' },
+  ],
+  BR: [
+    { month: 0, day: 1, name: 'Confraternização Universal' },
+    { month: 3, day: 21, name: 'Tiradentes' },
+    { month: 4, day: 1, name: 'Dia do Trabalhador' },
+    { month: 8, day: 7, name: 'Independência do Brasil' },
+    { month: 9, day: 12, name: 'Nossa Sra. Aparecida' },
+    { month: 10, day: 2, name: 'Finados' },
+    { month: 10, day: 15, name: 'Proclamação da República' },
+    { month: 11, day: 25, name: 'Natal' },
+  ],
+  MX: [
+    { month: 0, day: 1, name: 'Año Nuevo' },
+    { month: 1, day: 5, name: 'Día de la Constitución' },
+    { month: 2, day: 18, name: 'Natalicio de Benito Juárez' },
+    { month: 4, day: 1, name: 'Día del Trabajo' },
+    { month: 8, day: 16, name: 'Día de la Independencia' },
+    { month: 10, day: 18, name: 'Revolución Mexicana' },
+    { month: 11, day: 25, name: 'Navidad' },
+  ],
+};
+
+// Helper to get holidays for a country and year
+function getHolidaysForYear(countryCode: string, year: number): Array<{ date: Date; name: string }> {
+  const holidays = nationalHolidays[countryCode] || [];
+  return holidays.map(h => ({
+    date: new Date(year, h.month, h.day),
+    name: h.name,
+  }));
+}
+
 // Day names
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const shortDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -323,18 +450,17 @@ function BusinessContent() {
   const addClosure = useAddBusinessClosure();
   const deleteClosure = useDeleteBusinessClosure();
 
-  const { meta: industryMeta, businessType } = useIndustry();
-  const badgeClasses = getIndustryBadgeClasses(businessType);
 
   const [activeTab, setActiveTab] = useState('profile');
   const [formData, setFormData] = useState<Partial<Business>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [schedule, setSchedule] = useState<Record<number, { is_open: boolean; open_time: string; close_time: string }>>({});
   const [hoursHasChanges, setHoursHasChanges] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [closureReason, setClosureReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isAddingHolidays, setIsAddingHolidays] = useState(false);
 
   // File input ref for logo upload
   const fileInputRef = useCallback((node: HTMLInputElement | null) => {
@@ -523,18 +649,6 @@ function BusinessContent() {
     toast.success('Applied Monday schedule to all weekdays');
   }, [schedule]);
 
-  const applyToWeekend = useCallback(() => {
-    const saturday = schedule[5];
-    if (!saturday) return;
-
-    setSchedule(prev => ({
-      ...prev,
-      6: { ...saturday },
-    }));
-    setHoursHasChanges(true);
-    toast.success('Applied Saturday schedule to Sunday');
-  }, [schedule]);
-
   const setAllClosed = useCallback((days: number[]) => {
     setSchedule(prev => {
       const newSchedule = { ...prev };
@@ -547,22 +661,73 @@ function BusinessContent() {
   }, []);
 
   const handleAddClosure = async () => {
-    if (!selectedDate) {
+    if (!dateRange?.from) {
       toast.error('Please select a date');
       return;
     }
 
     try {
-      await addClosure.mutateAsync({
-        closure_date: format(selectedDate, 'yyyy-MM-dd'),
-        reason: closureReason || undefined,
-      });
-      toast.success('Closure added successfully');
-      setSelectedDate(undefined);
+      // Get all dates in the range
+      const dates = dateRange.to
+        ? eachDayOfInterval({ start: dateRange.from, end: dateRange.to })
+        : [dateRange.from];
+
+      // Filter out dates that are already closed
+      const existingDates = new Set((closuresData || []).map(c => c.closure_date));
+      const newDates = dates.filter(d => !existingDates.has(format(d, 'yyyy-MM-dd')));
+
+      // Add each date
+      for (const date of newDates) {
+        await addClosure.mutateAsync({
+          closure_date: format(date, 'yyyy-MM-dd'),
+          reason: closureReason || undefined,
+        });
+      }
+
+      toast.success(`${newDates.length} closure${newDates.length !== 1 ? 's' : ''} added`);
+      setDateRange(undefined);
       setClosureReason('');
       refetchClosures();
     } catch (error) {
       toast.error('Failed to add closure');
+    }
+  };
+
+  const handleAddNationalHolidays = async () => {
+    const countryCode = formData.country || 'US';
+    const currentYear = getYear(new Date());
+    const holidays = getHolidaysForYear(countryCode, currentYear);
+
+    if (holidays.length === 0) {
+      toast.error('No holidays available for this country');
+      return;
+    }
+
+    setIsAddingHolidays(true);
+    try {
+      const existingDates = new Set((closuresData || []).map(c => c.closure_date));
+      const futureHolidays = holidays.filter(h =>
+        !isPast(h.date) && !existingDates.has(format(h.date, 'yyyy-MM-dd'))
+      );
+
+      if (futureHolidays.length === 0) {
+        toast.info('All holidays are already added or have passed');
+        return;
+      }
+
+      for (const holiday of futureHolidays) {
+        await addClosure.mutateAsync({
+          closure_date: format(holiday.date, 'yyyy-MM-dd'),
+          reason: holiday.name,
+        });
+      }
+
+      toast.success(`Added ${futureHolidays.length} national holidays`);
+      refetchClosures();
+    } catch (error) {
+      toast.error('Failed to add holidays');
+    } finally {
+      setIsAddingHolidays(false);
     }
   };
 
@@ -1049,302 +1214,269 @@ function BusinessContent() {
             initial="hidden"
             animate="visible"
             variants={staggerContainer}
-            className="grid gap-6 lg:grid-cols-2"
+            className="grid gap-4 lg:grid-cols-2"
           >
-            {/* Left Column: Operating Hours */}
-            <motion.div variants={fadeInUp} className="space-y-6">
-              <Card className="h-fit">
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10">
+            {/* Left Column: Operating Hours - Compact */}
+            <motion.div variants={fadeInUp}>
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-base">
                       <Clock className="h-4 w-4 text-purple-600" />
+                      Operating Hours
+                    </CardTitle>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={applyToWeekdays} className="h-6 px-2 text-[10px]">
+                        <Copy className="h-2.5 w-2.5 mr-1" />
+                        Weekdays
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setAllClosed([5, 6])}
+                        className="h-6 px-2 text-[10px] text-destructive hover:text-destructive"
+                      >
+                        <Moon className="h-2.5 w-2.5 mr-1" />
+                        Weekend
+                      </Button>
                     </div>
-                    Operating Hours
-                  </CardTitle>
-                  <CardDescription>Set when your business is open</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Quick Actions */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={applyToWeekdays} className="h-7 text-xs">
-                      <Copy className="h-3 w-3 mr-1" />
-                      Mon → Weekdays
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={applyToWeekend} className="h-7 text-xs">
-                      <Copy className="h-3 w-3 mr-1" />
-                      Sat → Sun
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setAllClosed([5, 6])}
-                      className="h-7 text-xs text-destructive hover:text-destructive"
-                    >
-                      <Moon className="h-3 w-3 mr-1" />
-                      Close Weekend
-                    </Button>
                   </div>
-
-                  {/* Week Schedule */}
-                  <div className="space-y-2">
+                </CardHeader>
+                <CardContent className="px-4 pb-4 pt-2">
+                  <div className="space-y-1">
                     {days.map((day, index) => {
                       const isOpen = schedule[index]?.is_open ?? index < 5;
-                      const isWeekend = index >= 5;
 
                       return (
-                        <motion.div
+                        <div
                           key={day}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.03 }}
                           className={cn(
-                            'group flex items-center gap-3 p-3 rounded-lg border transition-all duration-200',
-                            isOpen
-                              ? 'bg-card border-border hover:border-primary/30'
-                              : 'bg-muted/30 border-border/50'
+                            'flex items-center gap-2 py-1.5 px-2 rounded-md transition-all',
+                            isOpen ? 'bg-card' : 'bg-muted/30'
                           )}
                         >
-                          {/* Day Toggle */}
                           <Switch
                             checked={isOpen}
                             onCheckedChange={() => handleToggleDay(index)}
+                            className="scale-75"
                           />
-
-                          {/* Day Name */}
-                          <div className="flex items-center gap-2 w-24">
-                            {isWeekend ? (
-                              <Coffee className={cn('h-3.5 w-3.5', isOpen ? 'text-amber-500' : 'text-muted-foreground')} />
-                            ) : (
-                              <Sun className={cn('h-3.5 w-3.5', isOpen ? 'text-primary' : 'text-muted-foreground')} />
-                            )}
-                            <span className={cn(
-                              'text-sm font-medium',
-                              !isOpen && 'text-muted-foreground'
-                            )}>
-                              {shortDays[index]}
-                            </span>
-                          </div>
-
-                          {/* Time Inputs or Closed */}
-                          <div className="flex-1 flex items-center justify-end">
-                            {isOpen ? (
-                              <div className="flex items-center gap-1.5">
-                                <Input
-                                  type="time"
-                                  value={schedule[index]?.open_time || '09:00'}
-                                  onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                                  className="h-8 w-[100px] text-xs text-center"
-                                />
-                                <span className="text-muted-foreground text-xs">-</span>
-                                <Input
-                                  type="time"
-                                  value={schedule[index]?.close_time || '17:00'}
-                                  onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                                  className="h-8 w-[100px] text-xs text-center"
-                                />
-                              </div>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] h-5 bg-muted text-muted-foreground">
-                                Closed
-                              </Badge>
-                            )}
-                          </div>
-                        </motion.div>
+                          <span className={cn(
+                            'text-xs font-medium w-8',
+                            !isOpen && 'text-muted-foreground'
+                          )}>
+                            {shortDays[index]}
+                          </span>
+                          {isOpen ? (
+                            <div className="flex items-center gap-1 ml-auto">
+                              <Input
+                                type="time"
+                                value={schedule[index]?.open_time || '09:00'}
+                                onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
+                                className="h-6 w-[80px] text-[10px] text-center px-1"
+                              />
+                              <span className="text-muted-foreground text-[10px]">-</span>
+                              <Input
+                                type="time"
+                                value={schedule[index]?.close_time || '17:00'}
+                                onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
+                                className="h-6 w-[80px] text-[10px] text-center px-1"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground ml-auto">Closed</span>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
-
-                  {/* Summary */}
-                  <div className="p-3 rounded-lg bg-gradient-to-r from-primary/5 to-secondary/5 border border-primary/10">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      <div>
-                        <p className="text-sm font-medium">
-                          Open {Object.values(schedule).filter(s => s.is_open).length} days/week
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {Object.entries(schedule)
-                            .filter(([_, s]) => s.is_open)
-                            .map(([i]) => shortDays[parseInt(i)])
-                            .join(', ') || 'No open days'}
-                        </p>
-                      </div>
-                    </div>
+                  <div className="mt-3 p-2 rounded-md bg-primary/5 border border-primary/10 flex items-center gap-2">
+                    <Sparkles className="h-3 w-3 text-primary" />
+                    <span className="text-[11px] text-muted-foreground">
+                      Open {Object.values(schedule).filter(s => s.is_open).length} days/week
+                    </span>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
 
-            {/* Right Column: Closures */}
-            <motion.div variants={fadeInUp} className="space-y-6">
-              {/* Add Closure Card */}
+            {/* Right Column: Closures - Two Column Inside */}
+            <motion.div variants={fadeInUp}>
               <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
-                      <CalendarOff className="h-4 w-4 text-red-600" />
-                    </div>
-                    Scheduled Closures
-                  </CardTitle>
-                  <CardDescription>Add dates when your business will be closed</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Calendar */}
-                  <DayPicker
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    disabled={[
-                      { before: new Date() },
-                      ...closedDates,
-                    ]}
-                    modifiers={{
-                      closed: closedDates,
-                    }}
-                    modifiersClassNames={{
-                      closed: 'bg-destructive/20 text-destructive font-semibold rounded-lg',
-                      selected: 'bg-primary text-primary-foreground rounded-lg',
-                    }}
-                    components={{
-                      IconLeft: () => <ChevronLeft className="h-4 w-4" />,
-                      IconRight: () => <ChevronRight className="h-4 w-4" />,
-                    }}
-                    classNames={{
-                      months: 'flex flex-col space-y-4',
-                      month: 'space-y-4',
-                      caption: 'flex justify-center pt-1 relative items-center',
-                      caption_label: 'text-sm font-semibold',
-                      nav: 'space-x-1 flex items-center',
-                      nav_button: 'h-7 w-7 bg-transparent p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input hover:bg-accent hover:text-accent-foreground transition-colors',
-                      nav_button_previous: 'absolute left-1',
-                      nav_button_next: 'absolute right-1',
-                      table: 'w-full border-collapse',
-                      head_row: 'flex',
-                      head_cell: 'text-muted-foreground rounded-md w-9 font-medium text-[0.7rem] flex-1 text-center',
-                      row: 'flex w-full mt-1',
-                      cell: 'flex-1 h-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20',
-                      day: 'h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-accent hover:text-accent-foreground rounded-md inline-flex items-center justify-center cursor-pointer transition-colors mx-auto text-xs',
-                      day_selected: 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
-                      day_today: 'bg-accent text-accent-foreground font-bold',
-                      day_outside: 'text-muted-foreground opacity-50',
-                      day_disabled: 'text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent',
-                      day_hidden: 'invisible',
-                    }}
-                    className="p-2 bg-muted/30 rounded-lg border"
-                  />
-
-                  {/* Reason & Add */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Reason (optional)"
-                      value={closureReason}
-                      onChange={(e) => setClosureReason(e.target.value)}
-                      className="h-9 flex-1"
-                    />
-                    <Button
-                      size="sm"
-                      className="h-9 px-4"
-                      onClick={handleAddClosure}
-                      disabled={!selectedDate}
-                      loading={addClosure.isPending}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Upcoming Closures List */}
-              <Card>
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-2 pt-4 px-4">
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <Calendar className="h-4 w-4 text-amber-600" />
-                      Upcoming
+                      <CalendarOff className="h-4 w-4 text-red-600" />
+                      Scheduled Closures
                     </CardTitle>
-                    <Badge variant="secondary" className="text-xs h-5">
-                      {upcomingClosures.length}
-                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddNationalHolidays}
+                      disabled={isAddingHolidays}
+                      className="h-7 text-xs"
+                    >
+                      {isAddingHolidays ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Plus className="h-3 w-3 mr-1" />
+                      )}
+                      Add Holidays
+                    </Button>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  {closuresLoading ? (
+                <CardContent className="px-4 pb-4 pt-2">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {/* Left: Calendar */}
                     <div className="space-y-2">
-                      <Skeleton className="h-12 w-full rounded-lg" />
-                      <Skeleton className="h-12 w-full rounded-lg" />
+                      <DayPicker
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        disabled={[{ before: new Date() }]}
+                        modifiers={{
+                          closed: closedDates,
+                        }}
+                        modifiersClassNames={{
+                          closed: 'bg-destructive/20 text-destructive rounded-md',
+                        }}
+                        components={{
+                          IconLeft: () => <ChevronLeft className="h-3 w-3" />,
+                          IconRight: () => <ChevronRight className="h-3 w-3" />,
+                        }}
+                        classNames={{
+                          months: 'flex flex-col',
+                          month: 'space-y-2',
+                          caption: 'flex justify-center pt-0.5 relative items-center',
+                          caption_label: 'text-xs font-medium',
+                          nav: 'flex items-center',
+                          nav_button: 'h-6 w-6 bg-transparent p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded border border-input hover:bg-accent transition-colors',
+                          nav_button_previous: 'absolute left-0',
+                          nav_button_next: 'absolute right-0',
+                          table: 'w-full border-collapse',
+                          head_row: 'flex',
+                          head_cell: 'text-muted-foreground w-8 font-medium text-[10px] flex-1 text-center',
+                          row: 'flex w-full mt-0.5',
+                          cell: 'flex-1 h-8 text-center text-xs p-0 relative',
+                          day: 'h-8 w-8 p-0 font-normal hover:bg-accent hover:text-accent-foreground rounded inline-flex items-center justify-center cursor-pointer transition-colors mx-auto text-[11px]',
+                          day_selected: 'bg-primary text-primary-foreground hover:bg-primary',
+                          day_today: 'bg-accent text-accent-foreground font-semibold',
+                          day_outside: 'text-muted-foreground opacity-50',
+                          day_disabled: 'text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent',
+                          day_range_middle: 'bg-primary/20 rounded-none',
+                          day_range_start: 'bg-primary text-primary-foreground rounded-l-md rounded-r-none',
+                          day_range_end: 'bg-primary text-primary-foreground rounded-r-md rounded-l-none',
+                          day_hidden: 'invisible',
+                        }}
+                        className="p-2 bg-muted/30 rounded-lg border"
+                      />
+                      <div className="flex gap-1.5">
+                        <Input
+                          placeholder="Reason (optional)"
+                          value={closureReason}
+                          onChange={(e) => setClosureReason(e.target.value)}
+                          className="h-8 text-xs flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 px-3"
+                          onClick={handleAddClosure}
+                          disabled={!dateRange?.from}
+                          loading={addClosure.isPending}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add
+                        </Button>
+                      </div>
+                      {dateRange?.from && (
+                        <p className="text-[10px] text-muted-foreground text-center">
+                          {dateRange.to
+                            ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d')}`
+                            : format(dateRange.from, 'MMM d, yyyy')}
+                        </p>
+                      )}
                     </div>
-                  ) : upcomingClosures.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-6 text-center">
-                      <CalendarOff className="h-6 w-6 text-muted-foreground/40 mb-2" />
-                      <p className="text-xs text-muted-foreground">No scheduled closures</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[240px] overflow-y-auto">
-                      <AnimatePresence mode="popLayout">
-                        {upcomingClosures.map((closure) => {
-                          const closureDate = new Date(closure.closure_date);
-                          const isClosureToday = isToday(closureDate);
 
-                          return (
-                            <motion.div
-                              key={closure.id}
-                              layout
-                              initial={{ opacity: 0, y: -10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, x: -20 }}
-                              className={cn(
-                                'group flex items-center gap-3 p-2.5 rounded-lg border transition-all',
-                                isClosureToday
-                                  ? 'bg-destructive/5 border-destructive/30'
-                                  : 'bg-card border-border hover:border-primary/30'
-                              )}
-                            >
-                              {/* Date Badge */}
-                              <div className={cn(
-                                'flex flex-col items-center justify-center w-10 h-10 rounded-md text-center flex-shrink-0',
-                                isClosureToday
-                                  ? 'bg-destructive text-destructive-foreground'
-                                  : 'bg-muted'
-                              )}>
-                                <span className="text-[9px] font-bold uppercase leading-tight">
-                                  {format(closureDate, 'MMM')}
-                                </span>
-                                <span className="text-sm font-bold leading-none">
-                                  {format(closureDate, 'd')}
-                                </span>
-                              </div>
+                    {/* Right: Closures List */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-muted-foreground">Upcoming</span>
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                          {upcomingClosures.length}
+                        </Badge>
+                      </div>
+                      {closuresLoading ? (
+                        <div className="space-y-1.5">
+                          <Skeleton className="h-10 w-full rounded-md" />
+                          <Skeleton className="h-10 w-full rounded-md" />
+                        </div>
+                      ) : upcomingClosures.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/30 rounded-lg border border-dashed">
+                          <CalendarOff className="h-5 w-5 text-muted-foreground/40 mb-1" />
+                          <p className="text-[10px] text-muted-foreground">No closures scheduled</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
+                          <AnimatePresence mode="popLayout">
+                            {upcomingClosures.map((closure) => {
+                              const closureDate = new Date(closure.closure_date);
+                              const isClosureToday = isToday(closureDate);
 
-                              {/* Details */}
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium flex items-center gap-1.5">
-                                  {format(closureDate, 'EEE')}
-                                  {isClosureToday && (
-                                    <Badge variant="error" className="text-[9px] h-4 px-1">
-                                      Today
-                                    </Badge>
+                              return (
+                                <motion.div
+                                  key={closure.id}
+                                  layout
+                                  initial={{ opacity: 0, y: -5 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, x: -10 }}
+                                  className={cn(
+                                    'group flex items-center gap-2 p-2 rounded-md border transition-all',
+                                    isClosureToday
+                                      ? 'bg-destructive/5 border-destructive/30'
+                                      : 'bg-card border-border hover:border-primary/30'
                                   )}
-                                </p>
-                                <p className="text-[11px] text-muted-foreground truncate">
-                                  {closure.reason || 'No reason'}
-                                </p>
-                              </div>
-
-                              {/* Delete */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteClosure(closure.id)}
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
+                                >
+                                  <div className={cn(
+                                    'flex flex-col items-center justify-center w-9 h-9 rounded text-center flex-shrink-0',
+                                    isClosureToday
+                                      ? 'bg-destructive text-destructive-foreground'
+                                      : 'bg-muted'
+                                  )}>
+                                    <span className="text-[8px] font-bold uppercase leading-tight">
+                                      {format(closureDate, 'MMM')}
+                                    </span>
+                                    <span className="text-xs font-bold leading-none">
+                                      {format(closureDate, 'd')}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium flex items-center gap-1">
+                                      {format(closureDate, 'EEE')}
+                                      {isClosureToday && (
+                                        <Badge variant="error" className="text-[8px] h-3.5 px-1">
+                                          Today
+                                        </Badge>
+                                      )}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground truncate">
+                                      {closure.reason || 'No reason'}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteClosure(closure.id)}
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-2.5 w-2.5" />
+                                  </Button>
+                                </motion.div>
+                              );
+                            })}
+                          </AnimatePresence>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
