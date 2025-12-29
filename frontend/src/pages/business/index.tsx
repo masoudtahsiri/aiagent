@@ -1214,30 +1214,38 @@ function BusinessContent() {
             initial="hidden"
             animate="visible"
             variants={staggerContainer}
-            className="max-w-4xl mx-auto"
           >
-            <div className="grid gap-6 md:grid-cols-5">
-              {/* Left Column: Operating Hours - Takes 2/5 */}
-              <motion.div variants={fadeInUp} className="md:col-span-2">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <div className="h-7 w-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                          <Clock className="h-3.5 w-3.5 text-purple-600" />
+            {/* Single Card Layout */}
+            <Card>
+              <CardContent className="p-6">
+                <div className="grid gap-8 lg:grid-cols-2">
+                  {/* Left: Operating Hours */}
+                  <motion.div variants={fadeInUp}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-semibold flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Clock className="h-4 w-4 text-primary" />
                         </div>
-                        Hours
-                      </CardTitle>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={applyToWeekdays} className="h-7 px-2 text-xs">
-                          <Copy className="h-3 w-3 mr-1" />
-                          Copy
+                        Operating Hours
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={applyToWeekdays} className="h-8 text-xs">
+                          <Copy className="h-3.5 w-3.5 mr-1.5" />
+                          Apply to weekdays
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAllClosed([5, 6])}
+                          className="h-8 text-xs text-destructive hover:text-destructive"
+                        >
+                          <Moon className="h-3.5 w-3.5 mr-1.5" />
+                          Close weekend
                         </Button>
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="space-y-1.5">
+
+                    <div className="space-y-2">
                       {days.map((day, index) => {
                         const isOpen = schedule[index]?.is_open ?? index < 5;
 
@@ -1245,8 +1253,10 @@ function BusinessContent() {
                           <div
                             key={day}
                             className={cn(
-                              'flex items-center gap-3 py-2 px-3 rounded-lg transition-all',
-                              isOpen ? 'bg-muted/40' : 'bg-muted/20'
+                              'flex items-center py-3 px-4 rounded-xl border transition-all',
+                              isOpen
+                                ? 'bg-card border-border hover:border-primary/30'
+                                : 'bg-muted/30 border-transparent'
                             )}
                           >
                             <Switch
@@ -1254,84 +1264,73 @@ function BusinessContent() {
                               onCheckedChange={() => handleToggleDay(index)}
                             />
                             <span className={cn(
-                              'text-sm font-medium min-w-[36px]',
+                              'ml-4 text-sm font-medium w-12',
                               !isOpen && 'text-muted-foreground'
                             )}>
                               {shortDays[index]}
                             </span>
-                            {isOpen ? (
-                              <div className="flex items-center gap-2 ml-auto">
-                                <Input
-                                  type="time"
-                                  value={schedule[index]?.open_time || '09:00'}
-                                  onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                                  className="h-8 w-[90px] text-xs text-center"
-                                />
-                                <span className="text-muted-foreground text-xs">to</span>
-                                <Input
-                                  type="time"
-                                  value={schedule[index]?.close_time || '17:00'}
-                                  onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                                  className="h-8 w-[90px] text-xs text-center"
-                                />
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground ml-auto">Closed</span>
-                            )}
+                            <div className="flex-1 flex items-center justify-end gap-3">
+                              {isOpen ? (
+                                <>
+                                  <Input
+                                    type="time"
+                                    value={schedule[index]?.open_time || '09:00'}
+                                    onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
+                                    className="h-9 w-28 text-sm text-center"
+                                  />
+                                  <span className="text-muted-foreground text-sm">—</span>
+                                  <Input
+                                    type="time"
+                                    value={schedule[index]?.close_time || '17:00'}
+                                    onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
+                                    className="h-9 w-28 text-sm text-center"
+                                  />
+                                </>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">Closed</span>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
                     </div>
-                    <div className="mt-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Sparkles className="h-3.5 w-3.5 text-primary" />
-                        Open {Object.values(schedule).filter(s => s.is_open).length} days/week
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setAllClosed([5, 6])}
-                        className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        <Moon className="h-3 w-3 mr-1" />
-                        Close weekend
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
 
-              {/* Right Column: Closures - Takes 3/5 */}
-              <motion.div variants={fadeInUp} className="md:col-span-3">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <div className="h-7 w-7 rounded-lg bg-red-500/10 flex items-center justify-center">
-                          <CalendarOff className="h-3.5 w-3.5 text-red-600" />
+                    <div className="mt-4 pt-4 border-t flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <span className="text-sm text-muted-foreground">
+                        Open <span className="font-medium text-foreground">{Object.values(schedule).filter(s => s.is_open).length}</span> days per week
+                      </span>
+                    </div>
+                  </motion.div>
+
+                  {/* Right: Scheduled Closures */}
+                  <motion.div variants={fadeInUp} className="lg:border-l lg:pl-8">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-semibold flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                          <CalendarOff className="h-4 w-4 text-destructive" />
                         </div>
-                        Closures
-                      </CardTitle>
+                        Scheduled Closures
+                      </h3>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={handleAddNationalHolidays}
                         disabled={isAddingHolidays}
-                        className="h-7 text-xs"
+                        className="h-8 text-xs"
                       >
                         {isAddingHolidays ? (
-                          <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                         ) : (
-                          <Plus className="h-3 w-3 mr-1.5" />
+                          <Plus className="h-3.5 w-3.5 mr-1.5" />
                         )}
-                        Add Holidays
+                        Add holidays
                       </Button>
                     </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      {/* Calendar */}
-                      <div className="flex-shrink-0">
+
+                    <div className="grid gap-6 sm:grid-cols-2">
+                      {/* Calendar Section */}
+                      <div>
                         <DayPicker
                           mode="range"
                           selected={dateRange}
@@ -1341,7 +1340,7 @@ function BusinessContent() {
                             closed: closedDates,
                           }}
                           modifiersClassNames={{
-                            closed: 'bg-destructive/20 text-destructive rounded-md',
+                            closed: 'bg-destructive/20 text-destructive rounded-lg',
                           }}
                           components={{
                             IconLeft: () => <ChevronLeft className="h-4 w-4" />,
@@ -1350,78 +1349,83 @@ function BusinessContent() {
                           classNames={{
                             months: 'flex flex-col',
                             month: 'space-y-3',
-                            caption: 'flex justify-center relative items-center h-8',
-                            caption_label: 'text-sm font-medium',
+                            caption: 'flex justify-center relative items-center h-9',
+                            caption_label: 'text-sm font-semibold',
                             nav: 'flex items-center',
-                            nav_button: 'h-7 w-7 bg-transparent p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input hover:bg-accent transition-colors',
+                            nav_button: 'h-8 w-8 bg-transparent p-0 hover:bg-accent inline-flex items-center justify-center rounded-lg transition-colors',
                             nav_button_previous: 'absolute left-0',
                             nav_button_next: 'absolute right-0',
                             table: 'w-full border-collapse',
                             head_row: 'flex',
-                            head_cell: 'text-muted-foreground w-9 font-medium text-xs flex-1 text-center',
-                            row: 'flex w-full mt-1',
-                            cell: 'flex-1 h-9 text-center text-sm p-0 relative',
-                            day: 'h-9 w-9 p-0 font-normal hover:bg-accent hover:text-accent-foreground rounded-md inline-flex items-center justify-center cursor-pointer transition-colors mx-auto text-sm',
+                            head_cell: 'text-muted-foreground w-10 font-medium text-xs flex-1 text-center py-2',
+                            row: 'flex w-full',
+                            cell: 'flex-1 h-10 text-center text-sm p-0.5 relative',
+                            day: 'h-10 w-10 p-0 font-normal hover:bg-accent hover:text-accent-foreground rounded-lg inline-flex items-center justify-center cursor-pointer transition-colors mx-auto',
                             day_selected: 'bg-primary text-primary-foreground hover:bg-primary',
                             day_today: 'bg-accent text-accent-foreground font-semibold',
                             day_outside: 'text-muted-foreground opacity-50',
                             day_disabled: 'text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent',
-                            day_range_middle: 'bg-primary/15 rounded-none',
-                            day_range_start: 'bg-primary text-primary-foreground rounded-l-md rounded-r-none',
-                            day_range_end: 'bg-primary text-primary-foreground rounded-r-md rounded-l-none',
+                            day_range_middle: 'bg-primary/10 rounded-none',
+                            day_range_start: 'bg-primary text-primary-foreground rounded-l-lg rounded-r-none',
+                            day_range_end: 'bg-primary text-primary-foreground rounded-r-lg rounded-l-none',
                             day_hidden: 'invisible',
                           }}
-                          className="p-3 bg-muted/30 rounded-xl border"
+                          className="p-0"
                         />
-                        <div className="mt-3 space-y-2">
+
+                        <div className="mt-4 space-y-3">
+                          {dateRange?.from && (
+                            <div className="text-sm text-center py-2 px-3 bg-primary/5 rounded-lg border border-primary/20">
+                              {dateRange.to
+                                ? `${format(dateRange.from, 'MMM d')} — ${format(dateRange.to, 'MMM d, yyyy')}`
+                                : format(dateRange.from, 'MMMM d, yyyy')}
+                            </div>
+                          )}
                           <div className="flex gap-2">
                             <Input
                               placeholder="Reason (optional)"
                               value={closureReason}
                               onChange={(e) => setClosureReason(e.target.value)}
-                              className="h-9 text-sm flex-1"
+                              className="h-10"
                             />
                             <Button
-                              className="h-9 px-4"
+                              className="h-10 px-5"
                               onClick={handleAddClosure}
                               disabled={!dateRange?.from}
                               loading={addClosure.isPending}
                             >
-                              <Plus className="h-4 w-4 mr-1.5" />
+                              <Plus className="h-4 w-4 mr-2" />
                               Add
                             </Button>
                           </div>
-                          {dateRange?.from && (
-                            <p className="text-xs text-muted-foreground text-center">
-                              {dateRange.to
-                                ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d, yyyy')}`
-                                : format(dateRange.from, 'MMMM d, yyyy')}
-                            </p>
-                          )}
                         </div>
                       </div>
 
-                      {/* Closures List */}
-                      <div className="flex-1 min-w-0">
+                      {/* Upcoming Closures List */}
+                      <div>
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-medium">Upcoming</span>
-                          <Badge variant="secondary" className="text-xs">
+                          <span className="text-sm font-medium text-muted-foreground">Upcoming closures</span>
+                          <Badge variant="secondary">
                             {upcomingClosures.length}
                           </Badge>
                         </div>
+
                         {closuresLoading ? (
                           <div className="space-y-2">
-                            <Skeleton className="h-12 w-full rounded-lg" />
-                            <Skeleton className="h-12 w-full rounded-lg" />
+                            <Skeleton className="h-14 w-full rounded-xl" />
+                            <Skeleton className="h-14 w-full rounded-xl" />
+                            <Skeleton className="h-14 w-full rounded-xl" />
                           </div>
                         ) : upcomingClosures.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/30 rounded-xl border border-dashed">
-                            <CalendarOff className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                            <p className="text-sm text-muted-foreground">No closures scheduled</p>
-                            <p className="text-xs text-muted-foreground/70 mt-1">Select dates to add closures</p>
+                          <div className="flex flex-col items-center justify-center h-[280px] text-center bg-muted/20 rounded-xl border-2 border-dashed border-muted-foreground/20">
+                            <CalendarOff className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                            <p className="text-sm font-medium text-muted-foreground">No closures scheduled</p>
+                            <p className="text-xs text-muted-foreground/70 mt-1 max-w-[180px]">
+                              Select dates on the calendar to add closure days
+                            </p>
                           </div>
                         ) : (
-                          <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                          <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                             <AnimatePresence mode="popLayout">
                               {upcomingClosures.map((closure) => {
                                 const closureDate = new Date(closure.closure_date);
@@ -1435,35 +1439,35 @@ function BusinessContent() {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, x: -10 }}
                                     className={cn(
-                                      'group flex items-center gap-3 p-2.5 rounded-lg border transition-all',
+                                      'group flex items-center gap-3 p-3 rounded-xl border transition-all',
                                       isClosureToday
                                         ? 'bg-destructive/5 border-destructive/30'
-                                        : 'bg-card border-border hover:border-primary/30'
+                                        : 'bg-card border-border hover:border-primary/30 hover:shadow-sm'
                                     )}
                                   >
                                     <div className={cn(
-                                      'flex flex-col items-center justify-center w-11 h-11 rounded-lg text-center flex-shrink-0',
+                                      'flex flex-col items-center justify-center w-12 h-12 rounded-lg text-center flex-shrink-0',
                                       isClosureToday
                                         ? 'bg-destructive text-destructive-foreground'
                                         : 'bg-muted'
                                     )}>
-                                      <span className="text-[10px] font-bold uppercase leading-tight">
+                                      <span className="text-[10px] font-bold uppercase">
                                         {format(closureDate, 'MMM')}
                                       </span>
-                                      <span className="text-sm font-bold leading-none">
+                                      <span className="text-lg font-bold leading-none">
                                         {format(closureDate, 'd')}
                                       </span>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium flex items-center gap-1.5">
+                                      <p className="text-sm font-medium flex items-center gap-2">
                                         {format(closureDate, 'EEEE')}
                                         {isClosureToday && (
-                                          <Badge variant="error" className="text-[10px] h-4 px-1.5">
+                                          <Badge variant="error" className="text-[10px]">
                                             Today
                                           </Badge>
                                         )}
                                       </p>
-                                      <p className="text-xs text-muted-foreground truncate">
+                                      <p className="text-xs text-muted-foreground truncate mt-0.5">
                                         {closure.reason || 'No reason specified'}
                                       </p>
                                     </div>
@@ -1471,7 +1475,7 @@ function BusinessContent() {
                                       variant="ghost"
                                       size="icon"
                                       onClick={() => handleDeleteClosure(closure.id)}
-                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -1483,10 +1487,10 @@ function BusinessContent() {
                         )}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
+                  </motion.div>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
         </TabsContent>
       </Tabs>
