@@ -1230,14 +1230,12 @@ function BusinessContent() {
                     </div>
 
                     {/* Column Headers */}
-                    <div className="flex items-center py-2 px-4 mb-2 text-xs font-medium text-muted-foreground">
+                    <div className="grid grid-cols-[auto_48px_1fr_16px_1fr] items-center py-2 px-4 mb-2 text-xs font-medium text-muted-foreground">
                       <div className="w-[52px]"></div>
-                      <div className="w-12"></div>
-                      <div className="flex-1 flex items-center justify-end gap-3">
-                        <span className="w-28 text-center">Open</span>
-                        <span className="w-4"></span>
-                        <span className="w-28 text-center">Close</span>
-                      </div>
+                      <div></div>
+                      <span className="text-center">Open</span>
+                      <span></span>
+                      <span className="text-center">Close</span>
                     </div>
 
                     <div className="space-y-2">
@@ -1248,7 +1246,7 @@ function BusinessContent() {
                           <div
                             key={day}
                             className={cn(
-                              'flex items-center py-3 px-4 rounded-xl border transition-all',
+                              'grid grid-cols-[auto_48px_1fr_16px_1fr] items-center py-3 px-4 rounded-xl border transition-all',
                               isOpen
                                 ? 'bg-card border-border hover:border-primary/30'
                                 : 'bg-muted/30 border-transparent'
@@ -1259,32 +1257,30 @@ function BusinessContent() {
                               onCheckedChange={() => handleToggleDay(index)}
                             />
                             <span className={cn(
-                              'ml-4 text-sm font-medium w-12',
+                              'text-sm font-medium',
                               !isOpen && 'text-muted-foreground'
                             )}>
                               {shortDays[index]}
                             </span>
-                            <div className="flex-1 flex items-center justify-end gap-3">
-                              {isOpen ? (
-                                <>
-                                  <Input
-                                    type="time"
-                                    value={schedule[index]?.open_time || '09:00'}
-                                    onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
-                                    className="h-9 w-28 text-sm text-center"
-                                  />
-                                  <span className="text-muted-foreground text-sm">—</span>
-                                  <Input
-                                    type="time"
-                                    value={schedule[index]?.close_time || '17:00'}
-                                    onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
-                                    className="h-9 w-28 text-sm text-center"
-                                  />
-                                </>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">Closed</span>
-                              )}
-                            </div>
+                            {isOpen ? (
+                              <>
+                                <Input
+                                  type="time"
+                                  value={schedule[index]?.open_time || '09:00'}
+                                  onChange={(e) => handleTimeChange(index, 'open_time', e.target.value)}
+                                  className="h-9 w-full max-w-28 mx-auto text-sm text-center"
+                                />
+                                <span className="text-muted-foreground text-sm text-center">—</span>
+                                <Input
+                                  type="time"
+                                  value={schedule[index]?.close_time || '17:00'}
+                                  onChange={(e) => handleTimeChange(index, 'close_time', e.target.value)}
+                                  className="h-9 w-full max-w-28 mx-auto text-sm text-center"
+                                />
+                              </>
+                            ) : (
+                              <span className="col-span-3 text-sm text-muted-foreground text-center">Closed</span>
+                            )}
                           </div>
                         );
                       })}

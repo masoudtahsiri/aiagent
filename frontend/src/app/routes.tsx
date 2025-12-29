@@ -22,6 +22,7 @@ const CustomersPage = lazy(() => import('@/pages/customers'));
 const CustomerDetailPage = lazy(() => import('@/pages/customers/detail'));
 const ActivityPage = lazy(() => import('@/pages/activity'));
 const SettingsPage = lazy(() => import('@/pages/settings'));
+const ComingSoonPage = lazy(() => import('@/pages/coming-soon'));
 
 // Error pages
 const NotFoundPage = lazy(() => import('@/pages/errors/not-found'));
@@ -53,6 +54,12 @@ export function AppRoutes() {
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/services" element={<ServicesPage />} />
+
+            {/* Coming soon pages */}
+            <Route path="/insurance" element={<ComingSoonPage />} />
+            <Route path="/intake" element={<ComingSoonPage />} />
+            <Route path="/practice-areas" element={<ComingSoonPage />} />
+            <Route path="/specialties" element={<ComingSoonPage />} />
 
             {/* Redirects from old routes */}
             <Route path="/ai-config" element={<Navigate to="/ai" replace />} />

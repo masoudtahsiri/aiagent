@@ -2,29 +2,24 @@ import { useState, useEffect } from 'react';
 import {
   User,
   CreditCard,
-  Bell,
-  Shield,
   Save,
-  Upload,
+  Shield,
+  Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/form-elements';
-import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/skeleton';
 import { useAuth } from '@/features/auth/auth-provider';
+import { useBusiness } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 const settingsSections = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'billing', label: 'Billing', icon: CreditCard },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'security', label: 'Security', icon: Shield },
 ];
 
 export default function SettingsPage() {
@@ -63,22 +58,27 @@ export default function SettingsPage() {
         <div className="flex-1">
           {activeSection === 'profile' && <ProfileSettings />}
           {activeSection === 'billing' && <BillingSettings />}
-          {activeSection === 'notifications' && <NotificationSettings />}
-          {activeSection === 'security' && <SecuritySettings />}
         </div>
       </div>
     </PageContainer>
   );
 }
 
-// Profile Settings
+// Profile Settings (combined with Security)
 function ProfileSettings() {
   const { user } = useAuth();
+  const { data: business } = useBusiness();
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
   });
+  const [passwordData, setPasswordData] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
+  });
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -96,51 +96,142 @@ function ProfileSettings() {
     setIsSaving(false);
   };
 
+  const handlePasswordSave = async () => {
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (passwordData.new_password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    setIsSavingPassword(true);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    toast.success('Password updated');
+    setPasswordData({ current_password: '', new_password: '', confirm_password: '' });
+    setIsSavingPassword(false);
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Profile Settings</CardTitle>
-        <CardDescription>Manage your personal account information</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex items-center gap-6">
-          <Avatar name={user?.full_name || 'User'} size="2xl" />
-          <div>
-            <Button variant="outline" size="sm">
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Photo
-            </Button>
-            <p className="text-xs text-muted-foreground mt-2">JPG, PNG up to 5MB</p>
+    <div className="space-y-6">
+      {/* Profile Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Profile Settings
+          </CardTitle>
+          <CardDescription>Manage your personal account information</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Avatar using business logo */}
+          <div className="flex items-center gap-4">
+            {business?.logo_url ? (
+              <div className="h-16 w-16 rounded-full overflow-hidden border-2 border-border">
+                <img
+                  src={business.logo_url}
+                  alt="Business logo"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-border">
+                <Building2 className="h-8 w-8 text-primary/60" />
+              </div>
+            )}
+            <div>
+              <p className="font-medium">{user?.full_name || 'User'}</p>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
+            </div>
           </div>
-        </div>
 
-        <Separator />
+          <Separator />
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Full Name</label>
-          <Input
-            value={formData.full_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-          />
-        </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Full Name</label>
+            <Input
+              value={formData.full_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
+            />
+          </div>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Email</label>
-          <Input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-          />
-        </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Email</label>
+            <Input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+            />
+          </div>
 
-        <div className="flex justify-end">
-          <Button onClick={handleSave} loading={isSaving}>
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="flex justify-end">
+            <Button onClick={handleSave} loading={isSaving}>
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Security Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Security
+          </CardTitle>
+          <CardDescription>Manage your password and account security</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Change Password</h4>
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">Current Password</label>
+              <Input
+                type="password"
+                value={passwordData.current_password}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, current_password: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">New Password</label>
+              <Input
+                type="password"
+                value={passwordData.new_password}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">Confirm New Password</label>
+              <Input
+                type="password"
+                value={passwordData.confirm_password}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, confirm_password: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button
+                onClick={handlePasswordSave}
+                loading={isSavingPassword}
+                disabled={!passwordData.current_password || !passwordData.new_password || !passwordData.confirm_password}
+              >
+                Update Password
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Two-Factor Authentication</p>
+              <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
+            </div>
+            <Button variant="outline">Enable</Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -208,106 +299,6 @@ function BillingSettings() {
                 </div>
               </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// Notification Settings
-function NotificationSettings() {
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    toast.success('Notification preferences saved');
-    setIsSaving(false);
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Notification Preferences</CardTitle>
-        <CardDescription>Choose what notifications you receive</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {[
-          { title: 'New Appointments', description: 'Get notified when a new appointment is booked' },
-          { title: 'Cancellations', description: 'Get notified when an appointment is cancelled' },
-          { title: 'Missed Calls', description: 'Get notified when the AI misses a call' },
-          { title: 'Daily Summary', description: 'Receive a daily summary of activity' },
-          { title: 'Weekly Report', description: 'Receive weekly analytics and insights' },
-        ].map((item) => (
-          <div key={item.title} className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">{item.title}</p>
-              <p className="text-sm text-muted-foreground">{item.description}</p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-        ))}
-
-        <div className="flex justify-end pt-4">
-          <Button onClick={handleSave} loading={isSaving}>
-            <Save className="h-4 w-4 mr-2" />
-            Save Preferences
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Security Settings
-function SecuritySettings() {
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    toast.success('Password updated');
-    setIsSaving(false);
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Change Password</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Current Password</label>
-            <Input type="password" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">New Password</label>
-            <Input type="password" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Confirm New Password</label>
-            <Input type="password" />
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={handleSave} loading={isSaving}>Update Password</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Two-Factor Authentication</CardTitle>
-          <CardDescription>Add an extra layer of security to your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Authenticator App</p>
-              <p className="text-sm text-muted-foreground">Use an authenticator app to generate codes</p>
-            </div>
-            <Button variant="outline">Enable</Button>
           </div>
         </CardContent>
       </Card>
