@@ -537,13 +537,17 @@ function CalendarView({
                             key={apt.id}
                             className={cn(
                               'text-[10px] px-1 py-0.5 rounded truncate',
-                              isCancelled && 'line-through opacity-60'
+                              isCancelled && 'line-through'
                             )}
                             style={{
-                              backgroundColor: staffMember?.color_code
-                                ? `${staffMember.color_code}20`
-                                : '#e5e7eb',
-                              borderLeft: `2px solid ${staffMember?.color_code || '#9ca3af'}`,
+                              backgroundColor: isCancelled
+                                ? 'rgb(254 202 202)'
+                                : staffMember?.color_code
+                                  ? `${staffMember.color_code}20`
+                                  : '#e5e7eb',
+                              borderLeft: isCancelled
+                                ? '2px solid rgb(239 68 68)'
+                                : `2px solid ${staffMember?.color_code || '#9ca3af'}`,
                             }}
                           >
                             {apt.appointment_time.slice(0, 5)}
