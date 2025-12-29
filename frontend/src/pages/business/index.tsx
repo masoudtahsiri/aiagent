@@ -19,7 +19,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { DayPicker, DateRange } from 'react-day-picker';
-import { format, isToday, eachDayOfInterval, getYear, isSameMonth } from 'date-fns';
+import { format, isToday, eachDayOfInterval, isSameMonth } from 'date-fns';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -41,7 +41,7 @@ import {
   useBusinessClosures,
   useAddBusinessClosure,
   useDeleteBusinessClosure,
-  useFetchPublicHolidays,
+  useSyncHolidays,
   useBusinessId,
 } from '@/lib/api/hooks';
 import type { Business, BusinessHours } from '@/types';
@@ -312,7 +312,7 @@ function BusinessContent() {
   const { data: closuresData, isLoading: closuresLoading, refetch: refetchClosures } = useBusinessClosures();
   const addClosure = useAddBusinessClosure();
   const deleteClosure = useDeleteBusinessClosure();
-  const fetchHolidays = useFetchPublicHolidays();
+  const syncHolidays = useSyncHolidays();
 
 
   const [activeTab, setActiveTab] = useState('profile');
@@ -439,28 +439,19 @@ function BusinessContent() {
       setHasChanges(true);
       toast.success(`Updated to ${country.name} defaults`);
 
-      // Auto-fetch national holidays for the selected country
-      if (businessId) {
-        const currentYear = getYear(new Date());
-        try {
-          const result = await fetchHolidays.mutateAsync({
-            countryCode: countryCode,
-            year: currentYear,
-            businessId: businessId,
-          });
-          if (result.unsupported) {
-            toast.info(`Holiday data not available for ${country.name}. You can add closures manually.`);
-          } else if (result.added > 0) {
-            toast.success(`Added ${result.added} national holidays for ${country.name} (${currentYear}-${currentYear + 2})`);
-          } else if (result.total > 0) {
-            toast.info(`All holidays for ${country.name} already added`);
-          }
-        } catch (error) {
-          console.warn('Could not fetch holidays:', error);
+      // Sync national holidays for the selected country
+      try {
+        const result = await syncHolidays.mutateAsync(countryCode);
+        if (result.unsupported) {
+          toast.info(`Holiday data not available for ${country.name}. You can add closures manually.`);
+        } else if (result.added > 0) {
+          toast.success(`Added ${result.added} national holidays for ${country.name}`);
         }
+      } catch (error) {
+        console.warn('Could not sync holidays:', error);
       }
     }
-  }, [fetchHolidays, businessId]);
+  }, [syncHolidays]);
 
   const currentTimezoneLabel = useMemo(() => {
     const tz = allTimezones.find(t => t.value === formData.timezone);
@@ -568,7 +559,7 @@ function BusinessContent() {
 
   // Auto-refresh holidays if latest closure is less than 1 year away (runs once per session)
   useEffect(() => {
-    if (!businessId || !closuresData || !formData.country || fetchHolidays.isPending || hasAutoRefreshedHolidays.current) return;
+    if (!businessId || !closuresData || !formData.country || syncHolidays.isPending || hasAutoRefreshedHolidays.current) return;
 
     const now = new Date();
     const oneYearFromNow = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
@@ -579,17 +570,12 @@ function BusinessContent() {
       return date > latest ? date : latest;
     }, new Date(0));
 
-    // If latest closure is less than 1 year away, fetch more (silently)
+    // If latest closure is less than 1 year away, sync more holidays (silently)
     if (latestClosure < oneYearFromNow && closuresData.length > 0) {
       hasAutoRefreshedHolidays.current = true;
-      const currentYear = getYear(new Date());
-      fetchHolidays.mutate({
-        countryCode: formData.country,
-        year: currentYear,
-        businessId: businessId,
-      });
+      syncHolidays.mutate(formData.country);
     }
-  }, [businessId, closuresData, formData.country]);
+  }, [businessId, closuresData, formData.country, syncHolidays]);
 
   // Filter closures by selected calendar month
   const monthClosures = (closuresData || [])

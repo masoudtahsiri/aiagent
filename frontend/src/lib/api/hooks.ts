@@ -8,7 +8,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { get, post, put, del, upload } from './client';
 import { useAuth } from '@/features/auth/auth-provider';
-import Holidays from 'date-holidays';
 import type {
   Customer,
   Staff,
@@ -927,87 +926,28 @@ export function useDeleteBusinessClosure() {
 }
 
 // =============================================================================
-// PUBLIC HOLIDAYS (using date-holidays - offline, no API)
+// PUBLIC HOLIDAYS (via backend - uses Python holidays library)
 // =============================================================================
 
-interface FetchHolidaysParams {
-  countryCode: string;
-  year: number;
-  businessId: string;
+interface SyncHolidaysResponse {
+  added: number;
+  total: number;
+  unsupported: boolean;
+  message?: string;
 }
 
-export function useFetchPublicHolidays() {
+export function useSyncHolidays() {
   const queryClient = useQueryClient();
+  const businessId = useBusinessId();
 
   return useMutation({
-    mutationFn: async ({ countryCode, year, businessId }: FetchHolidaysParams) => {
-      // Ensure businessId exists
-      if (!businessId) {
-        throw new Error('Business ID is required');
-      }
-
-      // Initialize holidays for the country
-      const hd = new Holidays(countryCode);
-
-      // Check if country is supported
-      if (!hd.getCountries()[countryCode]) {
-        return { added: 0, total: 0, unsupported: true };
-      }
-
-      // Delete all existing closures first (overwrite mode)
-      const existingClosures = await get<BusinessClosure[]>(
-        `/api/business-hours/${businessId}/closures`
-      );
-      for (const closure of existingClosures) {
-        await del(`/api/business-hours/closures/${closure.id}`);
-      }
-
-      // Get holidays for current year + next 2 years (rolling 3-year window)
-      const yearsToFetch = [year, year + 1, year + 2];
-      const allHolidays: { date: string; name: string }[] = [];
-
-      for (const fetchYear of yearsToFetch) {
-        const holidays = hd.getHolidays(fetchYear);
-        for (const holiday of holidays) {
-          // Only include public holidays (type: 'public')
-          if (holiday.type === 'public') {
-            const dateStr = holiday.date.split(' ')[0]; // "2025-01-01 00:00:00" -> "2025-01-01"
-            allHolidays.push({
-              date: dateStr,
-              name: holiday.name,
-            });
-          }
-        }
-      }
-
-      if (allHolidays.length === 0) {
-        return { added: 0, total: 0, unsupported: false };
-      }
-
-      // Filter to only include future holidays
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const futureHolidays = allHolidays.filter(h => {
-        const holidayDate = new Date(h.date);
-        return holidayDate >= today;
+    mutationFn: async (countryCode: string) => {
+      return await post<SyncHolidaysResponse>('/api/business-hours/sync-holidays', {
+        country_code: countryCode,
       });
-
-      // Add each holiday as a closure
-      let addedCount = 0;
-      for (const holiday of futureHolidays) {
-        await post<BusinessClosure>('/api/business-hours/closures', {
-          business_id: businessId,
-          closure_date: holiday.date,
-          reason: holiday.name,
-        });
-        addedCount++;
-      }
-
-      return { added: addedCount, total: futureHolidays.length, unsupported: false };
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['business-closures', variables.businessId] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-closures', businessId] });
     },
   });
 }

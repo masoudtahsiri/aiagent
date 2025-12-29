@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
+from pydantic import BaseModel
 
 from backend.models.business_hours import BusinessHoursSet, BusinessClosureCreate, BusinessClosureResponse, BusinessHourEntry
 from backend.services.business_hours_service import BusinessHoursService
@@ -10,9 +11,25 @@ from backend.middleware.auth import get_current_active_user
 router = APIRouter(prefix="/api/business-hours", tags=["Business Hours"])
 
 
+class SyncHolidaysRequest(BaseModel):
+    country_code: str
+
+
 # =============================================================================
 # CLOSURES - Static paths must come BEFORE dynamic /{business_id} paths
 # =============================================================================
+
+@router.post("/sync-holidays")
+async def sync_holidays(
+    request: SyncHolidaysRequest,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Sync holidays for a country - deletes existing and adds new holidays"""
+    return await BusinessHoursService.sync_holidays_for_country(
+        request.country_code,
+        current_user["id"]
+    )
+
 
 @router.post("/closures", response_model=BusinessClosureResponse)
 async def add_closure(
