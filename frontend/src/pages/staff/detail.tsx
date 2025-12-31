@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { DayPicker, DateRange } from 'react-day-picker';
+import { format, isSameMonth, eachDayOfInterval } from 'date-fns';
 import {
   ArrowLeft, Mail, Phone, Calendar, Clock, Edit, Save,
-  Check, X, Briefcase, Plus, Trash2, AlertCircle,
-  CalendarOff, CalendarCheck, RotateCcw, AlertTriangle, Info,
-  User, Settings, Package
+  Plus, Trash2, AlertCircle, CalendarOff, Info, User,
+  ChevronLeft, ChevronRight, Sparkles
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,7 @@ import {
   useStaffServices,
   useUpdateStaffServices,
 } from '@/lib/api/hooks';
-import type { StaffTimeOff, StaffAvailabilityEntry, TimeOffType, BusinessHours, Service } from '@/types';
+import type { StaffTimeOff, StaffAvailabilityEntry, TimeOffType, BusinessHours } from '@/types';
 
 const TIME_OFF_TYPES: { value: TimeOffType; label: string; color: string }[] = [
   { value: 'vacation', label: 'Vacation', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -72,7 +73,6 @@ interface ScheduleEntry extends StaffAvailabilityEntry {
 
 export default function StaffDetailPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
   // Fetch staff data
@@ -89,10 +89,10 @@ export default function StaffDetailPage() {
   const { data: staffServices, isLoading: staffServicesLoading } = useStaffServices(id || '');
 
   // Fetch staff availability
-  const { data: availabilityTemplates, isLoading: availabilityLoading } = useStaffAvailability(id || '');
+  const { data: availabilityTemplates, isLoading: availabilityLoading, refetch: refetchAvailability } = useStaffAvailability(id || '');
 
   // Fetch time offs
-  const { data: timeOffs, isLoading: timeOffsLoading } = useStaffTimeOffs(id || '');
+  const { data: timeOffs, isLoading: timeOffsLoading, refetch: refetchTimeOffs } = useStaffTimeOffs(id || '');
 
   // Fetch business hours for validation
   const { data: businessHours, isLoading: businessHoursLoading } = useStaffBusinessHours(id || '');
@@ -120,20 +120,14 @@ export default function StaffDetailPage() {
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [hasServiceChanges, setHasServiceChanges] = useState(false);
 
-  // Time off dialog state
-  const [showTimeOffDialog, setShowTimeOffDialog] = useState(false);
-  const [timeOffForm, setTimeOffForm] = useState({
-    start_date: '',
-    end_date: '',
-    time_off_type: 'vacation' as TimeOffType,
-    reason: '',
-  });
-
-  // Schedule editor state
+  // Schedule & Time Off state
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
   const [hasScheduleChanges, setHasScheduleChanges] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [timeOffReason, setTimeOffReason] = useState('');
+  const [timeOffType, setTimeOffType] = useState<TimeOffType>('vacation');
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [showTimeOffDialog, setShowTimeOffDialog] = useState(false);
 
   // Initialize profile form
   useEffect(() => {
@@ -199,38 +193,6 @@ export default function StaffDetailPage() {
     setSchedule(newSchedule);
     setHasScheduleChanges(false);
   }, [availabilityTemplates, businessHours, availabilityLoading, businessHoursLoading]);
-
-  // Validate schedule changes
-  useEffect(() => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    for (const entry of schedule) {
-      if (!entry.is_working) continue;
-
-      const dayName = DAY_NAMES[entry.day_of_week];
-
-      if (!entry.businessIsOpen) {
-        errors.push(`${dayName}: Business is closed on this day`);
-        continue;
-      }
-
-      if (entry.businessOpen && entry.start_time && entry.start_time < entry.businessOpen) {
-        errors.push(`${dayName}: Start time (${entry.start_time}) is before business opens (${entry.businessOpen})`);
-      }
-
-      if (entry.businessClose && entry.end_time && entry.end_time > entry.businessClose) {
-        errors.push(`${dayName}: End time (${entry.end_time}) is after business closes (${entry.businessClose})`);
-      }
-
-      if (!entry.businessOpen || !entry.businessClose) {
-        warnings.push(`${dayName}: No business hours set for this day`);
-      }
-    }
-
-    setValidationErrors(errors);
-    setValidationWarnings(warnings);
-  }, [schedule]);
 
   // Profile handlers
   const handleSaveProfile = async () => {
@@ -300,11 +262,6 @@ export default function StaffDetailPage() {
   const handleSaveSchedule = async () => {
     if (!id) return;
 
-    if (validationErrors.length > 0) {
-      toast.error('Please fix validation errors before saving');
-      return;
-    }
-
     try {
       await updateAvailability.mutateAsync({
         staffId: id,
@@ -318,6 +275,7 @@ export default function StaffDetailPage() {
       });
       toast.success('Schedule saved');
       setHasScheduleChanges(false);
+      refetchAvailability();
     } catch (error) {
       const apiError = error as { response?: { data?: { detail?: { errors?: string[] } | string } } };
       const detail = apiError?.response?.data?.detail;
@@ -330,30 +288,28 @@ export default function StaffDetailPage() {
   };
 
   // Time off handlers
-  const handleCreateTimeOff = async () => {
-    if (!id) return;
-
-    if (!timeOffForm.start_date || !timeOffForm.end_date) {
-      toast.error('Please select start and end dates');
-      return;
-    }
-
-    if (timeOffForm.end_date < timeOffForm.start_date) {
-      toast.error('End date must be on or after start date');
+  const handleAddTimeOff = async () => {
+    if (!id || !dateRange?.from) {
+      toast.error('Please select a date');
       return;
     }
 
     try {
+      const startDate = format(dateRange.from, 'yyyy-MM-dd');
+      const endDate = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : startDate;
+
       await createTimeOff.mutateAsync({
         staff_id: id,
-        start_date: timeOffForm.start_date,
-        end_date: timeOffForm.end_date,
-        time_off_type: timeOffForm.time_off_type,
-        reason: timeOffForm.reason || undefined,
+        start_date: startDate,
+        end_date: endDate,
+        time_off_type: timeOffType,
+        reason: timeOffReason || undefined,
       });
       toast.success('Time off added');
-      setShowTimeOffDialog(false);
-      setTimeOffForm({ start_date: '', end_date: '', time_off_type: 'vacation', reason: '' });
+      setDateRange(undefined);
+      setTimeOffReason('');
+      setTimeOffType('vacation');
+      refetchTimeOffs();
     } catch (error) {
       const apiError = error as { response?: { data?: { detail?: string } } };
       toast.error(apiError?.response?.data?.detail || 'Failed to add time off');
@@ -366,6 +322,7 @@ export default function StaffDetailPage() {
     try {
       await deleteTimeOff.mutateAsync({ timeOffId: timeOff.id, staffId: id });
       toast.success('Time off deleted');
+      refetchTimeOffs();
     } catch {
       toast.error('Failed to delete time off');
     }
@@ -390,24 +347,36 @@ export default function StaffDetailPage() {
     return `${hours}h ${minutes}m`;
   };
 
-  const calculateTimeOffDays = (start: string, end: string): number => {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  };
+  // Get time off dates for calendar
+  const timeOffDates = useMemo(() => {
+    if (!timeOffs) return [];
+    const dates: Date[] = [];
+    for (const t of timeOffs) {
+      const start = new Date(t.start_date);
+      const end = new Date(t.end_date);
+      const range = eachDayOfInterval({ start, end });
+      dates.push(...range);
+    }
+    return dates;
+  }, [timeOffs]);
 
-  // Group time offs
+  // Filter time offs by selected calendar month
+  const monthTimeOffs = useMemo(() => {
+    if (!timeOffs) return [];
+    return timeOffs
+      .filter(t => {
+        const start = new Date(t.start_date);
+        const end = new Date(t.end_date);
+        return isSameMonth(start, calendarMonth) || isSameMonth(end, calendarMonth);
+      })
+      .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+  }, [timeOffs, calendarMonth]);
+
+  // Upcoming time offs
   const upcomingTimeOffs = useMemo(() => {
     if (!timeOffs) return [];
     const today = new Date().toISOString().split('T')[0];
     return timeOffs.filter(t => t.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date));
-  }, [timeOffs]);
-
-  const pastTimeOffs = useMemo(() => {
-    if (!timeOffs) return [];
-    const today = new Date().toISOString().split('T')[0];
-    return timeOffs.filter(t => t.end_date < today).sort((a, b) => b.start_date.localeCompare(a.start_date));
   }, [timeOffs]);
 
   if (staffLoading) {
@@ -438,6 +407,7 @@ export default function StaffDetailPage() {
   }
 
   const staffName = staffMember.name || 'Unknown';
+  const workingDaysCount = schedule.filter(s => s.is_working).length;
 
   return (
     <PageContainer
@@ -512,15 +482,11 @@ export default function StaffDetailPage() {
             Profile
           </TabsTrigger>
           <TabsTrigger value="schedule">
-            <Calendar className="h-4 w-4 mr-2" />
-            Schedule
-          </TabsTrigger>
-          <TabsTrigger value="time-off">
-            <CalendarOff className="h-4 w-4 mr-2" />
-            Time Off
+            <Clock className="h-4 w-4 mr-2" />
+            Schedule & Time Off
           </TabsTrigger>
           <TabsTrigger value="appointments">
-            <Clock className="h-4 w-4 mr-2" />
+            <Calendar className="h-4 w-4 mr-2" />
             Appointments
           </TabsTrigger>
         </TabsList>
@@ -704,202 +670,285 @@ export default function StaffDetailPage() {
           </div>
         </TabsContent>
 
-        {/* Schedule Tab */}
+        {/* Schedule & Time Off Tab - Combined like Business Hours & Closures */}
         <TabsContent value="schedule">
-          <Card className="bg-primary/5 border-primary/20 mb-6">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+          <Card>
+            <CardContent className="p-6">
+              <div className="grid gap-8 lg:grid-cols-2">
+                {/* Left: Working Hours */}
                 <div>
-                  <p className="font-medium text-sm">Staff Availability</p>
-                  <p className="text-xs text-muted-foreground">
-                    Hours must be within business operating hours.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {validationErrors.length > 0 && (
-            <Card className="border-destructive/50 bg-destructive/5 mb-6">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-                  <div>
-                    <p className="font-medium text-destructive text-sm">Validation Errors</p>
-                    <ul className="text-xs text-destructive/80 mt-1 space-y-1">
-                      {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Weekly Schedule</CardTitle>
-              <Button
-                size="sm"
-                onClick={handleSaveSchedule}
-                disabled={!hasScheduleChanges || validationErrors.length > 0}
-                loading={updateAvailability.isPending}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {availabilityLoading || businessHoursLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-14" />)}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {schedule.map((entry) => (
-                    <div
-                      key={entry.day_of_week}
-                      className={cn(
-                        'flex flex-wrap items-center gap-3 p-3 rounded-lg border',
-                        entry.is_working ? 'bg-card' : 'bg-muted/50'
-                      )}
-                    >
-                      <Switch
-                        checked={entry.is_working}
-                        onCheckedChange={() => handleScheduleToggle(entry.day_of_week)}
-                        disabled={!entry.businessIsOpen}
-                      />
-                      <span className={cn('font-medium w-24', !entry.is_working && 'text-muted-foreground')}>
-                        {DAY_NAMES[entry.day_of_week]}
-                      </span>
-
-                      {entry.is_working ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <Input
-                            type="time"
-                            value={entry.start_time || ''}
-                            onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'start_time', e.target.value)}
-                            className="w-32"
-                          />
-                          <span className="text-muted-foreground">to</span>
-                          <Input
-                            type="time"
-                            value={entry.end_time || ''}
-                            onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'end_time', e.target.value)}
-                            className="w-32"
-                          />
-                          {entry.start_time && entry.end_time && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              {calculateDuration(entry.start_time, entry.end_time)}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">
-                          {entry.businessIsOpen ? 'Not working' : 'Business closed'}
-                        </span>
-                      )}
-
-                      {entry.businessIsOpen && entry.businessOpen && entry.businessClose && (
-                        <span className="text-xs text-muted-foreground hidden lg:block">
-                          Business: {entry.businessOpen} - {entry.businessClose}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Time Off Tab */}
-        <TabsContent value="time-off">
-          <div className="flex justify-end mb-6">
-            <Button onClick={() => setShowTimeOffDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Time Off
-            </Button>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Scheduled Time Off</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {timeOffsLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
-                </div>
-              ) : upcomingTimeOffs.length === 0 && pastTimeOffs.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <CalendarOff className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                  <p className="text-sm">No time off scheduled</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {upcomingTimeOffs.map((timeOff) => {
-                    const typeInfo = getTimeOffTypeInfo(timeOff.time_off_type);
-                    const days = calculateTimeOffDays(timeOff.start_date, timeOff.end_date);
-
-                    return (
-                      <div
-                        key={timeOff.id}
-                        className="flex items-center justify-between p-4 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="text-2xl font-bold">{formatDate(timeOff.start_date, 'd')}</p>
-                            <p className="text-xs text-muted-foreground">{formatDate(timeOff.start_date, 'MMM')}</p>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge className={cn('text-xs', typeInfo.color)}>{typeInfo.label}</Badge>
-                              <span className="text-xs text-muted-foreground">{days} day{days > 1 ? 's' : ''}</span>
-                            </div>
-                            <p className="text-sm font-medium">
-                              {formatDate(timeOff.start_date, 'MMM d, yyyy')}
-                              {timeOff.start_date !== timeOff.end_date && <> — {formatDate(timeOff.end_date, 'MMM d, yyyy')}</>}
-                            </p>
-                            {timeOff.reason && <p className="text-xs text-muted-foreground mt-1">{timeOff.reason}</p>}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteTimeOff(timeOff)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Clock className="h-4 w-4 text-primary" />
                       </div>
-                    );
-                  })}
+                      Working Hours
+                    </h3>
+                    {hasScheduleChanges && (
+                      <Button size="sm" onClick={handleSaveSchedule} loading={updateAvailability.isPending}>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save
+                      </Button>
+                    )}
+                  </div>
 
-                  {pastTimeOffs.length > 0 && (
-                    <>
-                      <div className="text-sm font-medium text-muted-foreground pt-4">Past Time Off</div>
-                      {pastTimeOffs.slice(0, 5).map((timeOff) => {
-                        const typeInfo = getTimeOffTypeInfo(timeOff.time_off_type);
-                        const days = calculateTimeOffDays(timeOff.start_date, timeOff.end_date);
+                  {/* Column Headers */}
+                  <div className="grid grid-cols-[auto_48px_1fr_16px_1fr] items-center py-2 px-4 mb-2 text-xs font-medium text-muted-foreground">
+                    <div className="w-[52px]"></div>
+                    <div></div>
+                    <span className="text-center">Start</span>
+                    <span></span>
+                    <span className="text-center">End</span>
+                  </div>
+
+                  {availabilityLoading || businessHoursLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-14" />)}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {schedule.map((entry) => {
+                        const isWorking = entry.is_working;
+                        const businessClosed = !entry.businessIsOpen;
 
                         return (
-                          <div key={timeOff.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 opacity-70">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline" className="text-xs">{typeInfo.label}</Badge>
-                              <span className="text-sm">
-                                {formatDate(timeOff.start_date, 'MMM d')}
-                                {timeOff.start_date !== timeOff.end_date && <> — {formatDate(timeOff.end_date, 'MMM d, yyyy')}</>}
-                              </span>
-                            </div>
-                            <span className="text-xs text-muted-foreground">{days} day{days > 1 ? 's' : ''}</span>
+                          <div
+                            key={entry.day_of_week}
+                            className={cn(
+                              'grid grid-cols-[auto_48px_1fr_16px_1fr] items-center py-3 px-4 rounded-xl border transition-all',
+                              isWorking
+                                ? 'bg-card border-border hover:border-primary/30'
+                                : 'bg-muted/30 border-transparent'
+                            )}
+                          >
+                            <Switch
+                              checked={isWorking}
+                              onCheckedChange={() => handleScheduleToggle(entry.day_of_week)}
+                              disabled={businessClosed}
+                            />
+                            <span className={cn(
+                              'text-sm font-medium',
+                              !isWorking && 'text-muted-foreground'
+                            )}>
+                              {DAY_NAMES_SHORT[entry.day_of_week]}
+                            </span>
+                            {businessClosed ? (
+                              <span className="col-span-3 text-sm text-muted-foreground text-center">Business Closed</span>
+                            ) : isWorking ? (
+                              <>
+                                <Input
+                                  type="time"
+                                  value={entry.start_time || '09:00'}
+                                  onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'start_time', e.target.value)}
+                                  className="h-9 w-full max-w-28 mx-auto text-sm text-center"
+                                />
+                                <span className="text-muted-foreground text-sm text-center">—</span>
+                                <Input
+                                  type="time"
+                                  value={entry.end_time || '17:00'}
+                                  onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'end_time', e.target.value)}
+                                  className="h-9 w-full max-w-28 mx-auto text-sm text-center"
+                                />
+                              </>
+                            ) : (
+                              <span className="col-span-3 text-sm text-muted-foreground text-center">Not Working</span>
+                            )}
                           </div>
                         );
                       })}
-                    </>
+                    </div>
                   )}
+
+                  <div className="mt-4 pt-4 border-t flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span className="text-sm text-muted-foreground">
+                      Working <span className="font-medium text-foreground">{workingDaysCount}</span> days per week
+                    </span>
+                  </div>
                 </div>
-              )}
+
+                {/* Right: Time Off */}
+                <div className="lg:border-l lg:pl-8">
+                  <div className="flex items-center mb-4">
+                    <h3 className="text-base font-semibold flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                        <CalendarOff className="h-4 w-4 text-destructive" />
+                      </div>
+                      Scheduled Time Off
+                    </h3>
+                  </div>
+
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    {/* Calendar Section */}
+                    <div>
+                      <DayPicker
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        month={calendarMonth}
+                        onMonthChange={setCalendarMonth}
+                        disabled={[{ before: new Date() }]}
+                        modifiers={{
+                          timeOff: timeOffDates,
+                        }}
+                        modifiersClassNames={{
+                          timeOff: 'bg-destructive/20 text-destructive rounded-lg',
+                        }}
+                        components={{
+                          IconLeft: () => <ChevronLeft className="h-4 w-4" />,
+                          IconRight: () => <ChevronRight className="h-4 w-4" />,
+                        }}
+                        classNames={{
+                          months: 'flex flex-col',
+                          month: 'space-y-3',
+                          caption: 'flex justify-center relative items-center h-9',
+                          caption_label: 'text-sm font-semibold',
+                          nav: 'flex items-center',
+                          nav_button: 'h-8 w-8 bg-transparent p-0 hover:bg-accent inline-flex items-center justify-center rounded-lg transition-colors',
+                          nav_button_previous: 'absolute left-0',
+                          nav_button_next: 'absolute right-0',
+                          table: 'w-full border-collapse',
+                          head_row: 'flex',
+                          head_cell: 'text-muted-foreground w-10 font-medium text-xs flex-1 text-center py-2',
+                          row: 'flex w-full',
+                          cell: 'flex-1 h-10 text-center text-sm p-0.5 relative',
+                          day: 'h-10 w-10 p-0 font-normal hover:bg-accent hover:text-accent-foreground rounded-lg inline-flex items-center justify-center cursor-pointer transition-colors mx-auto',
+                          day_selected: 'bg-primary text-primary-foreground hover:bg-primary',
+                          day_today: 'bg-accent text-accent-foreground font-semibold',
+                          day_outside: 'text-muted-foreground opacity-50',
+                          day_disabled: 'text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent',
+                          day_range_middle: 'bg-primary/10 rounded-none',
+                          day_range_start: 'bg-primary text-primary-foreground rounded-l-lg rounded-r-none',
+                          day_range_end: 'bg-primary text-primary-foreground rounded-r-lg rounded-l-none',
+                          day_hidden: 'invisible',
+                        }}
+                        className="p-0"
+                      />
+
+                      <div className="mt-4 space-y-3">
+                        {dateRange?.from && (
+                          <div className="text-sm text-center py-2 px-3 bg-primary/5 rounded-lg border border-primary/20">
+                            {dateRange.to
+                              ? `${format(dateRange.from, 'MMM d')} — ${format(dateRange.to, 'MMM d, yyyy')}`
+                              : format(dateRange.from, 'MMMM d, yyyy')}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Reason (optional)"
+                            value={timeOffReason}
+                            onChange={(e) => setTimeOffReason(e.target.value)}
+                            className="h-10"
+                          />
+                          <Button
+                            className="h-10 px-5"
+                            onClick={handleAddTimeOff}
+                            disabled={!dateRange?.from}
+                            loading={createTimeOff.isPending}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Monthly Time Off List */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          {format(calendarMonth, 'MMMM yyyy')}
+                        </span>
+                        <Badge variant="secondary">
+                          {monthTimeOffs.length}
+                        </Badge>
+                      </div>
+
+                      {timeOffsLoading ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-14 w-full rounded-xl" />
+                          <Skeleton className="h-14 w-full rounded-xl" />
+                          <Skeleton className="h-14 w-full rounded-xl" />
+                        </div>
+                      ) : monthTimeOffs.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-[280px] text-center bg-muted/20 rounded-xl border-2 border-dashed border-muted-foreground/20">
+                          <CalendarOff className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                          <p className="text-sm font-medium text-muted-foreground">No time off in {format(calendarMonth, 'MMMM')}</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1 max-w-[180px]">
+                            Select dates to add time off
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                          <AnimatePresence mode="popLayout">
+                            {monthTimeOffs.map((timeOff) => {
+                              const startDate = new Date(timeOff.start_date);
+                              const typeInfo = getTimeOffTypeInfo(timeOff.time_off_type);
+                              const isToday = new Date().toISOString().split('T')[0] === timeOff.start_date;
+
+                              return (
+                                <motion.div
+                                  key={timeOff.id}
+                                  layout
+                                  initial={{ opacity: 0, y: -5 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, x: -10 }}
+                                  className={cn(
+                                    'group flex items-center gap-3 p-3 rounded-xl border transition-all',
+                                    isToday
+                                      ? 'bg-destructive/5 border-destructive/30'
+                                      : 'bg-card border-border hover:border-primary/30 hover:shadow-sm'
+                                  )}
+                                >
+                                  <div className={cn(
+                                    'flex flex-col items-center justify-center w-12 h-12 rounded-lg text-center flex-shrink-0',
+                                    isToday
+                                      ? 'bg-destructive text-destructive-foreground'
+                                      : 'bg-muted'
+                                  )}>
+                                    <span className="text-[10px] font-bold uppercase">
+                                      {format(startDate, 'MMM')}
+                                    </span>
+                                    <span className="text-lg font-bold leading-none">
+                                      {format(startDate, 'd')}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium flex items-center gap-2">
+                                      <Badge className={cn('text-xs', typeInfo.color)}>{typeInfo.label}</Badge>
+                                      {isToday && (
+                                        <Badge variant="error" className="text-[10px]">
+                                          Today
+                                        </Badge>
+                                      )}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                      {timeOff.start_date !== timeOff.end_date
+                                        ? `${format(startDate, 'MMM d')} — ${format(new Date(timeOff.end_date), 'MMM d')}`
+                                        : format(startDate, 'EEEE')}
+                                    </p>
+                                    {timeOff.reason && (
+                                      <p className="text-xs text-muted-foreground/70 truncate">{timeOff.reason}</p>
+                                    )}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteTimeOff(timeOff)}
+                                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </motion.div>
+                              );
+                            })}
+                          </AnimatePresence>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -946,73 +995,27 @@ export default function StaffDetailPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Add Time Off Dialog */}
-      <Dialog open={showTimeOffDialog} onOpenChange={setShowTimeOffDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Time Off</DialogTitle>
-            <DialogDescription>Schedule time off for {staffName}</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Type</label>
-              <div className="grid grid-cols-3 gap-2">
-                {TIME_OFF_TYPES.slice(0, 5).map((type) => (
-                  <button
-                    key={type.value}
-                    type="button"
-                    onClick={() => setTimeOffForm(prev => ({ ...prev, time_off_type: type.value }))}
-                    className={cn(
-                      'px-3 py-2 rounded-lg border text-sm font-medium transition-colors',
-                      timeOffForm.time_off_type === type.value
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border hover:bg-muted'
-                    )}
-                  >
-                    {type.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Start Date</label>
-                <Input
-                  type="date"
-                  value={timeOffForm.start_date}
-                  onChange={(e) => setTimeOffForm(prev => ({ ...prev, start_date: e.target.value }))}
-                  min={new Date().toISOString().split('T')[0]}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">End Date</label>
-                <Input
-                  type="date"
-                  value={timeOffForm.end_date}
-                  onChange={(e) => setTimeOffForm(prev => ({ ...prev, end_date: e.target.value }))}
-                  min={timeOffForm.start_date || new Date().toISOString().split('T')[0]}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Reason (optional)</label>
-              <Input
-                placeholder="e.g., Family vacation"
-                value={timeOffForm.reason}
-                onChange={(e) => setTimeOffForm(prev => ({ ...prev, reason: e.target.value }))}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTimeOffDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreateTimeOff} loading={createTimeOff.isPending}>Add Time Off</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Unsaved Changes Warning */}
+      <AnimatePresence>
+        {hasScheduleChanges && (
+          <motion.div
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          >
+            <Card className="border-warning-500/50 bg-warning-500/10 shadow-lg">
+              <CardContent className="p-4 flex items-center gap-4">
+                <AlertCircle className="h-5 w-5 text-warning-600" />
+                <span className="text-sm font-medium">You have unsaved schedule changes</span>
+                <Button size="sm" onClick={handleSaveSchedule} loading={updateAvailability.isPending}>
+                  Save Now
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </PageContainer>
   );
 }
