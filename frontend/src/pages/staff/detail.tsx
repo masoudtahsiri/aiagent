@@ -175,7 +175,7 @@ export default function StaffDetailPage() {
     if (availabilityLoading || businessHoursLoading) return;
 
     const businessHoursMap: Record<number, BusinessHours> = {};
-    if (businessHours) {
+    if (businessHours && businessHours.length > 0) {
       for (const h of businessHours) {
         businessHoursMap[h.day_of_week] = h;
       }
@@ -193,13 +193,22 @@ export default function StaffDetailPage() {
     }
 
     const hasExistingAvailability = availabilityTemplates && availabilityTemplates.length > 0;
+    const hasBusinessHours = businessHours && businessHours.length > 0;
 
     const newSchedule: ScheduleEntry[] = DAY_NAMES.map((_, idx) => {
       const bh = businessHoursMap[idx];
       const av = availabilityMap[idx];
+
+      // Default business hours if no data exists
       const businessOpen = bh?.open_time?.slice(0, 5) || '09:00';
       const businessClose = bh?.close_time?.slice(0, 5) || '17:00';
-      const businessIsOpen = bh?.is_open !== false;
+
+      // If business hours exist for this day, use is_open; otherwise default to true (open)
+      // Only mark as closed if we have explicit business hours data saying it's closed
+      // Handle various truthy/falsy values for is_open
+      const businessIsOpen = hasBusinessHours
+        ? (bh ? bh.is_open !== false && bh.is_open !== null && bh.is_open !== undefined : true)
+        : true;
 
       // If no existing availability, default to business hours
       if (!hasExistingAvailability) {
@@ -757,7 +766,14 @@ export default function StaffDetailPage() {
                                 />
                               </>
                             ) : (
-                              <span className="col-span-3 text-sm text-muted-foreground text-center">Not Working</span>
+                              <span className="col-span-3 text-sm text-muted-foreground text-center">
+                                Not Working
+                                {entry.businessOpen && entry.businessClose && (
+                                  <span className="text-xs ml-2 opacity-60">
+                                    (Business: {entry.businessOpen}–{entry.businessClose})
+                                  </span>
+                                )}
+                              </span>
                             )}
                           </div>
                         );
