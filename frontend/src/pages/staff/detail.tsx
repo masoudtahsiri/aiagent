@@ -3,31 +3,37 @@ import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { DayPicker, DateRange } from 'react-day-picker';
-import { format, isSameMonth, eachDayOfInterval } from 'date-fns';
+import {
+  format,
+  isSameMonth,
+  eachDayOfInterval,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  isSameDay,
+  isToday,
+  addMonths,
+  subMonths,
+  parseISO,
+} from 'date-fns';
 import {
   ArrowLeft, Mail, Phone, Calendar, Clock, Edit, Save,
-  Plus, Trash2, AlertCircle, CalendarOff, Info, User,
-  ChevronLeft, ChevronRight, Sparkles
+  Plus, Trash2, AlertCircle, CalendarOff, User,
+  ChevronLeft, ChevronRight, Sparkles, LayoutGrid, XCircle,
+  Package, X, Check
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
-import { Badge, AppointmentStatusBadge } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch, Checkbox } from '@/components/ui/form-elements';
+import { Switch } from '@/components/ui/form-elements';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { formatDate, formatTime, formatDuration } from '@/lib/utils/format';
+import { formatDuration } from '@/lib/utils/format';
 import {
   useStaffMember,
   useStaffAppointments,
@@ -42,7 +48,15 @@ import {
   useStaffServices,
   useUpdateStaffServices,
 } from '@/lib/api/hooks';
-import type { StaffTimeOff, StaffAvailabilityEntry, TimeOffType, BusinessHours } from '@/types';
+import type { StaffTimeOff, StaffAvailabilityEntry, TimeOffType, BusinessHours, AppointmentWithDetails, Service } from '@/types';
+
+type ViewMode = 'calendar' | 'grid';
+type AppointmentStatusType = 'scheduled' | 'cancelled';
+
+const statusConfig: Record<AppointmentStatusType, { label: string; color: string; icon: typeof Clock }> = {
+  scheduled: { label: 'Scheduled', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
+  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
+};
 
 const TIME_OFF_TYPES: { value: TimeOffType; label: string; color: string }[] = [
   { value: 'vacation', label: 'Vacation', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -127,7 +141,11 @@ export default function StaffDetailPage() {
   const [timeOffReason, setTimeOffReason] = useState('');
   const [timeOffType, setTimeOffType] = useState<TimeOffType>('vacation');
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
-  const [showTimeOffDialog, setShowTimeOffDialog] = useState(false);
+
+  // Appointments view state
+  const [appointmentsViewMode, setAppointmentsViewMode] = useState<ViewMode>('calendar');
+  const [appointmentsMonth, setAppointmentsMonth] = useState<Date>(new Date());
+  const [selectedAppointmentDate, setSelectedAppointmentDate] = useState<Date | null>(null);
 
   // Initialize profile form
   useEffect(() => {
@@ -152,7 +170,7 @@ export default function StaffDetailPage() {
     }
   }, [staffServices]);
 
-  // Initialize schedule
+  // Initialize schedule - defaults to business hours
   useEffect(() => {
     if (availabilityLoading || businessHoursLoading) return;
 
@@ -174,19 +192,38 @@ export default function StaffDetailPage() {
       }
     }
 
+    const hasExistingAvailability = availabilityTemplates && availabilityTemplates.length > 0;
+
     const newSchedule: ScheduleEntry[] = DAY_NAMES.map((_, idx) => {
       const bh = businessHoursMap[idx];
       const av = availabilityMap[idx];
+      const businessOpen = bh?.open_time?.slice(0, 5) || '09:00';
+      const businessClose = bh?.close_time?.slice(0, 5) || '17:00';
+      const businessIsOpen = bh?.is_open !== false;
+
+      // If no existing availability, default to business hours
+      if (!hasExistingAvailability) {
+        return {
+          day_of_week: idx,
+          is_working: businessIsOpen, // Working if business is open
+          start_time: businessOpen,
+          end_time: businessClose,
+          slot_duration_minutes: 30,
+          businessOpen,
+          businessClose,
+          businessIsOpen,
+        };
+      }
 
       return {
         day_of_week: idx,
         is_working: !!av,
-        start_time: av?.start_time || bh?.open_time?.slice(0, 5) || '09:00',
-        end_time: av?.end_time || bh?.close_time?.slice(0, 5) || '17:00',
+        start_time: av?.start_time || businessOpen,
+        end_time: av?.end_time || businessClose,
         slot_duration_minutes: av?.slot_duration_minutes || 30,
-        businessOpen: bh?.open_time?.slice(0, 5),
-        businessClose: bh?.close_time?.slice(0, 5),
-        businessIsOpen: bh?.is_open !== false,
+        businessOpen,
+        businessClose,
+        businessIsOpen,
       };
     });
 
@@ -253,9 +290,27 @@ export default function StaffDetailPage() {
   };
 
   const handleScheduleTimeChange = (dayIndex: number, field: 'start_time' | 'end_time', value: string) => {
-    setSchedule(prev => prev.map(entry =>
-      entry.day_of_week === dayIndex ? { ...entry, [field]: value } : entry
-    ));
+    setSchedule(prev => prev.map(entry => {
+      if (entry.day_of_week !== dayIndex) return entry;
+
+      // Clamp value to business hours
+      let clampedValue = value;
+      if (field === 'start_time' && entry.businessOpen && value < entry.businessOpen) {
+        clampedValue = entry.businessOpen;
+      }
+      if (field === 'end_time' && entry.businessClose && value > entry.businessClose) {
+        clampedValue = entry.businessClose;
+      }
+      // Ensure start_time < end_time
+      if (field === 'start_time' && entry.end_time && clampedValue >= entry.end_time) {
+        clampedValue = entry.end_time.slice(0, 3) + '00'; // Set to start of end hour
+      }
+      if (field === 'end_time' && entry.start_time && clampedValue <= entry.start_time) {
+        clampedValue = entry.start_time.slice(0, 3) + '30'; // Set to 30 min after start
+      }
+
+      return { ...entry, [field]: clampedValue };
+    }));
     setHasScheduleChanges(true);
   };
 
@@ -331,20 +386,6 @@ export default function StaffDetailPage() {
   // Helpers
   const getTimeOffTypeInfo = (type: string) => {
     return TIME_OFF_TYPES.find(t => t.value === type) || TIME_OFF_TYPES[4];
-  };
-
-  const calculateDuration = (start: string, end: string): string => {
-    const [startHour, startMin] = start.split(':').map(Number);
-    const [endHour, endMin] = end.split(':').map(Number);
-
-    let totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
-    if (totalMinutes < 0) totalMinutes += 24 * 60;
-
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-
-    if (minutes === 0) return `${hours}h`;
-    return `${hours}h ${minutes}m`;
   };
 
   // Get time off dates for calendar
@@ -618,55 +659,16 @@ export default function StaffDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Services Card */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">Assigned Services</CardTitle>
-                  <CardDescription>Services this team member can perform</CardDescription>
-                </div>
-                {hasServiceChanges && (
-                  <Button size="sm" onClick={handleSaveServices} loading={updateStaffServices.isPending}>
-                    Save
-                  </Button>
-                )}
-              </CardHeader>
-              <CardContent>
-                {servicesLoading || staffServicesLoading ? (
-                  <div className="space-y-2">
-                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14" />)}
-                  </div>
-                ) : allServices.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No services available</p>
-                ) : (
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {allServices.filter(s => s.is_active).map((service) => (
-                      <div
-                        key={service.id}
-                        className={cn(
-                          'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          selectedServices.includes(service.id)
-                            ? 'bg-primary/5 border-primary/30'
-                            : 'hover:bg-muted/50'
-                        )}
-                        onClick={() => handleServiceToggle(service.id)}
-                      >
-                        <Checkbox
-                          checked={selectedServices.includes(service.id)}
-                          onCheckedChange={() => handleServiceToggle(service.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm">{service.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDuration(service.duration_minutes)} {service.price ? `• $${service.price}` : ''}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* Services - Two Column Transfer Pattern */}
+            <ServiceAssignment
+              allServices={allServices}
+              selectedServices={selectedServices}
+              onToggle={handleServiceToggle}
+              onSave={handleSaveServices}
+              hasChanges={hasServiceChanges}
+              isLoading={servicesLoading || staffServicesLoading}
+              isSaving={updateStaffServices.isPending}
+            />
           </div>
         </TabsContent>
 
@@ -740,6 +742,8 @@ export default function StaffDetailPage() {
                                   type="time"
                                   value={entry.start_time || '09:00'}
                                   onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'start_time', e.target.value)}
+                                  min={entry.businessOpen}
+                                  max={entry.end_time}
                                   className="h-9 w-full max-w-28 mx-auto text-sm text-center"
                                 />
                                 <span className="text-muted-foreground text-sm text-center">—</span>
@@ -747,6 +751,8 @@ export default function StaffDetailPage() {
                                   type="time"
                                   value={entry.end_time || '17:00'}
                                   onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'end_time', e.target.value)}
+                                  min={entry.start_time}
+                                  max={entry.businessClose}
                                   className="h-9 w-full max-w-28 mx-auto text-sm text-center"
                                 />
                               </>
@@ -955,43 +961,17 @@ export default function StaffDetailPage() {
 
         {/* Appointments Tab */}
         <TabsContent value="appointments">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Appointments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {appointmentsLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-20" />)}
-                </div>
-              ) : !appointments?.length ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                  <p className="text-sm">No appointments</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {appointments.map((apt) => (
-                    <div key={apt.id} className="flex items-center justify-between p-4 rounded-lg border">
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-2xl font-bold">{formatDate(apt.appointment_date, 'd')}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(apt.appointment_date, 'MMM')}</p>
-                        </div>
-                        <div>
-                          <p className="font-medium">{apt.customer_name || 'Customer'}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatTime(apt.appointment_time)} • {apt.duration_minutes} min • {apt.service_name}
-                          </p>
-                        </div>
-                      </div>
-                      <AppointmentStatusBadge status={apt.status} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <StaffAppointmentsView
+            appointments={appointments || []}
+            isLoading={appointmentsLoading}
+            viewMode={appointmentsViewMode}
+            setViewMode={setAppointmentsViewMode}
+            currentMonth={appointmentsMonth}
+            setCurrentMonth={setAppointmentsMonth}
+            selectedDate={selectedAppointmentDate}
+            setSelectedDate={setSelectedAppointmentDate}
+            staffColor={staffMember?.color_code}
+          />
         </TabsContent>
       </Tabs>
 
@@ -1017,5 +997,512 @@ export default function StaffDetailPage() {
         )}
       </AnimatePresence>
     </PageContainer>
+  );
+}
+
+// Staff Appointments View Component with Calendar/Grid toggle
+function StaffAppointmentsView({
+  appointments,
+  isLoading,
+  viewMode,
+  setViewMode,
+  currentMonth,
+  setCurrentMonth,
+  selectedDate,
+  setSelectedDate,
+  staffColor,
+}: {
+  appointments: AppointmentWithDetails[];
+  isLoading: boolean;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  currentMonth: Date;
+  setCurrentMonth: (date: Date) => void;
+  selectedDate: Date | null;
+  setSelectedDate: (date: Date | null) => void;
+  staffColor?: string;
+}) {
+  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  // Group appointments by date
+  const appointmentsByDate = useMemo(() => {
+    const grouped: Record<string, AppointmentWithDetails[]> = {};
+    appointments.forEach((apt) => {
+      const date = apt.appointment_date;
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(apt);
+    });
+    return grouped;
+  }, [appointments]);
+
+  // Calendar days
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+  }, [currentMonth]);
+
+  // Get appointments for selected date
+  const selectedDateAppointments = selectedDate
+    ? appointmentsByDate[format(selectedDate, 'yyyy-MM-dd')] || []
+    : [];
+
+  // Sort appointments for grid view
+  const sortedAppointments = useMemo(() => {
+    return [...appointments].sort((a, b) => {
+      const dateCompare = a.appointment_date.localeCompare(b.appointment_date);
+      if (dateCompare !== 0) return dateCompare;
+      return a.appointment_time.localeCompare(b.appointment_time);
+    });
+  }, [appointments]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <Skeleton className="h-10 w-48" />
+        </div>
+        {viewMode === 'calendar' ? (
+          <div className="grid gap-4 lg:grid-cols-[1fr_350px]">
+            <Skeleton className="h-[450px] rounded-xl" />
+            <Skeleton className="h-[450px] rounded-xl" />
+          </div>
+        ) : (
+          <Skeleton className="h-[400px] rounded-xl" />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* View Toggle */}
+      <div className="flex justify-end">
+        <div className="flex items-center border rounded-lg p-1 bg-muted/50">
+          <Button
+            variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('calendar')}
+            className="h-8"
+          >
+            <Calendar className="h-4 w-4 mr-1.5" />
+            Calendar
+          </Button>
+          <Button
+            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('grid')}
+            className="h-8"
+          >
+            <LayoutGrid className="h-4 w-4 mr-1.5" />
+            Grid
+          </Button>
+        </div>
+      </div>
+
+      {viewMode === 'calendar' ? (
+        <div className="grid gap-4 lg:grid-cols-[1fr_350px]">
+          {/* Calendar */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">{format(currentMonth, 'MMMM yyyy')}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => {
+                    setCurrentMonth(new Date());
+                    setSelectedDate(new Date());
+                  }}>
+                    Today
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Week days header */}
+              <div className="grid grid-cols-7 mb-2">
+                {weekDays.map((day) => (
+                  <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Calendar grid */}
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((day) => {
+                  const dateKey = format(day, 'yyyy-MM-dd');
+                  const dayAppointments = appointmentsByDate[dateKey] || [];
+                  const isCurrentMonth = isSameMonth(day, currentMonth);
+                  const isSelected = selectedDate && isSameDay(day, selectedDate);
+                  const dayIsToday = isToday(day);
+
+                  return (
+                    <button
+                      key={dateKey}
+                      onClick={() => setSelectedDate(isSelected ? null : day)}
+                      className={cn(
+                        'relative p-2 min-h-[72px] rounded-lg border transition-all text-left',
+                        isCurrentMonth ? 'bg-card' : 'bg-muted/30',
+                        isSelected && 'ring-2 ring-primary border-primary',
+                        !isSelected && 'hover:border-primary/50',
+                        dayIsToday && !isSelected && 'border-primary/30'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'text-sm font-medium',
+                          !isCurrentMonth && 'text-muted-foreground',
+                          dayIsToday && 'text-primary'
+                        )}
+                      >
+                        {format(day, 'd')}
+                      </span>
+
+                      {dayAppointments.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {dayAppointments.slice(0, 2).map((apt) => {
+                            const isCancelled = apt.status === 'cancelled';
+                            return (
+                              <div
+                                key={apt.id}
+                                className={cn(
+                                  'text-[10px] px-1 py-0.5 rounded truncate',
+                                  isCancelled && 'line-through'
+                                )}
+                                style={{
+                                  backgroundColor: isCancelled
+                                    ? 'rgb(254 202 202)'
+                                    : staffColor
+                                      ? `${staffColor}20`
+                                      : '#e5e7eb',
+                                  borderLeft: isCancelled
+                                    ? '2px solid rgb(239 68 68)'
+                                    : `2px solid ${staffColor || '#9ca3af'}`,
+                                }}
+                              >
+                                {apt.appointment_time.slice(0, 5)}
+                              </div>
+                            );
+                          })}
+                          {dayAppointments.length > 2 && (
+                            <div className="text-[10px] text-muted-foreground px-1">
+                              +{dayAppointments.length - 2} more
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Selected Date Details */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">
+                {selectedDate ? format(selectedDate, 'EEEE, MMMM d') : 'Select a date'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!selectedDate ? (
+                <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground">
+                  <Calendar className="h-12 w-12 mb-4 opacity-20" />
+                  <p>Click on a date to view appointments</p>
+                </div>
+              ) : selectedDateAppointments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-[300px] text-center text-muted-foreground">
+                  <Calendar className="h-12 w-12 mb-4 opacity-20" />
+                  <p>No appointments on this date</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                  {selectedDateAppointments
+                    .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
+                    .map((apt) => {
+                      const status = statusConfig[apt.status as AppointmentStatusType];
+                      const StatusIcon = status?.icon || Clock;
+
+                      return (
+                        <div
+                          key={apt.id}
+                          className="p-3 rounded-lg border bg-card hover:shadow-sm transition-all"
+                          style={{ borderLeftWidth: 3, borderLeftColor: staffColor || '#9ca3af' }}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-sm">{apt.appointment_time.slice(0, 5)}</span>
+                            <Badge variant="outline" className={cn('text-[10px] h-5', status?.color)}>
+                              <StatusIcon className="h-3 w-3 mr-1" />
+                              {status?.label}
+                            </Badge>
+                          </div>
+                          <p className="font-medium truncate">{apt.customer_name || 'Customer'}</p>
+                          <p className="text-sm text-muted-foreground truncate">{apt.service_name || 'No service'}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{apt.duration_minutes} min</p>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        /* Grid View */
+        <Card>
+          {appointments.length === 0 ? (
+            <CardContent className="py-12">
+              <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
+                <Calendar className="h-12 w-12 mb-4 opacity-20" />
+                <p className="font-medium">No appointments found</p>
+              </div>
+            </CardContent>
+          ) : (
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">Date & Time</th>
+                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">Customer</th>
+                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">Service</th>
+                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">Duration</th>
+                      <th className="text-left p-4 text-sm font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedAppointments.map((apt) => {
+                      const status = statusConfig[apt.status as AppointmentStatusType];
+                      const StatusIcon = status?.icon || Clock;
+
+                      return (
+                        <tr key={apt.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                          <td className="p-4">
+                            <div className="font-medium">{format(parseISO(apt.appointment_date), 'MMM d, yyyy')}</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {apt.appointment_time.slice(0, 5)}
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="font-medium">{apt.customer_name || 'Customer'}</div>
+                            {apt.customer_phone && (
+                              <div className="text-sm text-muted-foreground">{apt.customer_phone}</div>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            {apt.service_name || '-'}
+                          </td>
+                          <td className="p-4 text-sm">
+                            {apt.duration_minutes} min
+                          </td>
+                          <td className="p-4">
+                            <Badge variant="outline" className={cn('gap-1', status?.color)}>
+                              <StatusIcon className="h-3 w-3" />
+                              {status?.label}
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// Service Assignment Component - Two Column Transfer Pattern
+function ServiceAssignment({
+  allServices,
+  selectedServices,
+  onToggle,
+  onSave,
+  hasChanges,
+  isLoading,
+  isSaving,
+}: {
+  allServices: Service[];
+  selectedServices: string[];
+  onToggle: (serviceId: string) => void;
+  onSave: () => void;
+  hasChanges: boolean;
+  isLoading: boolean;
+  isSaving: boolean;
+}) {
+  const activeServices = allServices.filter(s => s.is_active);
+  const availableServices = activeServices.filter(s => !selectedServices.includes(s.id));
+  const assignedServices = activeServices.filter(s => selectedServices.includes(s.id));
+
+  if (isLoading) {
+    return (
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <Skeleton className="h-6 w-40" />
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-64" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="lg:col-span-1">
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Service Assignment
+          </CardTitle>
+          <CardDescription>Assign services this team member can perform</CardDescription>
+        </div>
+        {hasChanges && (
+          <Button size="sm" onClick={onSave} loading={isSaving}>
+            <Check className="h-4 w-4 mr-2" />
+            Save Changes
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {activeServices.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
+            <p className="text-sm">No services available</p>
+            <p className="text-xs mt-1">Create services first to assign them</p>
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Available Services Pool */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-muted-foreground">Available Services</h4>
+                <Badge variant="secondary" className="text-xs">
+                  {availableServices.length}
+                </Badge>
+              </div>
+              <div className="border rounded-xl bg-muted/20 min-h-[200px] max-h-[320px] overflow-y-auto">
+                {availableServices.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[200px] text-center text-muted-foreground p-4">
+                    <Check className="h-8 w-8 mb-2 opacity-30" />
+                    <p className="text-sm">All services assigned</p>
+                  </div>
+                ) : (
+                  <div className="p-2 space-y-1.5">
+                    <AnimatePresence mode="popLayout">
+                      {availableServices.map((service) => (
+                        <motion.button
+                          key={service.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95, x: 20 }}
+                          transition={{ duration: 0.15 }}
+                          onClick={() => onToggle(service.id)}
+                          className="w-full flex items-center gap-3 p-3 rounded-lg bg-card border border-transparent hover:border-primary/30 hover:shadow-sm transition-all text-left group"
+                        >
+                          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                            <Plus className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{service.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDuration(service.duration_minutes)}
+                              {service.price ? ` • $${service.price}` : ''}
+                            </p>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Assigned Services Table */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-muted-foreground">Assigned Services</h4>
+                <Badge variant="default" className="text-xs">
+                  {assignedServices.length}
+                </Badge>
+              </div>
+              <div className="border rounded-xl min-h-[200px] max-h-[320px] overflow-hidden">
+                {assignedServices.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[200px] text-center text-muted-foreground p-4 bg-muted/10">
+                    <Package className="h-8 w-8 mb-2 opacity-30" />
+                    <p className="text-sm">No services assigned</p>
+                    <p className="text-xs mt-1">Click services on the left to assign</p>
+                  </div>
+                ) : (
+                  <div className="overflow-y-auto max-h-[320px]">
+                    <table className="w-full">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="text-left text-xs font-medium text-muted-foreground p-3">Service</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground p-3 hidden sm:table-cell">Duration</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground p-3 w-12"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <AnimatePresence mode="popLayout">
+                          {assignedServices.map((service) => (
+                            <motion.tr
+                              key={service.id}
+                              layout
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              transition={{ duration: 0.15 }}
+                              className="border-t hover:bg-muted/30 transition-colors group"
+                            >
+                              <td className="p-3">
+                                <p className="font-medium text-sm">{service.name}</p>
+                                {service.price && (
+                                  <p className="text-xs text-muted-foreground">${service.price}</p>
+                                )}
+                              </td>
+                              <td className="p-3 text-sm text-muted-foreground hidden sm:table-cell">
+                                {formatDuration(service.duration_minutes)}
+                              </td>
+                              <td className="p-3 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => onToggle(service.id)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </AnimatePresence>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
