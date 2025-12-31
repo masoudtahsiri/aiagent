@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Mail, Phone, Calendar, Clock, Edit, Save,
-  Check, X, Plus, Trash2, AlertCircle, CalendarOff,
-  Info, User, ChevronRight, ChevronLeft
+  Check, X, Briefcase, Plus, Trash2, AlertCircle,
+  CalendarOff, CalendarCheck, RotateCcw, AlertTriangle, Info,
+  User, Settings, Package
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge, AppointmentStatusBadge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/form-elements';
+import { Switch, Checkbox } from '@/components/ui/form-elements';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -61,6 +62,7 @@ const colorOptions = [
 ];
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface ScheduleEntry extends StaffAvailabilityEntry {
   businessOpen?: string;
@@ -70,6 +72,7 @@ interface ScheduleEntry extends StaffAvailabilityEntry {
 
 export default function StaffDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
   // Fetch staff data
@@ -80,7 +83,7 @@ export default function StaffDetailPage() {
 
   // Fetch all services
   const { data: servicesData, isLoading: servicesLoading } = useServices();
-  const allServices = (servicesData?.data || []).filter((s: Service) => s.is_active);
+  const allServices = servicesData?.data || [];
 
   // Fetch staff's assigned services
   const { data: staffServices, isLoading: staffServicesLoading } = useStaffServices(id || '');
@@ -114,7 +117,7 @@ export default function StaffDetailPage() {
   });
 
   // Services state
-  const [assignedServiceIds, setAssignedServiceIds] = useState<string[]>([]);
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [hasServiceChanges, setHasServiceChanges] = useState(false);
 
   // Time off dialog state
@@ -129,6 +132,8 @@ export default function StaffDetailPage() {
   // Schedule editor state
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
   const [hasScheduleChanges, setHasScheduleChanges] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
 
   // Initialize profile form
   useEffect(() => {
@@ -148,12 +153,12 @@ export default function StaffDetailPage() {
   // Initialize selected services
   useEffect(() => {
     if (staffServices && staffServices.length > 0) {
-      setAssignedServiceIds(staffServices.map((s: { id: string }) => s.id));
+      setSelectedServices(staffServices.map((s: { id: string }) => s.id));
       setHasServiceChanges(false);
     }
   }, [staffServices]);
 
-  // Initialize schedule from business hours (defaults) or existing availability
+  // Initialize schedule
   useEffect(() => {
     if (availabilityLoading || businessHoursLoading) return;
 
@@ -165,7 +170,7 @@ export default function StaffDetailPage() {
     }
 
     const availabilityMap: Record<number, { start_time: string; end_time: string; slot_duration_minutes: number }> = {};
-    if (availabilityTemplates && availabilityTemplates.length > 0) {
+    if (availabilityTemplates) {
       for (const t of availabilityTemplates) {
         availabilityMap[t.day_of_week] = {
           start_time: t.start_time?.slice(0, 5) || '09:00',
@@ -178,42 +183,54 @@ export default function StaffDetailPage() {
     const newSchedule: ScheduleEntry[] = DAY_NAMES.map((_, idx) => {
       const bh = businessHoursMap[idx];
       const av = availabilityMap[idx];
-      const businessIsOpen = bh?.is_open !== false;
-      const businessOpen = bh?.open_time?.slice(0, 5);
-      const businessClose = bh?.close_time?.slice(0, 5);
 
-      // If staff has existing availability, use it; otherwise default to business hours
-      const hasExistingAvailability = availabilityTemplates && availabilityTemplates.length > 0;
-
-      if (hasExistingAvailability) {
-        return {
-          day_of_week: idx,
-          is_working: !!av && businessIsOpen,
-          start_time: av?.start_time || businessOpen || '09:00',
-          end_time: av?.end_time || businessClose || '17:00',
-          slot_duration_minutes: av?.slot_duration_minutes || 30,
-          businessOpen,
-          businessClose,
-          businessIsOpen,
-        };
-      } else {
-        // Default to business hours
-        return {
-          day_of_week: idx,
-          is_working: businessIsOpen,
-          start_time: businessOpen || '09:00',
-          end_time: businessClose || '17:00',
-          slot_duration_minutes: 30,
-          businessOpen,
-          businessClose,
-          businessIsOpen,
-        };
-      }
+      return {
+        day_of_week: idx,
+        is_working: !!av,
+        start_time: av?.start_time || bh?.open_time?.slice(0, 5) || '09:00',
+        end_time: av?.end_time || bh?.close_time?.slice(0, 5) || '17:00',
+        slot_duration_minutes: av?.slot_duration_minutes || 30,
+        businessOpen: bh?.open_time?.slice(0, 5),
+        businessClose: bh?.close_time?.slice(0, 5),
+        businessIsOpen: bh?.is_open !== false,
+      };
     });
 
     setSchedule(newSchedule);
     setHasScheduleChanges(false);
   }, [availabilityTemplates, businessHours, availabilityLoading, businessHoursLoading]);
+
+  // Validate schedule changes
+  useEffect(() => {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    for (const entry of schedule) {
+      if (!entry.is_working) continue;
+
+      const dayName = DAY_NAMES[entry.day_of_week];
+
+      if (!entry.businessIsOpen) {
+        errors.push(`${dayName}: Business is closed on this day`);
+        continue;
+      }
+
+      if (entry.businessOpen && entry.start_time && entry.start_time < entry.businessOpen) {
+        errors.push(`${dayName}: Start time (${entry.start_time}) is before business opens (${entry.businessOpen})`);
+      }
+
+      if (entry.businessClose && entry.end_time && entry.end_time > entry.businessClose) {
+        errors.push(`${dayName}: End time (${entry.end_time}) is after business closes (${entry.businessClose})`);
+      }
+
+      if (!entry.businessOpen || !entry.businessClose) {
+        warnings.push(`${dayName}: No business hours set for this day`);
+      }
+    }
+
+    setValidationErrors(errors);
+    setValidationWarnings(warnings);
+  }, [schedule]);
 
   // Profile handlers
   const handleSaveProfile = async () => {
@@ -241,13 +258,12 @@ export default function StaffDetailPage() {
   };
 
   // Services handlers
-  const assignService = (serviceId: string) => {
-    setAssignedServiceIds(prev => [...prev, serviceId]);
-    setHasServiceChanges(true);
-  };
-
-  const unassignService = (serviceId: string) => {
-    setAssignedServiceIds(prev => prev.filter(id => id !== serviceId));
+  const handleServiceToggle = (serviceId: string) => {
+    setSelectedServices(prev =>
+      prev.includes(serviceId)
+        ? prev.filter(id => id !== serviceId)
+        : [...prev, serviceId]
+    );
     setHasServiceChanges(true);
   };
 
@@ -257,7 +273,7 @@ export default function StaffDetailPage() {
     try {
       await updateStaffServices.mutateAsync({
         staffId: id,
-        serviceIds: assignedServiceIds,
+        serviceIds: selectedServices,
       });
       toast.success('Services updated');
       setHasServiceChanges(false);
@@ -266,41 +282,28 @@ export default function StaffDetailPage() {
     }
   };
 
-  // Derived service lists
-  const assignedServices = allServices.filter(s => assignedServiceIds.includes(s.id));
-  const unassignedServices = allServices.filter(s => !assignedServiceIds.includes(s.id));
-
   // Schedule handlers
   const handleScheduleToggle = (dayIndex: number) => {
-    const entry = schedule[dayIndex];
-    if (!entry.businessIsOpen) return; // Can't enable if business is closed
-
-    setSchedule(prev => prev.map(e =>
-      e.day_of_week === dayIndex ? { ...e, is_working: !e.is_working } : e
+    setSchedule(prev => prev.map(entry =>
+      entry.day_of_week === dayIndex ? { ...entry, is_working: !entry.is_working } : entry
     ));
     setHasScheduleChanges(true);
   };
 
   const handleScheduleTimeChange = (dayIndex: number, field: 'start_time' | 'end_time', value: string) => {
-    const entry = schedule[dayIndex];
-
-    // Constrain to business hours
-    let constrainedValue = value;
-    if (field === 'start_time' && entry.businessOpen && value < entry.businessOpen) {
-      constrainedValue = entry.businessOpen;
-    }
-    if (field === 'end_time' && entry.businessClose && value > entry.businessClose) {
-      constrainedValue = entry.businessClose;
-    }
-
-    setSchedule(prev => prev.map(e =>
-      e.day_of_week === dayIndex ? { ...e, [field]: constrainedValue } : e
+    setSchedule(prev => prev.map(entry =>
+      entry.day_of_week === dayIndex ? { ...entry, [field]: value } : entry
     ));
     setHasScheduleChanges(true);
   };
 
   const handleSaveSchedule = async () => {
     if (!id) return;
+
+    if (validationErrors.length > 0) {
+      toast.error('Please fix validation errors before saving');
+      return;
+    }
 
     try {
       await updateAvailability.mutateAsync({
@@ -324,37 +327,6 @@ export default function StaffDetailPage() {
         toast.error('Failed to save schedule');
       }
     }
-  };
-
-  const handleResetSchedule = () => {
-    // Reset to business hours
-    if (!businessHours) return;
-
-    const businessHoursMap: Record<number, BusinessHours> = {};
-    for (const h of businessHours) {
-      businessHoursMap[h.day_of_week] = h;
-    }
-
-    const resetSchedule: ScheduleEntry[] = DAY_NAMES.map((_, idx) => {
-      const bh = businessHoursMap[idx];
-      const businessIsOpen = bh?.is_open !== false;
-      const businessOpen = bh?.open_time?.slice(0, 5);
-      const businessClose = bh?.close_time?.slice(0, 5);
-
-      return {
-        day_of_week: idx,
-        is_working: businessIsOpen,
-        start_time: businessOpen || '09:00',
-        end_time: businessClose || '17:00',
-        slot_duration_minutes: 30,
-        businessOpen,
-        businessClose,
-        businessIsOpen,
-      };
-    });
-
-    setSchedule(resetSchedule);
-    setHasScheduleChanges(true);
   };
 
   // Time off handlers
@@ -430,6 +402,12 @@ export default function StaffDetailPage() {
     if (!timeOffs) return [];
     const today = new Date().toISOString().split('T')[0];
     return timeOffs.filter(t => t.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date));
+  }, [timeOffs]);
+
+  const pastTimeOffs = useMemo(() => {
+    if (!timeOffs) return [];
+    const today = new Date().toISOString().split('T')[0];
+    return timeOffs.filter(t => t.end_date < today).sort((a, b) => b.start_date.localeCompare(a.start_date));
   }, [timeOffs]);
 
   if (staffLoading) {
@@ -514,7 +492,7 @@ export default function StaffDetailPage() {
                 <p className="text-xs text-muted-foreground">Appointments</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{assignedServices.length}</p>
+                <p className="text-2xl font-bold">{selectedServices.length}</p>
                 <p className="text-xs text-muted-foreground">Services</p>
               </div>
               <div>
@@ -533,12 +511,13 @@ export default function StaffDetailPage() {
             <User className="h-4 w-4 mr-2" />
             Profile
           </TabsTrigger>
-          <TabsTrigger value="services">
-            Services
-          </TabsTrigger>
           <TabsTrigger value="schedule">
             <Calendar className="h-4 w-4 mr-2" />
-            Schedule & Time Off
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="time-off">
+            <CalendarOff className="h-4 w-4 mr-2" />
+            Time Off
           </TabsTrigger>
           <TabsTrigger value="appointments">
             <Clock className="h-4 w-4 mr-2" />
@@ -548,29 +527,30 @@ export default function StaffDetailPage() {
 
         {/* Profile Tab */}
         <TabsContent value="profile">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Basic Information</CardTitle>
-              {!isEditingProfile ? (
-                <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(true)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              ) : (
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(false)}>
-                    Cancel
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Basic Info Card */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base">Basic Information</CardTitle>
+                {!isEditingProfile ? (
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(true)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
                   </Button>
-                  <Button size="sm" onClick={handleSaveProfile} loading={updateStaff.isPending}>
-                    Save
-                  </Button>
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isEditingProfile ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveProfile} loading={updateStaff.isPending}>
+                      Save
+                    </Button>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditingProfile ? (
+                  <>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Full Name</label>
                       <Input
@@ -585,20 +565,22 @@ export default function StaffDetailPage() {
                         onChange={(e) => setProfileForm(prev => ({ ...prev, title: e.target.value }))}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Email</label>
-                      <Input
-                        type="email"
-                        value={profileForm.email}
-                        onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Phone</label>
-                      <Input
-                        value={profileForm.phone}
-                        onChange={(e) => setProfileForm(prev => ({ ...prev, phone: e.target.value }))}
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Email</label>
+                        <Input
+                          type="email"
+                          value={profileForm.email}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Phone</label>
+                        <Input
+                          value={profileForm.phone}
+                          onChange={(e) => setProfileForm(prev => ({ ...prev, phone: e.target.value }))}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Specialty</label>
@@ -607,347 +589,319 @@ export default function StaffDetailPage() {
                         onChange={(e) => setProfileForm(prev => ({ ...prev, specialty: e.target.value }))}
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Color</label>
+                      <div className="flex gap-2">
+                        {colorOptions.map((color) => (
+                          <button
+                            key={color.value}
+                            type="button"
+                            onClick={() => setProfileForm(prev => ({ ...prev, color_code: color.value }))}
+                            className={cn(
+                              'w-8 h-8 rounded-full border-2 transition-all',
+                              profileForm.color_code === color.value ? 'border-foreground scale-110' : 'border-transparent'
+                            )}
+                            style={{ backgroundColor: color.value }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div>
+                        <p className="font-medium">Active</p>
+                        <p className="text-sm text-muted-foreground">Can receive appointments</p>
+                      </div>
+                      <Switch
+                        checked={profileForm.is_active}
+                        onCheckedChange={(checked) => setProfileForm(prev => ({ ...prev, is_active: checked }))}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Name</span>
+                      <span className="font-medium">{staffMember.name}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Title</span>
+                      <span>{staffMember.title || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Email</span>
+                      <span>{staffMember.email || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Phone</span>
+                      <span>{staffMember.phone || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Specialty</span>
+                      <span>{staffMember.specialty || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-muted-foreground">Status</span>
+                      {staffMember.is_active ? (
+                        <Badge variant="success">Active</Badge>
+                      ) : (
+                        <Badge variant="secondary">Inactive</Badge>
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Calendar Color</label>
-                    <div className="flex gap-2">
-                      {colorOptions.map((color) => (
-                        <button
-                          key={color.value}
-                          type="button"
-                          onClick={() => setProfileForm(prev => ({ ...prev, color_code: color.value }))}
-                          className={cn(
-                            'w-8 h-8 rounded-full border-2 transition-all',
-                            profileForm.color_code === color.value ? 'border-foreground scale-110' : 'border-transparent'
-                          )}
-                          style={{ backgroundColor: color.value }}
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Services Card */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Assigned Services</CardTitle>
+                  <CardDescription>Services this team member can perform</CardDescription>
+                </div>
+                {hasServiceChanges && (
+                  <Button size="sm" onClick={handleSaveServices} loading={updateStaffServices.isPending}>
+                    Save
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent>
+                {servicesLoading || staffServicesLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14" />)}
+                  </div>
+                ) : allServices.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No services available</p>
+                ) : (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {allServices.filter(s => s.is_active).map((service) => (
+                      <div
+                        key={service.id}
+                        className={cn(
+                          'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                          selectedServices.includes(service.id)
+                            ? 'bg-primary/5 border-primary/30'
+                            : 'hover:bg-muted/50'
+                        )}
+                        onClick={() => handleServiceToggle(service.id)}
+                      >
+                        <Checkbox
+                          checked={selectedServices.includes(service.id)}
+                          onCheckedChange={() => handleServiceToggle(service.id)}
                         />
-                      ))}
-                    </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{service.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDuration(service.duration_minutes)} {service.price ? `• $${service.price}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="font-medium">Active</p>
-                      <p className="text-sm text-muted-foreground">Can receive appointments</p>
-                    </div>
-                    <Switch
-                      checked={profileForm.is_active}
-                      onCheckedChange={(checked) => setProfileForm(prev => ({ ...prev, is_active: checked }))}
-                    />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Schedule Tab */}
+        <TabsContent value="schedule">
+          <Card className="bg-primary/5 border-primary/20 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Staff Availability</p>
+                  <p className="text-xs text-muted-foreground">
+                    Hours must be within business operating hours.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {validationErrors.length > 0 && (
+            <Card className="border-destructive/50 bg-destructive/5 mb-6">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                  <div>
+                    <p className="font-medium text-destructive text-sm">Validation Errors</p>
+                    <ul className="text-xs text-destructive/80 mt-1 space-y-1">
+                      {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
+                    </ul>
                   </div>
-                </>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Weekly Schedule</CardTitle>
+              <Button
+                size="sm"
+                onClick={handleSaveSchedule}
+                disabled={!hasScheduleChanges || validationErrors.length > 0}
+                loading={updateAvailability.isPending}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {availabilityLoading || businessHoursLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-14" />)}
+                </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Name</span>
-                    <span className="font-medium">{staffMember.name}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Title</span>
-                    <span>{staffMember.title || '-'}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Email</span>
-                    <span>{staffMember.email || '-'}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Phone</span>
-                    <span>{staffMember.phone || '-'}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Specialty</span>
-                    <span>{staffMember.specialty || '-'}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Status</span>
-                    {staffMember.is_active ? (
-                      <Badge variant="success">Active</Badge>
-                    ) : (
-                      <Badge variant="secondary">Inactive</Badge>
-                    )}
-                  </div>
+                <div className="space-y-3">
+                  {schedule.map((entry) => (
+                    <div
+                      key={entry.day_of_week}
+                      className={cn(
+                        'flex flex-wrap items-center gap-3 p-3 rounded-lg border',
+                        entry.is_working ? 'bg-card' : 'bg-muted/50'
+                      )}
+                    >
+                      <Switch
+                        checked={entry.is_working}
+                        onCheckedChange={() => handleScheduleToggle(entry.day_of_week)}
+                        disabled={!entry.businessIsOpen}
+                      />
+                      <span className={cn('font-medium w-24', !entry.is_working && 'text-muted-foreground')}>
+                        {DAY_NAMES[entry.day_of_week]}
+                      </span>
+
+                      {entry.is_working ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input
+                            type="time"
+                            value={entry.start_time || ''}
+                            onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'start_time', e.target.value)}
+                            className="w-32"
+                          />
+                          <span className="text-muted-foreground">to</span>
+                          <Input
+                            type="time"
+                            value={entry.end_time || ''}
+                            onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'end_time', e.target.value)}
+                            className="w-32"
+                          />
+                          {entry.start_time && entry.end_time && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {calculateDuration(entry.start_time, entry.end_time)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          {entry.businessIsOpen ? 'Not working' : 'Business closed'}
+                        </span>
+                      )}
+
+                      {entry.businessIsOpen && entry.businessOpen && entry.businessClose && (
+                        <span className="text-xs text-muted-foreground hidden lg:block">
+                          Business: {entry.businessOpen} - {entry.businessClose}
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Services Tab - Two Pool Design */}
-        <TabsContent value="services">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-lg font-semibold">Assigned Services</h2>
-              <p className="text-sm text-muted-foreground">Select which services this team member can perform</p>
-            </div>
-            {hasServiceChanges && (
-              <Button onClick={handleSaveServices} loading={updateStaffServices.isPending}>
-                <Save className="h-4 w-4 mr-2" />
-                Save Changes
-              </Button>
-            )}
+        {/* Time Off Tab */}
+        <TabsContent value="time-off">
+          <div className="flex justify-end mb-6">
+            <Button onClick={() => setShowTimeOffDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Time Off
+            </Button>
           </div>
 
-          {servicesLoading || staffServicesLoading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Skeleton className="h-80" />
-              <Skeleton className="h-80" />
-            </div>
-          ) : allServices.length === 0 ? (
-            <Card className="p-8 text-center">
-              <p className="text-muted-foreground">No services available. Create services first.</p>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Unassigned Services Pool */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center justify-between">
-                    <span>Available Services</span>
-                    <Badge variant="secondary">{unassignedServices.length}</Badge>
-                  </CardTitle>
-                  <CardDescription>Click to assign to this team member</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {unassignedServices.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">All services assigned</p>
-                  ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {unassignedServices.map((service) => (
-                        <motion.div
-                          key={service.id}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center justify-between p-3 rounded-lg border border-dashed hover:border-primary hover:bg-primary/5 cursor-pointer transition-colors group"
-                          onClick={() => assignService(service.id)}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-sm">{service.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatDuration(service.duration_minutes)} {service.price ? `• $${service.price}` : ''}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Scheduled Time Off</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {timeOffsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
+                </div>
+              ) : upcomingTimeOffs.length === 0 && pastTimeOffs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CalendarOff className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p className="text-sm">No time off scheduled</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {upcomingTimeOffs.map((timeOff) => {
+                    const typeInfo = getTimeOffTypeInfo(timeOff.time_off_type);
+                    const days = calculateTimeOffDays(timeOff.start_date, timeOff.end_date);
+
+                    return (
+                      <div
+                        key={timeOff.id}
+                        className="flex items-center justify-between p-4 rounded-lg border"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="text-center">
+                            <p className="text-2xl font-bold">{formatDate(timeOff.start_date, 'd')}</p>
+                            <p className="text-xs text-muted-foreground">{formatDate(timeOff.start_date, 'MMM')}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge className={cn('text-xs', typeInfo.color)}>{typeInfo.label}</Badge>
+                              <span className="text-xs text-muted-foreground">{days} day{days > 1 ? 's' : ''}</span>
+                            </div>
+                            <p className="text-sm font-medium">
+                              {formatDate(timeOff.start_date, 'MMM d, yyyy')}
+                              {timeOff.start_date !== timeOff.end_date && <> — {formatDate(timeOff.end_date, 'MMM d, yyyy')}</>}
                             </p>
+                            {timeOff.reason && <p className="text-xs text-muted-foreground mt-1">{timeOff.reason}</p>}
                           </div>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Assigned Services Pool */}
-              <Card className="border-primary/30 bg-primary/5">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center justify-between">
-                    <span>Assigned Services</span>
-                    <Badge variant="default">{assignedServices.length}</Badge>
-                  </CardTitle>
-                  <CardDescription>Click to remove from this team member</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {assignedServices.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">No services assigned yet</p>
-                  ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {assignedServices.map((service) => (
-                        <motion.div
-                          key={service.id}
-                          initial={{ opacity: 0, x: 10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-background hover:border-destructive/50 hover:bg-destructive/5 cursor-pointer transition-colors group"
-                          onClick={() => unassignService(service.id)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <ChevronLeft className="h-4 w-4 text-muted-foreground group-hover:text-destructive transition-colors" />
-                            <div className="min-w-0">
-                              <p className="font-medium text-sm">{service.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatDuration(service.duration_minutes)} {service.price ? `• $${service.price}` : ''}
-                              </p>
-                            </div>
-                          </div>
-                          <Check className="h-4 w-4 text-primary" />
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Schedule & Time Off Tab (Combined like Business Hours page) */}
-        <TabsContent value="schedule">
-          <div className="space-y-8">
-            {/* Weekly Schedule Section */}
-            <div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold">Weekly Schedule</h2>
-                  <p className="text-sm text-muted-foreground">Working hours based on business operating hours</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleResetSchedule}>
-                    Reset to Business Hours
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleSaveSchedule}
-                    disabled={!hasScheduleChanges}
-                    loading={updateAvailability.isPending}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </Button>
-                </div>
-              </div>
-
-              <Card>
-                <CardContent className="p-0">
-                  {availabilityLoading || businessHoursLoading ? (
-                    <div className="p-4 space-y-3">
-                      {[1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-14" />)}
-                    </div>
-                  ) : (
-                    <div className="divide-y">
-                      {schedule.map((entry) => (
-                        <div
-                          key={entry.day_of_week}
-                          className={cn(
-                            'flex flex-wrap items-center gap-4 p-4 transition-colors',
-                            !entry.businessIsOpen && 'bg-muted/50'
-                          )}
-                        >
-                          {/* Toggle */}
-                          <Switch
-                            checked={entry.is_working}
-                            onCheckedChange={() => handleScheduleToggle(entry.day_of_week)}
-                            disabled={!entry.businessIsOpen}
-                          />
-
-                          {/* Day Name */}
-                          <span className={cn(
-                            'font-medium w-28',
-                            !entry.is_working && 'text-muted-foreground'
-                          )}>
-                            {DAY_NAMES[entry.day_of_week]}
-                          </span>
-
-                          {/* Status/Times */}
-                          {!entry.businessIsOpen ? (
-                            <span className="text-sm text-muted-foreground">Business Closed</span>
-                          ) : entry.is_working ? (
-                            <div className="flex items-center gap-2 flex-1">
-                              <Input
-                                type="time"
-                                value={entry.start_time || ''}
-                                min={entry.businessOpen}
-                                max={entry.businessClose}
-                                onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'start_time', e.target.value)}
-                                className="w-32"
-                              />
-                              <span className="text-muted-foreground">to</span>
-                              <Input
-                                type="time"
-                                value={entry.end_time || ''}
-                                min={entry.businessOpen}
-                                max={entry.businessClose}
-                                onChange={(e) => handleScheduleTimeChange(entry.day_of_week, 'end_time', e.target.value)}
-                                className="w-32"
-                              />
-                              {entry.start_time && entry.end_time && (
-                                <Badge variant="secondary" className="ml-2">
-                                  {calculateDuration(entry.start_time, entry.end_time)}
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Not Working</span>
-                          )}
-
-                          {/* Business Hours Reference */}
-                          {entry.businessIsOpen && entry.businessOpen && entry.businessClose && (
-                            <span className="text-xs text-muted-foreground hidden lg:block ml-auto">
-                              Business: {entry.businessOpen} - {entry.businessClose}
-                            </span>
-                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteTimeOff(timeOff)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
 
-            {/* Scheduled Time Off Section (like Business Closures) */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold">Scheduled Time Off</h2>
-                  <p className="text-sm text-muted-foreground">Vacation, sick leave, and other time off</p>
-                </div>
-                <Button onClick={() => setShowTimeOffDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Time Off
-                </Button>
-              </div>
-
-              <Card>
-                <CardContent className="p-0">
-                  {timeOffsLoading ? (
-                    <div className="p-4 space-y-3">
-                      {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}
-                    </div>
-                  ) : upcomingTimeOffs.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <CalendarOff className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                      <p className="text-sm">No scheduled time off</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y">
-                      {upcomingTimeOffs.map((timeOff) => {
+                  {pastTimeOffs.length > 0 && (
+                    <>
+                      <div className="text-sm font-medium text-muted-foreground pt-4">Past Time Off</div>
+                      {pastTimeOffs.slice(0, 5).map((timeOff) => {
                         const typeInfo = getTimeOffTypeInfo(timeOff.time_off_type);
                         const days = calculateTimeOffDays(timeOff.start_date, timeOff.end_date);
 
                         return (
-                          <div
-                            key={timeOff.id}
-                            className="flex items-center justify-between p-4"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className="text-center w-12">
-                                <p className="text-2xl font-bold leading-none">{formatDate(timeOff.start_date, 'd')}</p>
-                                <p className="text-xs text-muted-foreground">{formatDate(timeOff.start_date, 'MMM')}</p>
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <Badge className={cn('text-xs', typeInfo.color)}>{typeInfo.label}</Badge>
-                                  <span className="text-xs text-muted-foreground">{days} day{days > 1 ? 's' : ''}</span>
-                                </div>
-                                <p className="text-sm">
-                                  {formatDate(timeOff.start_date, 'MMM d, yyyy')}
-                                  {timeOff.start_date !== timeOff.end_date && <> — {formatDate(timeOff.end_date, 'MMM d, yyyy')}</>}
-                                </p>
-                                {timeOff.reason && <p className="text-xs text-muted-foreground mt-0.5">{timeOff.reason}</p>}
-                              </div>
+                          <div key={timeOff.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 opacity-70">
+                            <div className="flex items-center gap-3">
+                              <Badge variant="outline" className="text-xs">{typeInfo.label}</Badge>
+                              <span className="text-sm">
+                                {formatDate(timeOff.start_date, 'MMM d')}
+                                {timeOff.start_date !== timeOff.end_date && <> — {formatDate(timeOff.end_date, 'MMM d, yyyy')}</>}
+                              </span>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteTimeOff(timeOff)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <span className="text-xs text-muted-foreground">{days} day{days > 1 ? 's' : ''}</span>
                           </div>
                         );
                       })}
-                    </div>
+                    </>
                   )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Appointments Tab */}
@@ -956,23 +910,23 @@ export default function StaffDetailPage() {
             <CardHeader>
               <CardTitle className="text-base">Appointments</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent>
               {appointmentsLoading ? (
-                <div className="p-4 space-y-3">
-                  {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-16" />)}
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-20" />)}
                 </div>
               ) : !appointments?.length ? (
-                <div className="text-center py-12 text-muted-foreground">
+                <div className="text-center py-8 text-muted-foreground">
                   <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
                   <p className="text-sm">No appointments</p>
                 </div>
               ) : (
-                <div className="divide-y">
+                <div className="space-y-3">
                   {appointments.map((apt) => (
-                    <div key={apt.id} className="flex items-center justify-between p-4">
+                    <div key={apt.id} className="flex items-center justify-between p-4 rounded-lg border">
                       <div className="flex items-center gap-4">
-                        <div className="text-center w-12">
-                          <p className="text-2xl font-bold leading-none">{formatDate(apt.appointment_date, 'd')}</p>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold">{formatDate(apt.appointment_date, 'd')}</p>
                           <p className="text-xs text-muted-foreground">{formatDate(apt.appointment_date, 'MMM')}</p>
                         </div>
                         <div>
@@ -1004,7 +958,7 @@ export default function StaffDetailPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Type</label>
               <div className="grid grid-cols-3 gap-2">
-                {TIME_OFF_TYPES.map((type) => (
+                {TIME_OFF_TYPES.slice(0, 5).map((type) => (
                   <button
                     key={type.value}
                     type="button"
