@@ -357,13 +357,13 @@ export default function StaffDetailPage() {
 
   if (!staffMember) {
     return (
-      <PageContainer title="Staff Not Found">
+      <PageContainer title="Team Member Not Found">
         <Card className="p-8 text-center">
-          <p className="text-muted-foreground">Staff member not found or you don't have access.</p>
-          <Link to="/staff">
+          <p className="text-muted-foreground">Team member not found or you don't have access.</p>
+          <Link to="/team">
             <Button variant="outline" className="mt-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Staff
+              Back to Team
             </Button>
           </Link>
         </Card>
@@ -378,7 +378,7 @@ export default function StaffDetailPage() {
     <PageContainer
       title={staffName}
       breadcrumbs={[
-        { label: 'Staff', href: '/staff' },
+        { label: 'Team', href: '/team' },
         { label: staffName },
       ]}
     >

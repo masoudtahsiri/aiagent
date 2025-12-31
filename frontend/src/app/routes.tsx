@@ -18,6 +18,7 @@ const AISetupPage = lazy(() => import('@/pages/ai'));
 const BusinessPage = lazy(() => import('@/pages/business'));
 const ServicesPage = lazy(() => import('@/pages/services'));
 const TeamPage = lazy(() => import('@/pages/team'));
+const TeamDetailPage = lazy(() => import('@/pages/staff/detail'));
 const CustomersPage = lazy(() => import('@/pages/customers'));
 const CustomerDetailPage = lazy(() => import('@/pages/customers/detail'));
 const ActivityPage = lazy(() => import('@/pages/activity'));
@@ -50,6 +51,7 @@ export function AppRoutes() {
             <Route path="/ai" element={<AISetupPage />} />
             <Route path="/business" element={<BusinessPage />} />
             <Route path="/team" element={<TeamPage />} />
+            <Route path="/team/:id" element={<TeamDetailPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/activity" element={<ActivityPage />} />

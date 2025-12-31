@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Plus,
@@ -18,6 +18,8 @@ import {
   RefreshCw,
   Clock,
   Briefcase,
+  Eye,
+  CalendarOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/page-container';
@@ -64,6 +66,7 @@ const colorOptions = [
 ];
 
 export default function TeamPage() {
+  const navigate = useNavigate();
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -218,7 +221,10 @@ export default function TeamPage() {
 
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
+                    <div
+                      className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => navigate(`/team/${member.id}`)}
+                    >
                       <Avatar
                         name={member.name}
                         color={member.color_code}
@@ -238,9 +244,13 @@ export default function TeamPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => navigate(`/team/${member.id}`)}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setEditingStaff(member)}>
                           <Edit className="h-4 w-4 mr-2" />
-                          Edit Details
+                          Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggleActive(member)}>
                           {member.is_active ? 'Deactivate' : 'Activate'}
@@ -286,6 +296,19 @@ export default function TeamPage() {
                       member={member}
                       onConnect={() => handleConnectCalendar(member)}
                     />
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="pt-4 mt-4 border-t border-border">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => navigate(`/team/${member.id}`)}
+                    >
+                      <CalendarOff className="h-4 w-4 mr-2" />
+                      Schedule & Time Off
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
