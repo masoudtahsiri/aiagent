@@ -967,7 +967,10 @@ export function useUpdateBusinessHours() {
 
   return useMutation({
     mutationFn: (data: BusinessHours[]) =>
-      post<BusinessHours[]>(`/api/business-hours/${businessId}`, { hours: data }),
+      post<BusinessHours[]>(`/api/business-hours/${businessId}`, {
+        business_id: businessId,
+        hours: data,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businessHours(businessId || '') });
     },
