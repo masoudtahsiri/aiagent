@@ -23,6 +23,10 @@ import type {
   DashboardStats,
   CallAnalytics,
   PaginatedResponse,
+  StaffTimeOff,
+  StaffTimeOffCreate,
+  StaffAvailabilityEntry,
+  StaffAvailabilityValidation,
 } from '@/types';
 
 // =============================================================================
@@ -454,6 +458,99 @@ export function useUpdateStaffServices() {
       put(`/api/staff/${staffId}/services`, serviceIds),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['staff-services', variables.staffId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
+    },
+  });
+}
+
+// Staff Time Off Hooks
+
+export function useStaffTimeOffs(staffId: string, startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ['staff-time-offs', staffId, startDate, endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      const queryString = params.toString();
+      const url = `/api/staff/${staffId}/time-offs${queryString ? `?${queryString}` : ''}`;
+      return get<StaffTimeOff[]>(url);
+    },
+    enabled: !!staffId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useCreateStaffTimeOff() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: StaffTimeOffCreate) =>
+      post<StaffTimeOff>('/api/staff/time-offs', data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-time-offs', variables.staff_id] });
+    },
+  });
+}
+
+export function useDeleteStaffTimeOff() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ timeOffId, staffId }: { timeOffId: string; staffId: string }) =>
+      del(`/api/staff/time-offs/${timeOffId}`),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-time-offs', variables.staffId] });
+    },
+  });
+}
+
+export function useDeleteStaffTimeOffRange() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ staffId, startDate, endDate }: { staffId: string; startDate: string; endDate: string }) =>
+      del(`/api/staff/${staffId}/time-offs/range?start_date=${startDate}&end_date=${endDate}`),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-time-offs', variables.staffId] });
+    },
+  });
+}
+
+// Staff Availability with Business Hours Validation Hooks
+
+export function useStaffBusinessHours(staffId: string) {
+  return useQuery({
+    queryKey: ['staff-business-hours', staffId],
+    queryFn: () => get<BusinessHours[]>(`/api/staff/${staffId}/business-hours`),
+    enabled: !!staffId,
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useValidateStaffAvailability() {
+  return useMutation({
+    mutationFn: ({ staffId, schedule }: { staffId: string; schedule: StaffAvailabilityEntry[] }) =>
+      post<StaffAvailabilityValidation>(`/api/staff/${staffId}/availability/validate`, {
+        staff_id: staffId,
+        schedule,
+      }),
+  });
+}
+
+export function useUpdateStaffAvailabilitySchedule() {
+  const queryClient = useQueryClient();
+  const businessId = useBusinessId();
+
+  return useMutation({
+    mutationFn: ({ staffId, schedule }: { staffId: string; schedule: StaffAvailabilityEntry[] }) =>
+      put(`/api/staff/${staffId}/availability/schedule`, {
+        staff_id: staffId,
+        schedule,
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-availability', variables.staffId] });
+      queryClient.invalidateQueries({ queryKey: ['staff-business-hours', variables.staffId] });
       queryClient.invalidateQueries({ queryKey: queryKeys.staff(businessId || '') });
     },
   });

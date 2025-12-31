@@ -1,8 +1,9 @@
 from fastapi import HTTPException, status
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime, date, timedelta
 
 from backend.database.supabase_client import get_db
+from backend.models.staff import TimeOffType
 
 
 class StaffService:
@@ -349,4 +350,341 @@ class StaffService:
             "staff_id": staff_id,
             "service_count": len(service_ids)
         }
+
+    # Time Off Management
+
+    @staticmethod
+    async def create_time_off(time_off_data: dict, user_id: str) -> dict:
+        """Create a time off entry for staff"""
+        db = get_db()
+
+        # Verify staff belongs to user's business
+        staff = await StaffService.get_staff(time_off_data["staff_id"], user_id)
+
+        # Create time off entries for each date in the range
+        start_date = datetime.strptime(time_off_data["start_date"], "%Y-%m-%d").date()
+        end_date = datetime.strptime(time_off_data["end_date"], "%Y-%m-%d").date()
+
+        # Create a single time off record that spans the date range
+        time_off_record = {
+            "staff_id": time_off_data["staff_id"],
+            "exception_date": time_off_data["start_date"],
+            "exception_type": "time_off",
+            "start_time": None,
+            "end_time": None,
+            "reason": f"{time_off_data.get('time_off_type', 'vacation')}: {time_off_data.get('reason', '')}".strip(": "),
+        }
+
+        # For multi-day time offs, create entries for each day
+        created_entries = []
+        current_date = start_date
+        while current_date <= end_date:
+            entry = {
+                **time_off_record,
+                "exception_date": str(current_date),
+            }
+
+            # Check if an entry already exists for this date
+            existing = db.table("availability_exceptions").select("id").eq(
+                "staff_id", time_off_data["staff_id"]
+            ).eq("exception_date", str(current_date)).eq("exception_type", "time_off").execute()
+
+            if not existing.data:
+                result = db.table("availability_exceptions").insert(entry).execute()
+                if result.data:
+                    created_entries.append(result.data[0])
+
+            current_date += timedelta(days=1)
+
+        if not created_entries:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Time off entries already exist for the specified dates"
+            )
+
+        # Return a combined response
+        return {
+            "id": created_entries[0]["id"] if created_entries else None,
+            "staff_id": time_off_data["staff_id"],
+            "start_date": time_off_data["start_date"],
+            "end_date": time_off_data["end_date"],
+            "time_off_type": time_off_data.get("time_off_type", "vacation"),
+            "reason": time_off_data.get("reason"),
+            "created_at": created_entries[0]["created_at"] if created_entries else None,
+            "days_count": len(created_entries),
+        }
+
+    @staticmethod
+    async def get_staff_time_offs(
+        staff_id: str,
+        user_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[dict]:
+        """Get time off entries for staff, grouped by contiguous date ranges"""
+        db = get_db()
+
+        # Verify staff belongs to user's business
+        await StaffService.get_staff(staff_id, user_id)
+
+        # Get all time_off exceptions
+        query = db.table("availability_exceptions").select("*").eq(
+            "staff_id", staff_id
+        ).eq("exception_type", "time_off")
+
+        if start_date:
+            query = query.gte("exception_date", start_date)
+        if end_date:
+            query = query.lte("exception_date", end_date)
+
+        result = query.order("exception_date").execute()
+
+        if not result.data:
+            return []
+
+        # Group contiguous dates into time off periods
+        time_offs = []
+        entries = sorted(result.data, key=lambda x: x["exception_date"])
+
+        current_group = None
+        for entry in entries:
+            entry_date = datetime.strptime(entry["exception_date"], "%Y-%m-%d").date()
+
+            if current_group is None:
+                # Start new group
+                current_group = {
+                    "id": entry["id"],
+                    "staff_id": entry["staff_id"],
+                    "start_date": entry["exception_date"],
+                    "end_date": entry["exception_date"],
+                    "reason": entry.get("reason", ""),
+                    "created_at": entry["created_at"],
+                    "_last_date": entry_date,
+                }
+                # Parse time_off_type from reason
+                reason = entry.get("reason", "")
+                if ":" in reason:
+                    type_str = reason.split(":")[0].strip()
+                    current_group["time_off_type"] = type_str
+                    current_group["reason"] = reason.split(":", 1)[1].strip() if len(reason.split(":")) > 1 else ""
+                else:
+                    current_group["time_off_type"] = "vacation"
+                    current_group["reason"] = reason
+            else:
+                # Check if this date is contiguous with current group
+                expected_next = current_group["_last_date"] + timedelta(days=1)
+                if entry_date == expected_next:
+                    # Extend current group
+                    current_group["end_date"] = entry["exception_date"]
+                    current_group["_last_date"] = entry_date
+                else:
+                    # Save current group and start new one
+                    del current_group["_last_date"]
+                    time_offs.append(current_group)
+                    current_group = {
+                        "id": entry["id"],
+                        "staff_id": entry["staff_id"],
+                        "start_date": entry["exception_date"],
+                        "end_date": entry["exception_date"],
+                        "reason": entry.get("reason", ""),
+                        "created_at": entry["created_at"],
+                        "_last_date": entry_date,
+                    }
+                    reason = entry.get("reason", "")
+                    if ":" in reason:
+                        type_str = reason.split(":")[0].strip()
+                        current_group["time_off_type"] = type_str
+                        current_group["reason"] = reason.split(":", 1)[1].strip() if len(reason.split(":")) > 1 else ""
+                    else:
+                        current_group["time_off_type"] = "vacation"
+                        current_group["reason"] = reason
+
+        # Don't forget the last group
+        if current_group:
+            del current_group["_last_date"]
+            time_offs.append(current_group)
+
+        return time_offs
+
+    @staticmethod
+    async def delete_time_off(time_off_id: str, user_id: str) -> dict:
+        """Delete a time off entry (and all entries in the same date range)"""
+        db = get_db()
+
+        # Get the time off entry
+        entry_result = db.table("availability_exceptions").select("*").eq("id", time_off_id).execute()
+
+        if not entry_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Time off entry not found"
+            )
+
+        entry = entry_result.data[0]
+
+        # Verify staff belongs to user's business
+        await StaffService.get_staff(entry["staff_id"], user_id)
+
+        # Delete the entry
+        db.table("availability_exceptions").delete().eq("id", time_off_id).execute()
+
+        return {"message": "Time off entry deleted successfully"}
+
+    @staticmethod
+    async def delete_time_off_range(staff_id: str, start_date: str, end_date: str, user_id: str) -> dict:
+        """Delete all time off entries in a date range"""
+        db = get_db()
+
+        # Verify staff belongs to user's business
+        await StaffService.get_staff(staff_id, user_id)
+
+        # Delete all time_off entries in the range
+        result = db.table("availability_exceptions").delete().eq(
+            "staff_id", staff_id
+        ).eq("exception_type", "time_off").gte(
+            "exception_date", start_date
+        ).lte("exception_date", end_date).execute()
+
+        deleted_count = len(result.data) if result.data else 0
+
+        return {
+            "message": f"Deleted {deleted_count} time off entries",
+            "deleted_count": deleted_count,
+        }
+
+    # Availability Validation
+
+    @staticmethod
+    async def validate_availability_against_business_hours(
+        staff_id: str,
+        schedule: List[dict],
+        user_id: str
+    ) -> Tuple[bool, List[str], List[str]]:
+        """Validate staff availability is within business hours"""
+        db = get_db()
+
+        # Get staff to get business_id
+        staff = await StaffService.get_staff(staff_id, user_id)
+        business_id = staff["business_id"]
+
+        # Get business hours
+        hours_result = db.table("business_hours").select("*").eq("business_id", business_id).execute()
+
+        business_hours = {}
+        if hours_result.data:
+            for h in hours_result.data:
+                business_hours[h["day_of_week"]] = {
+                    "is_open": h.get("is_open", True),
+                    "open_time": h.get("open_time"),
+                    "close_time": h.get("close_time"),
+                }
+
+        errors = []
+        warnings = []
+
+        for entry in schedule:
+            day = entry.get("day_of_week")
+            if not entry.get("is_working", True):
+                continue
+
+            staff_start = entry.get("start_time")
+            staff_end = entry.get("end_time")
+
+            if day not in business_hours:
+                warnings.append(f"Day {day}: No business hours set. Staff availability will apply.")
+                continue
+
+            bh = business_hours[day]
+            if not bh.get("is_open"):
+                errors.append(f"Day {day}: Business is closed, but staff is set to work.")
+                continue
+
+            bh_open = bh.get("open_time")
+            bh_close = bh.get("close_time")
+
+            if bh_open and staff_start:
+                # Normalize time strings
+                bh_open_str = bh_open[:5] if len(bh_open) > 5 else bh_open
+                staff_start_str = staff_start[:5] if len(staff_start) > 5 else staff_start
+
+                if staff_start_str < bh_open_str:
+                    errors.append(
+                        f"Day {day}: Staff start time ({staff_start_str}) is before business opens ({bh_open_str})."
+                    )
+
+            if bh_close and staff_end:
+                bh_close_str = bh_close[:5] if len(bh_close) > 5 else bh_close
+                staff_end_str = staff_end[:5] if len(staff_end) > 5 else staff_end
+
+                if staff_end_str > bh_close_str:
+                    errors.append(
+                        f"Day {day}: Staff end time ({staff_end_str}) is after business closes ({bh_close_str})."
+                    )
+
+        is_valid = len(errors) == 0
+        return is_valid, errors, warnings
+
+    @staticmethod
+    async def update_staff_availability_with_validation(
+        staff_id: str,
+        schedule: List[dict],
+        user_id: str
+    ) -> dict:
+        """Update staff availability with business hours validation"""
+        db = get_db()
+
+        # Validate first
+        is_valid, errors, warnings = await StaffService.validate_availability_against_business_hours(
+            staff_id, schedule, user_id
+        )
+
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Availability validation failed",
+                    "errors": errors,
+                    "warnings": warnings,
+                }
+            )
+
+        # Delete existing templates for this staff
+        db.table("availability_templates").delete().eq("staff_id", staff_id).execute()
+
+        # Insert new templates
+        templates = []
+        for entry in schedule:
+            if entry.get("is_working", True) and entry.get("start_time") and entry.get("end_time"):
+                templates.append({
+                    "staff_id": staff_id,
+                    "day_of_week": entry["day_of_week"],
+                    "start_time": entry["start_time"],
+                    "end_time": entry["end_time"],
+                    "slot_duration_minutes": entry.get("slot_duration_minutes", 30),
+                    "is_active": True,
+                })
+
+        if templates:
+            db.table("availability_templates").insert(templates).execute()
+
+        return {
+            "message": "Availability updated successfully",
+            "staff_id": staff_id,
+            "days_configured": len(templates),
+            "warnings": warnings,
+        }
+
+    @staticmethod
+    async def get_business_hours_for_staff(staff_id: str, user_id: str) -> List[dict]:
+        """Get business hours for the staff's business"""
+        db = get_db()
+
+        # Get staff to get business_id
+        staff = await StaffService.get_staff(staff_id, user_id)
+        business_id = staff["business_id"]
+
+        # Get business hours
+        result = db.table("business_hours").select("*").eq("business_id", business_id).order("day_of_week").execute()
+
+        return result.data if result.data else []
 

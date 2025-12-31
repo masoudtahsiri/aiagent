@@ -158,3 +158,5 @@ class BusinessHoursService:
             "total": len(closures_to_add),
             "unsupported": False
         }
+
+

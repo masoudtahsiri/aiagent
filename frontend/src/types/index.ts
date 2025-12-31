@@ -104,6 +104,43 @@ export interface AvailabilityTemplate {
   start_time: string;
   end_time: string;
   slot_duration_minutes: number;
+  is_active?: boolean;
+}
+
+// Staff Time Off types
+export type TimeOffType = 'vacation' | 'sick_leave' | 'personal' | 'holiday' | 'other';
+
+export interface StaffTimeOff {
+  id: string;
+  staff_id: string;
+  start_date: string;
+  end_date: string;
+  time_off_type: TimeOffType;
+  reason?: string;
+  created_at: string;
+}
+
+export interface StaffTimeOffCreate {
+  staff_id: string;
+  start_date: string;
+  end_date: string;
+  time_off_type: TimeOffType;
+  reason?: string;
+}
+
+// Staff Availability Entry for schedule editor
+export interface StaffAvailabilityEntry {
+  day_of_week: number;
+  is_working: boolean;
+  start_time?: string;
+  end_time?: string;
+  slot_duration_minutes?: number;
+}
+
+export interface StaffAvailabilityValidation {
+  is_valid: boolean;
+  errors: string[];
+  warnings: string[];
 }
 
 export interface TimeSlot {

@@ -1,6 +1,15 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime, time
+from enum import Enum
+
+
+class TimeOffType(str, Enum):
+    VACATION = "vacation"
+    SICK_LEAVE = "sick_leave"
+    PERSONAL = "personal"
+    HOLIDAY = "holiday"
+    OTHER = "other"
 
 
 class StaffBase(BaseModel):
@@ -97,6 +106,66 @@ class AvailabilityExceptionResponse(AvailabilityExceptionBase):
 class BulkAvailabilityCreate(BaseModel):
     staff_id: str
     templates: List[AvailabilityTemplateBase]
+
+
+# Time Off Models
+
+class StaffTimeOffBase(BaseModel):
+    start_date: str  # "2025-01-15"
+    end_date: str    # "2025-01-20"
+    time_off_type: TimeOffType = TimeOffType.VACATION
+    reason: Optional[str] = None
+
+    @field_validator('end_date')
+    @classmethod
+    def end_date_after_start(cls, v, info):
+        start_date = info.data.get('start_date')
+        if start_date and v < start_date:
+            raise ValueError('end_date must be on or after start_date')
+        return v
+
+
+class StaffTimeOffCreate(StaffTimeOffBase):
+    staff_id: str
+
+
+class StaffTimeOffUpdate(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    time_off_type: Optional[TimeOffType] = None
+    reason: Optional[str] = None
+
+
+class StaffTimeOffResponse(StaffTimeOffBase):
+    id: str
+    staff_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Staff Availability with Business Hours Validation
+
+class StaffAvailabilityEntry(BaseModel):
+    day_of_week: int  # 0=Sunday, 6=Saturday
+    is_working: bool = True
+    start_time: Optional[str] = None  # "09:00"
+    end_time: Optional[str] = None    # "17:00"
+    slot_duration_minutes: int = 30
+
+
+class BulkStaffAvailabilityUpdate(BaseModel):
+    staff_id: str
+    schedule: List[StaffAvailabilityEntry]
+
+
+class StaffAvailabilityValidationResponse(BaseModel):
+    is_valid: bool
+    errors: List[str]
+    warnings: List[str]
+
+
 
 
 
